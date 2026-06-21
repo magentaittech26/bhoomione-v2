@@ -1,0 +1,116 @@
+<?php
+
+namespace App\Http\Controllers\Api\v1;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\CreatePlotRequest;
+use App\Http\Requests\UpdatePlotRequest;
+use App\Services\PlotService;
+use Illuminate\Http\Request;
+
+class PlotController extends Controller
+{
+    /**
+     * Resolve active tenant context dynamically from headers or user allocations.
+     */
+    private function getTenantId(Request $request): string
+    {
+        $resolvedTenant = $request->attributes->get('resolvedTenant');
+        $tenantId = $resolvedTenant ? $resolvedTenant->id : ($request->attributes->get('authenticatedUserPayload')['tenantId'] ?? null);
+        
+        if (!$tenantId) {
+            abort(response()->json([
+                'error' => 'Tenant context could not be resolved. Please specify X-Tenant-ID header.'
+            ], 400));
+        }
+
+        return $tenantId;
+    }
+
+    /**
+     * Extract user details and connection context parameters.
+     */
+    private function getContextAndUser(Request $request): array
+    {
+        $user = $request->attributes->get('authenticatedUser');
+        return [
+            'userId' => $user ? $user->id : null,
+            'context' => [
+                'ip' => $request->ip(),
+                'userAgent' => $request->userAgent()
+            ]
+        ];
+    }
+
+    /**
+     * GET /api/v1/plots
+     */
+    public function index(Request $request)
+    {
+        $tenantId = $this->getTenantId($request);
+        $plots = PlotService::getPaginated($tenantId, $request->all());
+        return response()->json($plots);
+    }
+
+    /**
+     * GET /api/v1/plots/{id}
+     */
+    public function show(Request $request, $id)
+    {
+        $tenantId = $this->getTenantId($request);
+        try {
+            $plot = PlotService::getById($id, $tenantId);
+            return response()->json($plot);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Plot not found or mismatching tenant context.'], 404);
+        }
+    }
+
+    /**
+     * POST /api/v1/plots
+     */
+    public function store(CreatePlotRequest $request)
+    {
+        $tenantId = $this->getTenantId($request);
+        $aux = $this->getContextAndUser($request);
+        
+        try {
+            $plot = PlotService::create($request->validated(), $tenantId, $aux['userId'], $aux['context']);
+            return response()->json($plot, 201);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage() ?: 'Could not create plot.'], 400);
+        }
+    }
+
+    /**
+     * PUT /api/v1/plots/{id}
+     */
+    public function update(UpdatePlotRequest $request, $id)
+    {
+        $tenantId = $this->getTenantId($request);
+        $aux = $this->getContextAndUser($request);
+        
+        try {
+            $plot = PlotService::update($id, $request->validated(), $tenantId, $aux['userId'], $aux['context']);
+            return response()->json($plot);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage() ?: 'Could not update plot.'], 400);
+        }
+    }
+
+    /**
+     * DELETE /api/v1/plots/{id}
+     */
+    public function destroy(Request $request, $id)
+    {
+        $tenantId = $this->getTenantId($request);
+        $aux = $this->getContextAndUser($request);
+        
+        try {
+            PlotService::delete($id, $tenantId, $aux['userId'], $aux['context']);
+            return response()->json(['success' => true, 'message' => 'Plot deleted successfully.']);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage() ?: 'Could not delete plot.'], 400);
+        }
+    }
+}

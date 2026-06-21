@@ -1,0 +1,15 @@
+#!/usr/bin/env php
+<?php
+
+define('LARAVEL_START', microtime(true));
+
+// Register the Composer Autoloader...
+if (file_exists($composer = __DIR__.'/vendor/autoload.php')) {
+    require $composer;
+}
+
+// Bootstrap Laravel and handle the command...
+$status = ($app = require_once __DIR__.'/bootstrap/app.php')
+    ->handleCommand(new Symfony\Component\Console\Input\ArgvInput);
+
+exit($status);

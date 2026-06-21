@@ -1,0 +1,164 @@
+version: '3.8'
+
+services:
+  # Database Service
+  postgres:
+    image: postgres:15-alpine
+    container_name: bhoomionev2-postgres-staging
+    restart: always
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-bhoomione_v2_staging}
+      POSTGRES_USER: ${DB_USERNAME:-bhoomione_v2}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ChangeThisStrongDbPassword2026}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - bhoomione-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-bhoomione_v2} -d ${DB_DATABASE:-bhoomione_v2_staging}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache & Queue Service
+  redis:
+    image: redis:7-alpine
+    container_name: bhoomionev2-redis-staging
+    restart: always
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-ChangeThisStrongRedisPassword2026}
+    volumes:
+      - redis_data:/data
+    networks:
+      - bhoomione-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-ChangeThisStrongRedisPassword2026}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Laravel API Application Service
+  backend-api:
+    build:
+      context: ./backend-api
+      dockerfile: Dockerfile
+    container_name: bhoomionev2-backend-staging
+    restart: always
+    environment:
+      APP_ENV: staging
+      APP_DEBUG: "false"
+      APP_KEY: ${APP_KEY}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${DB_DATABASE:-bhoomione_v2_staging}
+      DB_USERNAME: ${DB_USERNAME:-bhoomione_v2}
+      DB_PASSWORD: ${DB_PASSWORD:-ChangeThisStrongDbPassword2026}
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-ChangeThisStrongRedisPassword2026}
+      REDIS_PORT: 6379
+      QUEUE_CONNECTION: redis
+    volumes:
+      - ./backend-api:/var/www/html
+      - storage_data:/var/www/html/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - bhoomione-network
+
+  # Laravel Queue Worker
+  queue-worker:
+    build:
+      context: ./backend-api
+      dockerfile: Dockerfile
+    container_name: bhoomionev2-worker-staging
+    restart: always
+    command: php artisan queue:work redis --sleep=3 --tries=3 --timeout=90
+    environment:
+      APP_ENV: staging
+      APP_DEBUG: "false"
+      APP_KEY: ${APP_KEY}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${DB_DATABASE:-bhoomione_v2_staging}
+      DB_USERNAME: ${DB_USERNAME:-bhoomione_v2}
+      DB_PASSWORD: ${DB_PASSWORD:-ChangeThisStrongDbPassword2026}
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-ChangeThisStrongRedisPassword2026}
+      REDIS_PORT: 6379
+      QUEUE_CONNECTION: redis
+    volumes:
+      - ./backend-api:/var/www/html
+      - storage_data:/var/www/html/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - bhoomione-network
+
+  # Laravel Scheduler
+  scheduler:
+    build:
+      context: ./backend-api
+      dockerfile: Dockerfile
+    container_name: bhoomionev2-scheduler-staging
+    restart: always
+    command: /bin/sh -c "while [ true ]; do php artisan schedule:run --no-interaction & sleep 60; done"
+    environment:
+      APP_ENV: staging
+      APP_DEBUG: "false"
+      APP_KEY: ${APP_KEY}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${DB_DATABASE:-bhoomione_v2_staging}
+      DB_USERNAME: ${DB_USERNAME:-bhoomione_v2}
+      DB_PASSWORD: ${DB_PASSWORD:-ChangeThisStrongDbPassword2026}
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-ChangeThisStrongRedisPassword2026}
+      REDIS_PORT: 6379
+      QUEUE_CONNECTION: redis
+    volumes:
+      - ./backend-api:/var/www/html
+      - storage_data:/var/www/html/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - bhoomione-network
+
+  # Nginx Reverse Proxy & Frontend static Server
+  nginx:
+    image: nginx:alpine
+    container_name: bhoomionev2-nginx-staging
+    restart: always
+    ports:
+      - "127.0.0.1:8097:80"
+    volumes:
+      - ./dist:/usr/share/nginx/html:ro
+      - ./nginx.staging.conf:/etc/nginx/nginx.conf:ro
+      - ./backend-api/public:/var/www/html/public:ro
+      - storage_data:/var/www/html/storage:ro
+    depends_on:
+      - backend-api
+    networks:
+      - bhoomione-network
+
+networks:
+  bhoomione-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  storage_data:
+    driver: local
