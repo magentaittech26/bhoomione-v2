@@ -44,17 +44,17 @@ Route::prefix('v1')->group(function () {
             \Illuminate\Support\Facades\DB::connection()->getPdo();
             $dbStatus = 'CONNECTED';
             $dbError = null;
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $dbStatus = 'DISCONNECTED';
-            $dbError = $e->getMessage();
+            $dbError = $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine();
         }
 
         return response()->json([
-            'status' => 'OK',
+            'status' => $dbStatus === 'CONNECTED' ? 'OK' : 'DEGRADED',
             'timestamp' => now()->toIso8601String(),
             'database' => $dbStatus,
             'databaseError' => $dbError,
-            'environmentStatus' => 'OPERATIONAL',
+            'environmentStatus' => $dbStatus === 'CONNECTED' ? 'OPERATIONAL' : 'DEGRADED',
         ]);
     });
 
