@@ -151,7 +151,8 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
   const [formLay, setFormLay] = useState({
     project_id: "", name: "", code: "", layout_type: "RESIDENTIAL",
     approval_number: "", approval_date: "", total_area_value: "",
-    total_area_unit_id: "", measurement_unit_id: "", status: "DRAFT"
+    total_area_unit_id: "", measurement_unit_id: "", status: "DRAFT",
+    survey_number: ""
   });
 
   const [formPlot, setFormPlot] = useState({
@@ -426,11 +427,46 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
     e.preventDefault();
     setErrorMess(null);
     try {
+      // Validation 1: Missing Project Check
+      if (!formLay.project_id) {
+        setErrorMess("Validation Error: Parent Project Context is required to register a Layout Subdivision plan.");
+        return;
+      }
+
+      // Validation 2: Invalid Area Check
+      if (formLay.total_area_value && (isNaN(Number(formLay.total_area_value)) || Number(formLay.total_area_value) <= 0)) {
+        setErrorMess("Validation Error: Invalid Area. Zoned Area value must be a positive numeric value higher than 0.");
+        return;
+      }
+
+      // Validation 3: Duplicate Layout Name Check
+      const isDuplicate = lookupLayouts.some(
+        (lay: any) => 
+          lay.name.trim().toLowerCase() === formLay.name.trim().toLowerCase() && 
+          lay.id !== editId &&
+          lay.project_id === formLay.project_id
+      );
+      if (isDuplicate) {
+        setErrorMess(`Validation Error: A layout phase named '${formLay.name}' already exists within the selected parent project context. Duplicate layout names are not permitted.`);
+        return;
+      }
+
+      // Safe packing of Survey numbers into approval_number text field to survive schema restrictions
+      const fullApprovalNum = formLay.survey_number.trim()
+        ? `${formLay.approval_number.trim() || "Approved Layout"} (Survey: ${formLay.survey_number.trim()})`
+        : formLay.approval_number.trim();
+
       const payload = {
-        ...formLay,
-        total_area_value: formLay.total_area_value ? Number(formLay.total_area_value) : null,
+        project_id: formLay.project_id,
+        name: formLay.name.trim(),
+        code: formLay.code.trim().toUpperCase(),
+        layout_type: formLay.layout_type,
+        approval_number: fullApprovalNum || null,
         approval_date: formLay.approval_date || null,
-        approval_number: formLay.approval_number || null,
+        total_area_value: formLay.total_area_value ? Number(formLay.total_area_value) : null,
+        total_area_unit_id: formLay.total_area_unit_id || formLay.measurement_unit_id || null,
+        measurement_unit_id: formLay.measurement_unit_id || null,
+        status: formLay.status
       };
 
       if (editId) {
@@ -451,12 +487,25 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
 
   const handleStartEditLayout = (l: any) => {
     setEditId(l.id);
+    
+    // Unpacking approval_number and survey_number from structured string representation safely
+    let approvalNumberOnly = l.approval_number || "";
+    let surveyNumberOnly = "";
+    if (l.approval_number) {
+      const match = l.approval_number.match(/(.*?)\s*\(Survey:\s*(.*?)\)/);
+      if (match) {
+        approvalNumberOnly = match[1].trim();
+        surveyNumberOnly = match[2].trim();
+      }
+    }
+
     setFormLay({
       project_id: l.project_id,
       name: l.name,
       code: l.code,
       layout_type: l.layout_type,
-      approval_number: l.approval_number || "",
+      approval_number: approvalNumberOnly,
+      survey_number: surveyNumberOnly,
       approval_date: l.approval_date ? l.approval_date.split("T")[0] : "",
       total_area_value: l.total_area_value ? String(l.total_area_value) : "",
       total_area_unit_id: l.total_area_unit_id || "",
@@ -1083,7 +1132,23 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                 </div>
                 {hasLayManage && (
                   <button
-                    onClick={() => { setEditId(null); setFormLay(prev => ({ ...prev, name: "", code: "", layout_type: "RESIDENTIAL", approval_number: "", approval_date: "", total_area_value: "", status: "DRAFT" })); setCurrModal("create_layout"); }}
+                    onClick={() => {
+                      setEditId(null);
+                      setFormLay({
+                        project_id: lookupProjects[0]?.id || "",
+                        name: "",
+                        code: "",
+                        layout_type: "RESIDENTIAL",
+                        approval_number: "",
+                        survey_number: "",
+                        approval_date: "",
+                        total_area_value: "",
+                        total_area_unit_id: units[0]?.id || "",
+                        measurement_unit_id: units[0]?.id || "",
+                        status: "DRAFT"
+                      });
+                      setCurrModal("create_layout");
+                    }}
                     className="inline-flex items-center gap-1 bg-indigo-650 text-white font-semibold text-xs px-3 py-2 rounded-xl hover:bg-indigo-750 transition-colors"
                   >
                     <Plus className="w-4 h-4" />
@@ -1138,49 +1203,89 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                 </div>
               </div>
 
-              {/* Layout Ledger Data Grid */}
+               {/* Layout Ledger Data Grid */}
               <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs">
                 <table className="w-full text-left text-xs text-slate-500">
                   <thead className="bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-200">
                     <tr>
                       <th className="px-4 py-3">Layout Name</th>
-                      <th className="px-4 py-3">Code</th>
-                      <th className="px-4 py-3">Zoning Type</th>
-                      <th className="px-4 py-3 text-center">Unit</th>
+                      <th className="px-4 py-3">Project</th>
                       <th className="px-4 py-3 text-right">Total Area</th>
-                      <th className="px-4 py-3 text-center">Plot Count</th>
+                      <th className="px-4 py-3 text-center">Unit</th>
                       <th className="px-4 py-3 text-center">Status</th>
+                      <th className="px-4 py-3 text-center">Created Date</th>
                       <th className="px-4 py-3 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-sans">
-                    {displayLay.length === 0 ? (
+                    {loading ? (
+                      Array.from({ length: 4 }).map((_, idx) => (
+                        <tr key={idx} className="animate-pulse bg-white">
+                          <td className="px-4 py-4">
+                            <div className="h-3.5 bg-slate-200 rounded-sm w-3/4 mb-1"></div>
+                            <div className="h-2.5 bg-slate-150 rounded-sm w-1/2"></div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="h-3 bg-slate-200 rounded-sm w-2/3"></div>
+                          </td>
+                          <td className="px-4 py-4 text-right">
+                            <div className="h-3.5 bg-slate-200 rounded-sm w-1/3 ml-auto"></div>
+                          </td>
+                          <td className="px-4 py-4 text-center">
+                            <div className="h-3 bg-slate-200 rounded-sm w-1/4 mx-auto"></div>
+                          </td>
+                          <td className="px-4 py-4 text-center">
+                            <div className="h-4 bg-slate-200 rounded-full w-12 mx-auto"></div>
+                          </td>
+                          <td className="px-4 py-4 text-center">
+                            <div className="h-3 bg-slate-200 rounded-sm w-1/3 mx-auto"></div>
+                          </td>
+                          <td className="px-4 py-4 text-right">
+                            <div className="h-3 bg-slate-200 rounded-sm w-1/4 ml-auto"></div>
+                          </td>
+                        </tr>
+                      ))
+                    ) : errorMess && displayLay.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="py-12 text-center text-slate-400">
+                        <td colSpan={7} className="py-12 text-center text-rose-500">
+                          <AlertCircle className="w-8 h-8 text-rose-500 mx-auto mb-2" />
+                          <span className="font-bold text-xs block mb-1">Query failure retrieving layout plans</span>
+                          <span className="text-[10px] text-slate-500 max-w-sm mx-auto block leading-normal px-4 mb-3">{errorMess}</span>
+                          <button
+                            onClick={() => loadData()}
+                            className="inline-flex items-center gap-1 text-[10px] bg-slate-100 border border-slate-200 text-slate-700 font-bold px-2.5 py-1 rounded-lg hover:bg-slate-200 transition-colors"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            <span>Retry Query</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ) : displayLay.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-12 text-center text-slate-400">
                           <Layers className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                           <span>No layouts cataloged matching search filters.</span>
                         </td>
                       </tr>
                     ) : (
                       displayLay.map((l) => {
-                        const plotsInLay = getPlotsForLayout(l.id);
                         return (
                           <tr
                             key={l.id}
-                            className={`hover:bg-slate-50/50 cursor-pointer transition-colors ${selectedLayout?.id === l.id ? "bg-slate-55/70" : ""}`}
+                            className={`hover:bg-slate-50/50 cursor-pointer transition-colors ${selectedLayout?.id === l.id ? "bg-indigo-50/20 shadow-xs border-l-2 border-indigo-600" : ""}`}
                             onClick={() => setSelectedLayout(l)}
                           >
                             <td className="px-4 py-3.5">
                               <p className="font-semibold text-slate-900">{l.name}</p>
-                              <p className="text-[10px] text-slate-400">Proj: {l.project_name || l.project?.name || "N/A"}</p>
+                              <p className="text-[9px] font-mono font-bold text-indigo-600/80 mt-0.5">{l.code} &bull; {l.layout_type}</p>
                             </td>
-                            <td className="px-4 py-3.5 font-mono font-semibold text-indigo-600">{l.code}</td>
-                            <td className="px-4 py-3.5 text-slate-700 font-semibold text-[11px]">{l.layout_type}</td>
-                            <td className="px-4 py-3.5 text-center font-mono font-medium">{getUnitCode(l.measurement_unit_id)}</td>
+                            <td className="px-4 py-3.5 text-slate-700 font-semibold text-[11px]">
+                              {l.project_name || l.project?.name || "N/A"}
+                            </td>
                             <td className="px-4 py-3.5 text-right font-mono font-bold text-slate-800">
                               {l.total_area_value ? Number(l.total_area_value).toLocaleString() : "N/A"}
                             </td>
-                            <td className="px-4 py-3.5 text-center font-bold text-slate-700">{plotsInLay.length}</td>
+                            <td className="px-4 py-3.5 text-center font-mono font-medium">{getUnitCode(l.measurement_unit_id)}</td>
                             <td className="px-4 py-3.5 text-center">
                               <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${
                                 l.status === "LAUNCHED" ? "bg-emerald-50 text-emerald-800 border-emerald-100" :
@@ -1189,6 +1294,9 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                               }`}>
                                 {l.status}
                               </span>
+                            </td>
+                            <td className="px-4 py-3.5 text-center font-mono text-slate-500 font-semibold text-[11px]">
+                              {l.created_at ? new Date(l.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' }) : "N/A"}
                             </td>
                             <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                               <div className="flex justify-end gap-1.5">
@@ -1202,14 +1310,16 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                                 <button
                                   onClick={() => handleStartEditLayout(l)}
                                   className="p-1 text-slate-400 hover:text-slate-900 transition-colors"
+                                  title="Edit layout details"
                                 >
                                   <Edit className="w-3.5 h-3.5" />
                                 </button>
                                 <button
                                   onClick={() => handleDeleteLayout(l.id, l.code)}
-                                  className="p-1 text-slate-400 hover:text-rose-600 transition-colors"
+                                  className="p-1 text-slate-400 hover:text-rose-650 transition-colors"
+                                  title="Purge layout blueprint"
                                 >
-                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
                                 </button>
                               </div>
                             </td>
@@ -1587,46 +1697,79 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
               </div>
             </div>
           ) : activeTab === "layouts" && selectedLayout ? (
-            <div className="space-y-4" id="layout-inspector">
-              <div className="flex justify-between items-start">
-                <div>
-                  <span className="bg-amber-50 border border-amber-150 text-amber-800 font-mono text-[9px] font-bold px-2 py-0.5 rounded uppercase">{selectedLayout.layout_type}</span>
-                  <h3 className="text-sm font-bold text-slate-900 mt-1">{selectedLayout.name}</h3>
-                </div>
-                <button onClick={() => setSelectedLayout(null)} className="text-[10px] text-indigo-600 hover:underline">Clear</button>
-              </div>
+            (() => {
+              // Unpack approval and survey metadata on-the-fly safely
+              let approvalNumberOnly = selectedLayout.approval_number || "";
+              let surveyNumberOnly = "N/A";
+              if (selectedLayout.approval_number) {
+                const match = selectedLayout.approval_number.match(/(.*?)\s*\(Survey:\s*(.*?)\)/);
+                if (match) {
+                  approvalNumberOnly = match[1].trim();
+                  surveyNumberOnly = match[2].trim();
+                }
+              }
 
-              <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-3.5 text-xs">
-                <p className="font-bold text-[10px] text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1">Layout Information</p>
-                <div className="space-y-1.5 text-[11px]">
-                  <p className="flex justify-between"><span>Phase Code:</span> <span className="font-mono font-bold text-slate-900">{selectedLayout.code}</span></p>
-                  <p className="flex justify-between"><span>Parent Projects:</span> <span className="font-semibold text-slate-800">{selectedLayout.project_name || selectedLayout.project?.name || "N/A"}</span></p>
-                  <p className="flex justify-between"><span>Approval reference:</span> <span className="font-mono font-medium text-slate-850">{selectedLayout.approval_number || "REQUIRING REGISTRATION"}</span></p>
-                  <p className="flex justify-between"><span>Approval validation:</span> <span className="font-semibold text-slate-800">{selectedLayout.approval_date ? selectedLayout.approval_date.split("T")[0] : "N/A"}</span></p>
-                  <p className="flex justify-between"><span>Lifecycle State:</span> <span className="font-bold font-mono text-indigo-700">{selectedLayout.status}</span></p>
-                </div>
+              const formattedCreated = selectedLayout.created_at 
+                ? new Date(selectedLayout.created_at).toLocaleString(undefined, { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                : "N/A";
+              const formattedUpdated = selectedLayout.updated_at 
+                ? new Date(selectedLayout.updated_at).toLocaleString(undefined, { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                : "N/A";
 
-                <p className="font-bold text-[10px] text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1">Area Information</p>
-                <div className="space-y-1.5 text-[11px]">
-                  <p className="flex justify-between"><span>Allocated Size:</span> <span className="font-mono font-bold text-slate-950">{selectedLayout.total_area_value ? Number(selectedLayout.total_area_value).toLocaleString() : "UNDEFINED"} {getUnitCode(selectedLayout.measurement_unit_id)}</span></p>
-                  <p className="flex justify-between"><span>Standard unit:</span> <span className="font-medium text-slate-800 font-mono">{getUnitCode(selectedLayout.measurement_unit_id)}</span></p>
-                </div>
+              return (
+                <div className="space-y-4" id="layout-inspector">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className="bg-amber-50 border border-amber-150 text-amber-800 font-mono text-[9px] font-bold px-2 py-0.5 rounded uppercase">{selectedLayout.layout_type}</span>
+                      <h3 className="text-sm font-bold text-slate-900 mt-1">{selectedLayout.name}</h3>
+                    </div>
+                    <button onClick={() => setSelectedLayout(null)} className="text-[10px] text-indigo-600 hover:underline">Clear</button>
+                  </div>
 
-                <p className="font-bold text-[10px] text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1">Zoned Plots directory</p>
-                <div className="space-y-1.5 max-h-36 overflow-y-auto font-mono text-[10px]">
-                  {getPlotsForLayout(selectedLayout.id).length === 0 ? (
-                    <p className="text-slate-400 text-center font-sans">No zoned plots listed.</p>
-                  ) : (
-                    getPlotsForLayout(selectedLayout.id).map(p => (
-                      <div key={p.id} className="flex justify-between items-center p-1 border-b border-slate-100">
-                        <span>{p.plot_number}</span>
-                        <span className={`px-1.5 py-0.2 rounded text-[8.5px] font-sans font-bold uppercase ${p.status === "AVAILABLE" ? "text-emerald-700 bg-emerald-50" : "text-slate-600 bg-slate-50"}`}>{p.status}</span>
-                      </div>
-                    ))
-                  )}
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 space-y-3.5 text-xs">
+                    <p className="font-bold text-[10px] text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1">Layout Information</p>
+                    <div className="space-y-2 text-[11px]">
+                      <p className="flex justify-between"><span>Phase Code:</span> <span className="font-mono font-bold text-slate-900">{selectedLayout.code}</span></p>
+                      <p className="flex justify-between"><span>Parent Project:</span> <span className="font-semibold text-slate-800">{selectedLayout.project_name || selectedLayout.project?.name || "N/A"}</span></p>
+                      <p className="flex justify-between"><span>Survey Numbers:</span> <span className="font-mono font-bold text-indigo-600 bg-indigo-50/50 px-1.5 py-0.2 rounded">{surveyNumberOnly}</span></p>
+                      <p className="flex justify-between"><span>Lifecycle State:</span> <span className="font-bold font-mono text-indigo-700">{selectedLayout.status}</span></p>
+                    </div>
+
+                    <p className="font-bold text-[10px] text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1 pt-1 ml-0">Area Information</p>
+                    <div className="space-y-1.5 text-[11px]">
+                      <p className="flex justify-between"><span>Total Area:</span> <span className="font-mono font-bold text-slate-950">{selectedLayout.total_area_value ? Number(selectedLayout.total_area_value).toLocaleString() : "UNDEFINED"} {getUnitCode(selectedLayout.measurement_unit_id)}</span></p>
+                      <p className="flex justify-between"><span>Standard unit:</span> <span className="font-medium text-slate-800 font-mono">{getUnitCode(selectedLayout.measurement_unit_id)}</span></p>
+                    </div>
+
+                    <p className="font-bold text-[10px] text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1 pt-1">Approval Metadata</p>
+                    <div className="space-y-1.5 text-[11px]">
+                      <p className="flex justify-between"><span>Approval reference:</span> <span className="font-mono font-semibold text-slate-800">{approvalNumberOnly || "REQUIRING REGISTRATION"}</span></p>
+                      <p className="flex justify-between"><span>Approval date:</span> <span className="font-semibold text-slate-800">{selectedLayout.approval_date ? selectedLayout.approval_date.split("T")[0] : "N/A"}</span></p>
+                    </div>
+
+                    <p className="font-bold text-[10px] text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1 pt-1">Chronology</p>
+                    <div className="space-y-1.5 text-[11px]">
+                      <p className="flex justify-between"><span>Created Date:</span> <span className="font-mono font-medium text-slate-600">{formattedCreated}</span></p>
+                      <p className="flex justify-between"><span>Updated Date:</span> <span className="font-mono font-medium text-slate-600">{formattedUpdated}</span></p>
+                    </div>
+
+                    <p className="font-bold text-[10px] text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1 pt-1">Zoned Plots directory</p>
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto font-mono text-[10px]">
+                      {getPlotsForLayout(selectedLayout.id).length === 0 ? (
+                        <p className="text-slate-400 text-center font-sans">No zoned plots listed.</p>
+                      ) : (
+                        getPlotsForLayout(selectedLayout.id).map(p => (
+                          <div key={p.id} className="flex justify-between items-center p-1 border-b border-slate-100">
+                            <span>{p.plot_number}</span>
+                            <span className={`px-1.5 py-0.2 rounded text-[8.5px] font-sans font-bold uppercase ${p.status === "AVAILABLE" ? "text-emerald-700 bg-emerald-50" : "text-slate-600 bg-slate-50"}`}>{p.status}</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+              );
+            })()
           ) : activeTab === "plots" && selectedPlot ? (
             <div className="space-y-4" id="plot-inspector">
               <div className="flex justify-between items-start">
@@ -1972,12 +2115,16 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
               <div className="grid grid-cols-2 gap-3.5">
                 <div>
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Approved reference index</label>
-                  <input type="text" value={formLay.approval_number} onChange={(e) => setFormLay({ ...formLay, approval_number: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
+                  <input type="text" value={formLay.approval_number} onChange={(e) => setFormLay({ ...formLay, approval_number: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" placeholder="e.g. L-APPR/2026/09" />
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Authority Approval Date</label>
                   <input type="date" value={formLay.approval_date} onChange={(e) => setFormLay({ ...formLay, approval_date: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
                 </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Survey Numbers (comma separated) *</label>
+                <input type="text" value={formLay.survey_number} onChange={(e) => setFormLay({ ...formLay, survey_number: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono font-medium" placeholder="e.g. 145/2, 145/3, 146" />
               </div>
               <div className="flex justify-end gap-2.5 pt-3">
                 <button type="button" onClick={() => setCurrModal(null)} className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-50">Cancel</button>
