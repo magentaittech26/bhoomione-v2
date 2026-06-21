@@ -54,15 +54,6 @@ export default function SaaSAdminApp() {
     if (user && user.role === "admin") {
       setCurrentUser(user);
     }
-
-    const handleUnauthorized = () => {
-      setCurrentUser(null);
-    };
-
-    window.addEventListener("bhoomi_unauthorized", handleUnauthorized);
-    return () => {
-      window.removeEventListener("bhoomi_unauthorized", handleUnauthorized);
-    };
   }, []);
 
   const handleLoginSuccess = (user: UserProfile) => {

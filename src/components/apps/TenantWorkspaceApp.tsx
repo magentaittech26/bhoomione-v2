@@ -58,20 +58,11 @@ export default function TenantWorkspaceApp({ tenantCode }: TenantWorkspaceAppPro
   };
 
   useEffect(() => {
-    // Session token handshake from sessionStorage / localStorage
+    // Session token handshake from sessionStorage
     const cachedUser = api.getCurrentUser();
     if (cachedUser) {
       setCurrentUser(cachedUser);
     }
-
-    const handleUnauthorized = () => {
-      setCurrentUser(null);
-    };
-
-    window.addEventListener("bhoomi_unauthorized", handleUnauthorized);
-    return () => {
-      window.removeEventListener("bhoomi_unauthorized", handleUnauthorized);
-    };
   }, []);
 
   const handleLoginSuccess = (user: UserProfile) => {

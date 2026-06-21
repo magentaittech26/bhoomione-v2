@@ -3,36 +3,28 @@ import { AuthResponse, UserProfile, SystemHealth } from "../types/auth.ts";
 class ApiClient {
   private baseUri = ((import.meta as any).env?.VITE_LARAVEL_API_URL || "/api/v1").replace(/\/$/, "");
 
-  // Get tokens from sessionStorage or localStorage to survive page refreshes and iframe reloads
+  // Get tokens from sessionStorage to survive iframe reloads
   getAccessToken(): string | null {
-    return sessionStorage.getItem("bhoomi_access_token") || localStorage.getItem("bhoomi_access_token");
+    return sessionStorage.getItem("bhoomi_access_token");
   }
 
   getRefreshToken(): string | null {
-    return sessionStorage.getItem("bhoomi_refresh_token") || localStorage.getItem("bhoomi_refresh_token");
+    return sessionStorage.getItem("bhoomi_refresh_token");
   }
 
   setTokens(accessToken: string, refreshToken: string): void {
     sessionStorage.setItem("bhoomi_access_token", accessToken);
     sessionStorage.setItem("bhoomi_refresh_token", refreshToken);
-    localStorage.setItem("bhoomi_access_token", accessToken);
-    localStorage.setItem("bhoomi_refresh_token", refreshToken);
   }
 
   clearTokens(): void {
     sessionStorage.removeItem("bhoomi_access_token");
     sessionStorage.removeItem("bhoomi_refresh_token");
     sessionStorage.removeItem("bhoomi_user_profile");
-    localStorage.removeItem("bhoomi_access_token");
-    localStorage.removeItem("bhoomi_refresh_token");
-    localStorage.removeItem("bhoomi_user_profile");
-    // Also clear portal specific persistent logins
-    localStorage.removeItem("bhoomi_customer_auth");
-    localStorage.removeItem("bhoomi_agent_auth");
   }
 
   getCurrentUser(): UserProfile | null {
-    const raw = sessionStorage.getItem("bhoomi_user_profile") || localStorage.getItem("bhoomi_user_profile");
+    const raw = sessionStorage.getItem("bhoomi_user_profile");
     if (!raw) return null;
     try {
       return JSON.parse(raw) as UserProfile;
@@ -43,7 +35,6 @@ class ApiClient {
 
   setCurrentUser(user: UserProfile): void {
     sessionStorage.setItem("bhoomi_user_profile", JSON.stringify(user));
-    localStorage.setItem("bhoomi_user_profile", JSON.stringify(user));
   }
 
   private async request<T>(
@@ -80,7 +71,6 @@ class ApiClient {
     // If unauthorized, attempt transparent refresh token handshake
     if (response.status === 401) {
       const refresh = this.getRefreshToken();
-      let refreshSuccess = false;
       if (refresh) {
         console.log("🔄 Access token expired. Attempting token refresh handshake...");
         try {
@@ -97,40 +87,20 @@ class ApiClient {
             
             // Retry the original request
             response = await fetch(url, { ...options, headers });
-            if (response.status !== 401) {
-              refreshSuccess = true;
-            }
+          } else {
+            console.warn("⚠️ Refresh token invalid or expired. Terminating session.");
+            this.clearTokens();
           }
         } catch (err) {
           console.error("Token refresh routing failed:", err);
+          this.clearTokens();
         }
-      }
-
-      if (!refreshSuccess) {
-        console.warn("⚠️ Authentication session expired or invalid. Revoking client authorization.");
-        this.clearTokens();
-        window.dispatchEvent(new CustomEvent("bhoomi_unauthorized"));
-        throw new Error("Your session has expired. Please sign in again to continue.");
       }
     }
 
     if (!response.ok) {
-      let errorMsg = `Server returned an error status: ${response.status}`;
-      try {
-        const text = await response.text();
-        // Check if response is JSON
-        if (text && (text.trim().startsWith("{") || text.trim().startsWith("["))) {
-          const errorData = JSON.parse(text);
-          errorMsg = errorData.error || errorMsg;
-        } else if (text && text.includes("502 Bad Gateway")) {
-          errorMsg = "The server gateway is currently undergoing maintenance. Please retry in a few moments.";
-        } else if (text && (text.includes("<!DOCTYPE html>") || text.includes("<html"))) {
-          errorMsg = "We encountered a temporary server connection issue. Please try again.";
-        }
-      } catch (err) {
-        // Fallback
-      }
-      throw new Error(errorMsg);
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
     }
 
     return response.json() as Promise<T>;

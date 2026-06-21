@@ -1,0 +1,34 @@
+# ==============================================================================
+# BhoomiOne V2 ERP — Multi-Stage Dockerfile for Nginx + React SPA Compilation
+# ==============================================================================
+
+# Stage 1: Build the React frontend SPA
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Copy package descriptors
+COPY package*.json ./
+
+# Install all dependencies precisely
+RUN npm ci
+
+# Copy full application codebase 
+COPY . .
+
+# Run production compilation of React frontend (outputs to build/dist folder)
+RUN npm run build
+
+# Stage 2: Serve the compiled frontend via production-grade Nginx Alpine
+FROM nginx:alpine
+
+# Remove default Nginx welcome page
+RUN rm -rf /usr/share/nginx/html/*
+
+# Copy the compiled production assets from Stage 1 to Nginx static assets path
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Expose HTTP port
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

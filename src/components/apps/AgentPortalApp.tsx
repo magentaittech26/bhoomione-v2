@@ -27,9 +27,7 @@ interface AgentPortalAppProps {
 }
 
 export default function AgentPortalApp({ tenantCode }: AgentPortalAppProps) {
-  const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    return localStorage.getItem("bhoomi_agent_auth") === "true";
-  });
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -81,7 +79,6 @@ export default function AgentPortalApp({ tenantCode }: AgentPortalAppProps) {
     setTimeout(() => {
       if (email.toLowerCase().includes("@agents.in") || email === "agent") {
         setIsAuthenticated(true);
-        localStorage.setItem("bhoomi_agent_auth", "true");
       } else {
         setError("Invalid credentials. Enter agent credentials to proceed.");
       }
@@ -194,19 +191,8 @@ export default function AgentPortalApp({ tenantCode }: AgentPortalAppProps) {
             </div>
 
             <button 
-              onClick={() => {
-                setIsAuthenticated(false);
-                localStorage.removeItem("bhoomi_agent_auth");
-                // Clear any other session tokens as well to sanitize fully
-                sessionStorage.removeItem("bhoomi_access_token");
-                sessionStorage.removeItem("bhoomi_refresh_token");
-                sessionStorage.removeItem("bhoomi_user_profile");
-                localStorage.removeItem("bhoomi_access_token");
-                localStorage.removeItem("bhoomi_refresh_token");
-                localStorage.removeItem("bhoomi_user_profile");
-              }}
+              onClick={() => setIsAuthenticated(false)}
               className="bg-white hover:bg-slate-100 text-slate-900 text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-2 transition-all cursor-pointer shadow-sm shadow-indigo-100"
-              id="agent-logout-btn"
             >
               <LogOut className="w-4 h-4" />
               <span>Log out</span>
