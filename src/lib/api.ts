@@ -177,15 +177,22 @@ class ApiClient {
     });
   }
 
-  async fetchAdminAuditLogs(): Promise<{ message: string; scope: string; timestamp: string }> {
-    return this.request<{ message: string; scope: string; timestamp: string }>("/admin/audit-logs", {
+  async fetchAdminAuditLogs(): Promise<any[]> {
+    return this.request<any[]>("/admin/audit-logs", {
       method: "GET"
     });
   }
 
-  async createAdminTenant(): Promise<{ message: string; scope: string; timestamp: string }> {
-    return this.request<{ message: string; scope: string; timestamp: string }>("/admin/tenants", {
-      method: "POST"
+  async fetchAdminTenants(): Promise<any[]> {
+    return this.request<any[]>("/admin/tenants", {
+      method: "GET"
+    });
+  }
+
+  async createAdminTenant(payload?: { name: string; code: string; plan?: string }): Promise<any> {
+    return this.request<any>("/admin/tenants", {
+      method: "POST",
+      body: JSON.stringify(payload || { name: "Sandbox Demo Corp", code: "sandbox-demo", plan: "GROWTH" }),
     });
   }
 

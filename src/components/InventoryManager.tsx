@@ -942,7 +942,33 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-sans">
-                    {displayProj.length === 0 ? (
+                    {loading ? (
+                      <tr>
+                        <td colSpan={9} className="py-12 text-center">
+                          <div className="flex flex-col items-center justify-center gap-2 text-slate-500">
+                            <RefreshCw className="w-6 h-6 animate-spin text-indigo-600 mb-1" />
+                            <span className="font-semibold text-xs text-slate-700">Loading cataloged projects...</span>
+                            <span className="text-[10px] text-slate-400">Querying database engine records</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : errorMess && projects.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="py-12 text-center text-rose-600">
+                          <AlertCircle className="w-8 h-8 text-rose-500 mx-auto mb-2" />
+                          <span className="font-bold text-xs block mb-1">Failed to query project database</span>
+                          <span className="text-[10px] text-slate-500 max-w-sm mx-auto block leading-normal px-4 mb-3">{errorMess}</span>
+                          <button
+                            type="button"
+                            onClick={() => fetchProjectsPage()}
+                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-1.5 rounded-lg text-[11px] cursor-pointer inline-flex items-center gap-1 border border-slate-200 transition-colors"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            <span>Retry API Request</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ) : displayProj.length === 0 ? (
                       <tr>
                         <td colSpan={9} className="py-12 text-center text-slate-400">
                           <Building2 className="w-8 h-8 text-slate-300 mx-auto mb-2" />
