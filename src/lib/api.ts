@@ -57,8 +57,15 @@ class ApiClient {
     }
 
     // Inject X-Tenant-ID
-    if (tenantId) {
-      headers.set("x-tenant-id", tenantId);
+    let finalTenantId = tenantId;
+    if (!finalTenantId) {
+      const user = this.getCurrentUser();
+      if (user) {
+        finalTenantId = user.tenantId || user.tenantCode || null;
+      }
+    }
+    if (finalTenantId) {
+      headers.set("x-tenant-id", finalTenantId);
     }
 
     const config: RequestInit = {
@@ -103,7 +110,15 @@ class ApiClient {
       throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
     }
 
-    return response.json() as Promise<T>;
+    const text = await response.text();
+    if (!text) {
+      return {} as T;
+    }
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      return text as unknown as T;
+    }
   }
 
   async testSystemHealth(): Promise<SystemHealth> {
@@ -244,15 +259,7 @@ class ApiClient {
   }
 
   async deleteProject(id: string): Promise<void> {
-    const url = `${this.baseUri}/projects/${id}`;
-    const token = this.getAccessToken();
-    const headers = new Headers();
-    if (token) headers.set("Authorization", `Bearer ${token}`);
-    const res = await fetch(url, { method: "DELETE", headers });
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      throw new Error(errorData.error || "Failed to delete project.");
-    }
+    return this.request<void>(`/projects/${id}`, { method: "DELETE" });
   }
 
   async fetchLayouts(params?: Record<string, any>): Promise<any> {
@@ -289,15 +296,7 @@ class ApiClient {
   }
 
   async deleteLayout(id: string): Promise<void> {
-    const url = `${this.baseUri}/layouts/${id}`;
-    const token = this.getAccessToken();
-    const headers = new Headers();
-    if (token) headers.set("Authorization", `Bearer ${token}`);
-    const res = await fetch(url, { method: "DELETE", headers });
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      throw new Error(errorData.error || "Failed to delete layout.");
-    }
+    return this.request<void>(`/layouts/${id}`, { method: "DELETE" });
   }
 
   async fetchPlots(params?: Record<string, any>): Promise<any> {
@@ -334,15 +333,7 @@ class ApiClient {
   }
 
   async deletePlot(id: string): Promise<void> {
-    const url = `${this.baseUri}/plots/${id}`;
-    const token = this.getAccessToken();
-    const headers = new Headers();
-    if (token) headers.set("Authorization", `Bearer ${token}`);
-    const res = await fetch(url, { method: "DELETE", headers });
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      throw new Error(errorData.error || "Failed to delete plot.");
-    }
+    return this.request<void>(`/plots/${id}`, { method: "DELETE" });
   }
 
   // ==========================================

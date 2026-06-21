@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import api from "../lib/api.ts";
 import { UserProfile, SystemHealth } from "../types/auth.ts";
 import InventoryManager from "./InventoryManager.tsx";
+import { InventoryManagerErrorBoundary } from "./InventoryManagerErrorBoundary.tsx";
 import {
   LogOut,
   Fingerprint,
@@ -279,12 +280,14 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
       </div>
 
       {/* Sprint 2A: Inventory Management Canvas */}
-      <InventoryManager 
-        user={user} 
-        onAuditLogged={(simLog) => {
-          setAuditLogs((prev) => [simLog, ...prev]);
-        }} 
-      />
+      <InventoryManagerErrorBoundary>
+        <InventoryManager 
+          user={user} 
+          onAuditLogged={(simLog) => {
+            setAuditLogs((prev) => [simLog, ...prev]);
+          }} 
+        />
+      </InventoryManagerErrorBoundary>
 
       {/* Dynamic Database-Driven RBAC System Panel (Sprint 1C) */}
       <div className="bg-white border border-slate-250 rounded-2xl p-6 lg:p-8 space-y-6 shadow-xs border-l-4 border-l-slate-900" id="rbac-panel">

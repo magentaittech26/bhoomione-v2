@@ -38,6 +38,24 @@ interface InventoryManagerProps {
   onAuditLogged?: (log: any) => void;
 }
 
+// Safe JSON conversion wrapper
+const tryParseJSON = (val: any, fallback: any = {}) => {
+  if (val === null || val === undefined) {
+    return fallback;
+  }
+  if (typeof val === "object") {
+    return val;
+  }
+  try {
+    if (typeof val === "string") {
+      return JSON.parse(val);
+    }
+  } catch {
+    // ignore parsing error, return fallback
+  }
+  return fallback;
+};
+
 export default function InventoryManager({ user, onAuditLogged }: InventoryManagerProps) {
   const [activeTab, setActiveTab] = useState<"projects" | "layouts" | "plots" | "cad" | "viewer">("projects");
   
@@ -75,6 +93,9 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
   const [selectedProject, setSelectedProject] = useState<any | null>(null);
   const [selectedLayout, setSelectedLayout] = useState<any | null>(null);
   const [selectedPlot, setSelectedPlot] = useState<any | null>(null);
+
+  // Derived safe metadata for plot details panel to prevent rendering crashes
+  const plotMeta = selectedPlot ? tryParseJSON(selectedPlot.dimensions_metadata, {}) : {};
 
   // Global search input
   const [globalSearch, setGlobalSearch] = useState("");
@@ -163,15 +184,6 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
   const getUnitCode = (unitId: string) => {
     const matched = units.find(u => u.id === unitId);
     return matched ? matched.code : "SQFT";
-  };
-
-  // Safe JSON conversion wrapper
-  const tryParseJSON = (str: string, fallback: any = {}) => {
-    try {
-      return JSON.parse(str);
-    } catch {
-      return fallback;
-    }
   };
 
   // Dynamic seeding flag check from backend server environments (Sprints 1 and 2 check)
@@ -389,7 +401,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
       approval_authority: p.approval_authority || "",
       launch_date: p.launch_date ? p.launch_date.split("T")[0] : "",
       possession_target_date: p.possession_target_date ? p.possession_target_date.split("T")[0] : "",
-      approvals_metadata: JSON.stringify(p.approvals_metadata || {}, null, 2)
+      approvals_metadata: JSON.stringify(tryParseJSON(p.approvals_metadata, {}), null, 2)
     });
     setCurrModal("edit_project");
   };
@@ -513,7 +525,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
       corner_plot: !!pl.corner_plot,
       facing: pl.facing || "NORTH",
       dimensions: pl.dimensions || "",
-      dimensions_metadata: JSON.stringify(pl.dimensions_metadata || {}, null, 2),
+      dimensions_metadata: JSON.stringify(tryParseJSON(pl.dimensions_metadata, {}), null, 2),
       status: pl.status || "AVAILABLE"
     });
     setCurrModal("edit_plot");
@@ -539,14 +551,15 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
     if (!selectedPlot) return;
     setErrorMess(null);
     try {
-      const currentAttributes = selectedPlot.dimensions_metadata?.plot_attributes || {};
+      const parsedMeta = tryParseJSON(selectedPlot.dimensions_metadata, {});
+      const currentAttributes = parsedMeta.plot_attributes || {};
       const updatedAttributes = {
         ...currentAttributes,
         [key]: !currentValue
       };
 
       const updatedMeta = {
-        ...(selectedPlot.dimensions_metadata || {}),
+        ...parsedMeta,
         plot_attributes: updatedAttributes
       };
 
@@ -570,14 +583,15 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
     if (!selectedPlot || !newKey.trim()) return;
     setErrorMess(null);
     try {
-      const currentAttributes = selectedPlot.dimensions_metadata?.plot_attributes || {};
+      const parsedMeta = tryParseJSON(selectedPlot.dimensions_metadata, {});
+      const currentAttributes = parsedMeta.plot_attributes || {};
       const updatedAttributes = {
         ...currentAttributes,
         [newKey.trim()]: true
       };
 
       const updatedMeta = {
-        ...(selectedPlot.dimensions_metadata || {}),
+        ...parsedMeta,
         plot_attributes: updatedAttributes
       };
 
@@ -1642,7 +1656,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                 
                 {/* Visual Custom Attributes Tags list parsed dynamically */}
                 <div className="flex flex-wrap gap-2 pt-1">
-                  {Object.entries(selectedPlot.dimensions_metadata?.plot_attributes || {}).map(([key, value]) => {
+                  {Object.entries(plotMeta.plot_attributes || {}).map(([key, value]) => {
                     if (!value) return null;
                     return (
                       <span
@@ -1662,7 +1676,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                       </span>
                     );
                   })}
-                  {Object.keys(selectedPlot.dimensions_metadata?.plot_attributes || {}).length === 0 && (
+                  {Object.keys(plotMeta.plot_attributes || {}).length === 0 && (
                     <p className="text-[10px] text-slate-400 block w-full text-center py-1">No custom tags registered.</p>
                   )}
                 </div>
@@ -1673,7 +1687,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                     <p className="text-[9.5px] font-bold text-slate-400 block">Predefined Attributes Toggles:</p>
                     <div className="flex flex-wrap gap-1.5">
                       {["Park Facing", "Clubhouse Facing", "Lake Facing", "Sea Facing", "Premium Plot"].map((attr) => {
-                        const isSet = !!selectedPlot.dimensions_metadata?.plot_attributes?.[attr];
+                        const isSet = !!plotMeta.plot_attributes?.[attr];
                         return (
                           <button
                             key={attr}
