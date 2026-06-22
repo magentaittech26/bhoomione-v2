@@ -136,13 +136,14 @@ services:
 
   # Nginx Reverse Proxy & Frontend static Server
   nginx:
-    image: nginx:alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.nginx
     container_name: bhoomionev2-nginx-staging
     restart: always
     ports:
       - "127.0.0.1:8097:80"
     volumes:
-      - ./dist:/usr/share/nginx/html:ro
       - ./nginx.staging.conf:/etc/nginx/nginx.conf:ro
       - ./backend-api/public:/var/www/html/public:ro
       - storage_data:/var/www/html/storage:ro
