@@ -1,4 +1,5 @@
 export interface SaasModule {
+  id?: string;
   name: string;
   code: string;
   group: string;
@@ -12,6 +13,7 @@ export interface SaasModule {
 }
 
 export interface SaasFeature {
+  id?: string;
   name: string;
   code: string;
   moduleCode: string;
@@ -22,6 +24,7 @@ export interface SaasFeature {
 }
 
 export interface SubscriptionPlan {
+  id?: string;
   name: string;
   code: string;
   monthlyPrice: number;
@@ -48,7 +51,7 @@ export interface PlanLimits {
 }
 
 export interface PlotBillingSlab {
-  id: string;
+  id?: string;
   minPlots: number;
   maxPlots: number;
   monthlyPrice: number;
@@ -57,6 +60,7 @@ export interface PlotBillingSlab {
 }
 
 export interface AddonCatalogItem {
+  id?: string;
   name: string;
   code: string;
   monthlyPrice: number;

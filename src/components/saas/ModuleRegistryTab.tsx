@@ -11,6 +11,7 @@ interface ModuleRegistryTabProps {
   onUpdateModule: (code: string, updates: Partial<SaasModule>) => void;
   onAddFeature: (feat: SaasFeature) => void;
   onUpdateFeature: (code: string, updates: Partial<SaasFeature>) => void;
+  defaultTab?: "modules" | "features";
 }
 
 export default function ModuleRegistryTab({
@@ -19,9 +20,16 @@ export default function ModuleRegistryTab({
   onAddModule,
   onUpdateModule,
   onAddFeature,
-  onUpdateFeature
+  onUpdateFeature,
+  defaultTab
 }: ModuleRegistryTabProps) {
-  const [activeCatalogSub, setActiveCatalogSub] = useState<"modules" | "features">("modules");
+  const [activeCatalogSub, setActiveCatalogSub] = useState<"modules" | "features">(defaultTab || "modules");
+  
+  React.useEffect(() => {
+    if (defaultTab) {
+      setActiveCatalogSub(defaultTab);
+    }
+  }, [defaultTab]);
   
   // Modals / forms state
   const [showAddMod, setShowAddMod] = useState(false);

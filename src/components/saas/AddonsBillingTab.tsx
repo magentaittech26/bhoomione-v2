@@ -12,6 +12,7 @@ interface AddonsBillingTabProps {
   onDeleteSlab: (id: string) => void;
   onAddAddon: (addon: AddonCatalogItem) => void;
   onUpdateAddon: (code: string, updates: Partial<AddonCatalogItem>) => void;
+  defaultTab?: "slabs" | "addons";
 }
 
 export default function AddonsBillingTab({
@@ -21,9 +22,16 @@ export default function AddonsBillingTab({
   onUpdateSlab,
   onDeleteSlab,
   onAddAddon,
-  onUpdateAddon
+  onUpdateAddon,
+  defaultTab
 }: AddonsBillingTabProps) {
-  const [activeTab, setActiveTab] = useState<"slabs" | "addons">("slabs");
+  const [activeTab, setActiveTab] = useState<"slabs" | "addons">(defaultTab || "slabs");
+
+  React.useEffect(() => {
+    if (defaultTab) {
+      setActiveTab(defaultTab);
+    }
+  }, [defaultTab]);
   const [showAddSlab, setShowAddSlab] = useState(false);
   const [showAddAddon, setShowAddAddon] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);

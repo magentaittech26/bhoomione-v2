@@ -13,6 +13,7 @@ interface PlanFeatureMatrixTabProps {
   onUpdatePlan: (code: string, updates: Partial<SubscriptionPlan>) => void;
   onUpdatePlanLimit: (planCode: string, limitKey: keyof PlanLimits, value: number) => void;
   onUpdateMatrixCell: (planCode: string, featCode: string, value: "ENABLED" | "DISABLED" | "ADDON" | "ENTERPRISE") => void;
+  defaultTab?: "tiers" | "matrix" | "limits";
 }
 
 export default function PlanFeatureMatrixTab({
@@ -23,9 +24,16 @@ export default function PlanFeatureMatrixTab({
   onAddPlan,
   onUpdatePlan,
   onUpdatePlanLimit,
-  onUpdateMatrixCell
+  onUpdateMatrixCell,
+  defaultTab
 }: PlanFeatureMatrixTabProps) {
-  const [activePlanSub, setActivePlanSub] = useState<"tiers" | "matrix" | "limits">("matrix");
+  const [activePlanSub, setActivePlanSub] = useState<"tiers" | "matrix" | "limits">(defaultTab || "matrix");
+
+  React.useEffect(() => {
+    if (defaultTab) {
+      setActivePlanSub(defaultTab);
+    }
+  }, [defaultTab]);
   const [showAddPlan, setShowAddPlan] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 

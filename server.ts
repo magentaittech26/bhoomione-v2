@@ -3,6 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import authRouter from "./server/routes/auth.ts";
 import inventoryRouter from "./server/routes/inventory.ts";
+import saasRouter from "./server/routes/saas.ts";
 import { bootstrapDatabase } from "./server/db/bootstrap.ts";
 
 async function startServer() {
@@ -19,6 +20,7 @@ async function startServer() {
   // Mount API paths under v1 prefix
   app.use("/api/v1", authRouter);
   app.use("/api/v1", inventoryRouter);
+  app.use("/api/v1", saasRouter);
 
   // Integrate Vite dev middleware or production asset files
   if (process.env.NODE_ENV !== "production") {

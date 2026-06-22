@@ -198,6 +198,78 @@ class ApiClient {
     });
   }
 
+  async fetchSaasModules(): Promise<any[]> {
+    return this.request<any[]>("/admin/modules", {
+      method: "GET"
+    });
+  }
+
+  async fetchSaasPlans(): Promise<any[]> {
+    return this.request<any[]>("/admin/plans", {
+      method: "GET"
+    });
+  }
+
+  async saveSaasPlan(payload: any): Promise<{ success: boolean; id?: string; message: string }> {
+    return this.request<{ success: boolean; id?: string; message: string }>("/admin/plans", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async fetchSaasAddons(): Promise<any[]> {
+    return this.request<any[]>("/admin/addons", {
+      method: "GET"
+    });
+  }
+
+  async saveSaasAddon(payload: any): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>("/admin/addons", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async fetchSaasSlabs(): Promise<any[]> {
+    return this.request<any[]>("/admin/slabs", {
+      method: "GET"
+    });
+  }
+
+  async saveSaasSlab(payload: any): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>("/admin/slabs", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async fetchTenantSubscription(id: string): Promise<any> {
+    return this.request<any>(`/admin/tenants/${id}/subscription`, {
+      method: "GET"
+    });
+  }
+
+  async assignTenantPlan(id: string, payload: any): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/admin/tenants/${id}/subscription`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async updateTenantLifecycle(id: string, status: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/admin/tenants/${id}/subscription/lifecycle`, {
+      method: "POST",
+      body: JSON.stringify({ status })
+    });
+  }
+
+  async saveTenantOverrides(id: string, payload: any): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/admin/tenants/${id}/subscription/overrides`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+  }
+
   async fetchAdminTenants(): Promise<any[]> {
     return this.request<any[]>("/admin/tenants", {
       method: "GET"

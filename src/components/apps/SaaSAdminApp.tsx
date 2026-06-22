@@ -19,8 +19,20 @@ import MrrDashboardTab from "../saas/MrrDashboardTab.tsx";
 export default function SaaSAdminApp() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   
-  // Expanded tab selections
-  const [activeTab, setActiveTab] = useState<"clusters" | "plans" | "modules" | "billing" | "revenue" | "logs" | "settings">("clusters");
+  // Expanded 11 SaaS admin tabs selection
+  const [activeTab, setActiveTab] = useState<
+    | "tenant-registry"
+    | "module-registry"
+    | "feature-catalog"
+    | "plan-master"
+    | "plan-feature-matrix"
+    | "usage-limits"
+    | "plot-billing"
+    | "addons"
+    | "mrr-dashboard"
+    | "audit-logs"
+    | "global-parameters"
+  >("tenant-registry");
   
   const [tenants, setTenants] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
@@ -41,120 +53,426 @@ export default function SaaSAdminApp() {
   const [selectedTenantSub, setSelectedTenantSub] = useState<any | null>(null);
 
   // ==========================================
-  // PHASE 1E - PERSISTENT STATE ENGINE
+  // PHASE 1E - PERSISTENT STATE ENGINE (API-driven)
   // ==========================================
   
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [loadingConfig, setLoadingConfig] = useState(false);
+  const [configError, setConfigError] = useState<string | null>(null);
+
   // Module Registry
-  const [modules, setModules] = useState<SaasModule[]>(() => {
-    const l = localStorage.getItem("bhoomi_modules");
-    if (l) return JSON.parse(l);
-    return [
-      { name: "SaaS Admin Core", code: "SAAS_ADMIN", group: "System", description: "Global multi-tenant supervisory console and DNS cluster config.", status: "ACTIVE", isCore: true, isBillable: false, sortOrder: 1 },
-      { name: "Tenant Workspace", code: "TENANT_WORKSPACE", group: "System", description: "Self-service tenant environment routing framework.", status: "ACTIVE", isCore: true, isBillable: false, sortOrder: 2 },
-      { name: "Projects Catalog", code: "PROJECTS", group: "Core Planning", description: "Design, catalog, track, and administer township real estate projects.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 3 },
-      { name: "Layout Subdivisions", code: "LAYOUTS", group: "Core Planning", description: "Phased land parcel plans and sector map zoning layouts.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 4 },
-      { name: "Plot Parcels Registry", code: "PLOTS", group: "Core Planning", description: "Individual tract plots inventory ledger catalog with custom attributes.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 5 },
-      { name: "Customer Management", code: "CUSTOMERS", group: "CRM", description: "All-inclusive lead nurturing, contact profiles, and buyer records.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 6 },
-      { name: "Agent Workspace", code: "AGENTS", group: "CRM", description: "Broker network controls, dynamic agent performance, and metrics.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 7 },
-      { name: "Interactive Map", code: "INTERACTIVE_MAP", group: "Integrations", description: "Realtime SVG CAD mapper with plot reservation visual indicators.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 8 },
-      { name: "DXF Engine Parser", code: "DXF_ENGINE", group: "Integrations", description: "Heavy CAD drawing parser to translate design diagrams into databases.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 9 },
-      { name: "WhatsApp Integrations", code: "WHATSAPP", group: "Integrations", description: "Automated direct trigger alerts on user reservation checkouts.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 10 }
-    ];
-  });
+  const [modules, setModules] = useState<SaasModule[]>([
+    { name: "SaaS Admin Core", code: "SAAS_ADMIN", group: "System", description: "Global multi-tenant supervisory console and DNS cluster config.", status: "ACTIVE", isCore: true, isBillable: false, sortOrder: 1, defaultFeatureAccess: [] },
+    { name: "Tenant Workspace", code: "TENANT_WORKSPACE", group: "System", description: "Self-service tenant environment routing framework.", status: "ACTIVE", isCore: true, isBillable: false, sortOrder: 2, defaultFeatureAccess: [] },
+    { name: "Projects Catalog", code: "PROJECTS", group: "Core Planning", description: "Design, catalog, track, and administer township real estate projects.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 3, defaultFeatureAccess: [] },
+    { name: "Layout Subdivisions", code: "LAYOUTS", group: "Core Planning", description: "Phased land parcel plans and sector map zoning layouts.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 4, defaultFeatureAccess: [] },
+    { name: "Plot Parcels Registry", code: "PLOTS", group: "Core Planning", description: "Individual tract plots inventory ledger catalog with custom attributes.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 5, defaultFeatureAccess: [] },
+    { name: "Customer Management", code: "CUSTOMERS", group: "CRM", description: "All-inclusive lead nurturing, contact profiles, and buyer records.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 6, defaultFeatureAccess: [] },
+    { name: "Agent Workspace", code: "AGENTS", group: "CRM", description: "Broker network controls, dynamic agent performance, and metrics.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 7, defaultFeatureAccess: [] },
+    { name: "Interactive Map", code: "INTERACTIVE_MAP", group: "Integrations", description: "Realtime SVG CAD mapper with plot reservation visual indicators.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 8, defaultFeatureAccess: [] },
+    { name: "DXF Engine Parser", code: "DXF_ENGINE", group: "Integrations", description: "Heavy CAD drawing parser to translate design diagrams into databases.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 9, defaultFeatureAccess: [] },
+    { name: "WhatsApp Integrations", code: "WHATSAPP", group: "Integrations", description: "Automated direct trigger alerts on user reservation checkouts.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 10, defaultFeatureAccess: [] }
+  ]);
 
   // Feature Catalog
-  const [features, setFeatures] = useState<SaasFeature[]>(() => {
-    const l = localStorage.getItem("bhoomi_features");
-    if (l) return JSON.parse(l);
-    return [
-      { name: "Township projects catalog", code: "PROJECTS", moduleCode: "PROJECTS", group: "Core Planning", description: "Create and scale township planning models.", status: "ACTIVE", defaultEnabled: true },
-      { name: "Subdivision planning tool", code: "LAYOUTS", moduleCode: "LAYOUTS", group: "Core Planning", description: "Zoned sector plans and division lines.", status: "ACTIVE", defaultEnabled: true },
-      { name: "Physical lot registers", code: "PLOTS", moduleCode: "PLOTS", group: "Core Planning", description: "Assign coordinates, lot numbers and PLC rates.", status: "ACTIVE", defaultEnabled: true },
-      { name: "Buyer records logs", code: "CUSTOMERS", moduleCode: "CUSTOMERS", group: "CRM", description: "Manage customer profiles and reservation ledgers.", status: "ACTIVE", defaultEnabled: true },
-      { name: "Broker agent scorecard", code: "AGENTS", moduleCode: "AGENTS", group: "CRM", description: "Keep logs on external broker sales targets and payouts.", status: "ACTIVE", defaultEnabled: true },
-      { name: "DXF CAD Drawing upload", code: "DXF_UPLOAD", moduleCode: "DXF_ENGINE", group: "Integrations", description: "Render canvas lots directly out of dynamic .dxf blueprints.", status: "ACTIVE", defaultEnabled: true },
-      { name: "Interactive property layouts", code: "MAP_INTERACTION", moduleCode: "INTERACTIVE_MAP", group: "Integrations", description: "Visual parcel lockups on mapping widgets.", status: "ACTIVE", defaultEnabled: true },
-      { name: "Automated reservation alerts", code: "WHATSAPP_TRIGGERS", moduleCode: "WHATSAPP", group: "Integrations", description: "Automatic WhatsApp broadcast warnings on payment locks.", status: "ACTIVE", defaultEnabled: true },
-      { name: "Custom API client keys", code: "API_ACCESS", moduleCode: "SAAS_ADMIN", group: "System", description: "Export telemetry datasets to external ERP software.", status: "ACTIVE", defaultEnabled: true }
-    ];
-  });
+  const [features, setFeatures] = useState<SaasFeature[]>([
+    { name: "Township projects catalog", code: "PROJECTS", moduleCode: "PROJECTS", group: "Core Planning", description: "Create and scale township planning models.", status: "ACTIVE", defaultEnabled: true },
+    { name: "Subdivision planning tool", code: "LAYOUTS", moduleCode: "LAYOUTS", group: "Core Planning", description: "Zoned sector plans and division lines.", status: "ACTIVE", defaultEnabled: true },
+    { name: "Physical lot registers", code: "PLOTS", moduleCode: "PLOTS", group: "Core Planning", description: "Assign coordinates, lot numbers and PLC rates.", status: "ACTIVE", defaultEnabled: true },
+    { name: "Buyer records logs", code: "CUSTOMERS", moduleCode: "CUSTOMERS", group: "CRM", description: "Manage customer profiles and reservation ledgers.", status: "ACTIVE", defaultEnabled: true },
+    { name: "Broker agent scorecard", code: "AGENTS", moduleCode: "AGENTS", group: "CRM", description: "Keep logs on external broker sales targets and payouts.", status: "ACTIVE", defaultEnabled: true },
+    { name: "DXF CAD Drawing upload", code: "DXF_UPLOAD", moduleCode: "DXF_ENGINE", group: "Integrations", description: "Render canvas lots directly out of dynamic .dxf blueprints.", status: "ACTIVE", defaultEnabled: true },
+    { name: "Interactive property layouts", code: "MAP_INTERACTION", moduleCode: "INTERACTIVE_MAP", group: "Integrations", description: "Visual parcel lockups on mapping widgets.", status: "ACTIVE", defaultEnabled: true },
+    { name: "Automated reservation alerts", code: "WHATSAPP_TRIGGERS", moduleCode: "WHATSAPP", group: "Integrations", description: "Automatic WhatsApp broadcast warnings on payment locks.", status: "ACTIVE", defaultEnabled: true },
+    { name: "Custom API client keys", code: "API_ACCESS", moduleCode: "SAAS_ADMIN", group: "System", description: "Export telemetry datasets to external ERP software.", status: "ACTIVE", defaultEnabled: true }
+  ]);
 
   // Subscription Plans
-  const [plans, setPlans] = useState<SubscriptionPlan[]>(() => {
-    const l = localStorage.getItem("bhoomi_plans");
-    if (l) return JSON.parse(l);
-    return [
-      { name: "Starter Package", code: "STARTER", monthlyPrice: 99, yearlyPrice: 990, trialDays: 14, status: "ACTIVE", sortOrder: 1 },
-      { name: "Growth Engine", code: "GROWTH", monthlyPrice: 249, yearlyPrice: 2490, trialDays: 14, status: "ACTIVE", sortOrder: 2 },
-      { name: "Professional Plus", code: "PROFESSIONAL", monthlyPrice: 499, yearlyPrice: 4990, trialDays: 30, status: "ACTIVE", sortOrder: 3 },
-      { name: "Enterprise Custom", code: "ENTERPRISE", monthlyPrice: 999, yearlyPrice: 9990, trialDays: 30, status: "ACTIVE", sortOrder: 4 }
-    ];
-  });
+  const [plans, setPlans] = useState<SubscriptionPlan[]>([
+    { name: "Starter Package", code: "STARTER", monthlyPrice: 99, yearlyPrice: 990, trialDays: 14, status: "ACTIVE", sortOrder: 1 },
+    { name: "Growth Engine", code: "GROWTH", monthlyPrice: 249, yearlyPrice: 2490, trialDays: 14, status: "ACTIVE", sortOrder: 2 },
+    { name: "Professional Plus", code: "PROFESSIONAL", monthlyPrice: 499, yearlyPrice: 4990, trialDays: 30, status: "ACTIVE", sortOrder: 3 },
+    { name: "Enterprise Custom", code: "ENTERPRISE", monthlyPrice: 999, yearlyPrice: 9990, trialDays: 30, status: "ACTIVE", sortOrder: 4 }
+  ]);
 
   // Plan general Baseline Limits
-  const [planLimits, setPlanLimits] = useState<Record<string, PlanLimits>>(() => {
-    const l = localStorage.getItem("bhoomi_plan_limits");
-    if (l) return JSON.parse(l);
-    return {
-      STARTER: { projectsLimit: 3, layoutsLimit: 5, plotsLimit: 150, customersLimit: 300, usersLimit: 5, agentsLimit: 2, storageLimitGb: 10, documentsLimit: 50, dxfFilesLimit: 1, marketplaceListingsLimit: 2, apiCallsLimit: 1000, whatsAppMessagesLimit: 100, aiCreditsLimit: 50 },
-      GROWTH: { projectsLimit: 10, layoutsLimit: 20, plotsLimit: 500, customersLimit: 1000, usersLimit: 15, agentsLimit: 5, storageLimitGb: 25, documentsLimit: 250, dxfFilesLimit: 5, marketplaceListingsLimit: 10, apiCallsLimit: 5000, whatsAppMessagesLimit: 500, aiCreditsLimit: 150 },
-      PROFESSIONAL: { projectsLimit: 30, layoutsLimit: 60, plotsLimit: 2000, customersLimit: 5000, usersLimit: 50, agentsLimit: 20, storageLimitGb: 100, documentsLimit: 1000, dxfFilesLimit: 20, marketplaceListingsLimit: 50, apiCallsLimit: 25000, whatsAppMessagesLimit: 2000, aiCreditsLimit: 500 },
-      ENTERPRISE: { projectsLimit: 100, layoutsLimit: 200, plotsLimit: 10000, customersLimit: 20000, usersLimit: 200, agentsLimit: 100, storageLimitGb: 500, documentsLimit: 5000, dxfFilesLimit: 100, marketplaceListingsLimit: 200, apiCallsLimit: 100000, whatsAppMessagesLimit: 10000, aiCreditsLimit: 2000 }
-    };
+  const [planLimits, setPlanLimits] = useState<Record<string, PlanLimits>>({
+    STARTER: { projectsLimit: 3, layoutsLimit: 5, plotsLimit: 150, customersLimit: 300, usersLimit: 5, agentsLimit: 2, storageLimitGb: 10, documentsLimit: 50, dxfFilesLimit: 1, marketplaceListingsLimit: 2, apiCallsLimit: 1000, whatsAppMessagesLimit: 100, aiCreditsLimit: 50 },
+    GROWTH: { projectsLimit: 10, layoutsLimit: 20, plotsLimit: 500, customersLimit: 1000, usersLimit: 15, agentsLimit: 5, storageLimitGb: 25, documentsLimit: 250, dxfFilesLimit: 5, marketplaceListingsLimit: 10, apiCallsLimit: 5000, whatsAppMessagesLimit: 500, aiCreditsLimit: 150 },
+    PROFESSIONAL: { projectsLimit: 30, layoutsLimit: 60, plotsLimit: 2000, customersLimit: 5000, usersLimit: 50, agentsLimit: 20, storageLimitGb: 100, documentsLimit: 1000, dxfFilesLimit: 20, marketplaceListingsLimit: 50, apiCallsLimit: 25000, whatsAppMessagesLimit: 2000, aiCreditsLimit: 500 },
+    ENTERPRISE: { projectsLimit: 100, layoutsLimit: 200, plotsLimit: 10000, customersLimit: 20000, usersLimit: 200, agentsLimit: 100, storageLimitGb: 500, documentsLimit: 5000, dxfFilesLimit: 100, marketplaceListingsLimit: 200, apiCallsLimit: 100000, whatsAppMessagesLimit: 10000, aiCreditsLimit: 2000 }
   });
 
   // Plot Slabs
-  const [slabs, setSlabs] = useState<PlotBillingSlab[]>(() => {
-    const l = localStorage.getItem("bhoomi_slabs");
-    if (l) return JSON.parse(l);
-    return [
-      { id: "slab_1", minPlots: 1, maxPlots: 50, monthlyPrice: 15, yearlyPrice: 150, status: "ACTIVE" },
-      { id: "slab_2", minPlots: 51, maxPlots: 200, monthlyPrice: 40, yearlyPrice: 400, status: "ACTIVE" },
-      { id: "slab_3", minPlots: 201, maxPlots: 500, monthlyPrice: 75, yearlyPrice: 750, status: "ACTIVE" },
-      { id: "slab_4", minPlots: 501, maxPlots: 99999, monthlyPrice: 150, yearlyPrice: 1500, status: "ACTIVE" }
-    ];
-  });
+  const [slabs, setSlabs] = useState<PlotBillingSlab[]>([
+    { id: "slab_1", minPlots: 1, maxPlots: 50, monthlyPrice: 15, yearlyPrice: 150, status: "ACTIVE" },
+    { id: "slab_2", minPlots: 51, maxPlots: 200, monthlyPrice: 40, yearlyPrice: 400, status: "ACTIVE" },
+    { id: "slab_3", minPlots: 201, maxPlots: 500, monthlyPrice: 75, yearlyPrice: 750, status: "ACTIVE" },
+    { id: "slab_4", minPlots: 501, maxPlots: 99999, monthlyPrice: 150, yearlyPrice: 1500, status: "ACTIVE" }
+  ]);
 
   // Add-ons
-  const [addons, setAddons] = useState<AddonCatalogItem[]>(() => {
-    const l = localStorage.getItem("bhoomi_addons");
-    if (l) return JSON.parse(l);
-    return [
-      { name: "Interactive Township Map", code: "INTERACTIVE_MAP_ADDON", monthlyPrice: 35, yearlyPrice: 350, status: "ACTIVE", description: "Enables customers to pick and book township plot positions on customized canvas overlays." },
-      { name: "Heavy DXF Upload Parser", code: "DXF_ENGINE_ADDON", monthlyPrice: 50, yearlyPrice: 500, status: "ACTIVE", description: "Batch load AutoCAD .dxf configurations dynamically straight to individual tables." },
-      { name: "WhatsApp checkout triggers", code: "WHATSAPP_ADDON", monthlyPrice: 20, yearlyPrice: 200, status: "ACTIVE", description: "Configure custom template alerts notifying buyers about broker updates." },
-      { name: "Custom Domain Mapping SSL", code: "CUSTOM_DOMAIN_ADDON", monthlyPrice: 15, yearlyPrice: 150, status: "ACTIVE", description: "Proxy workspace containers onto localized web addresses securely." }
-    ];
-  });
+  const [addons, setAddons] = useState<AddonCatalogItem[]>([
+    { name: "Interactive Township Map", code: "INTERACTIVE_MAP_ADDON", monthlyPrice: 35, yearlyPrice: 350, status: "ACTIVE", description: "Enables customers to pick and book township plot positions on customized canvas overlays." },
+    { name: "Heavy DXF Upload Parser", code: "DXF_ENGINE_ADDON", monthlyPrice: 50, yearlyPrice: 500, status: "ACTIVE", description: "Batch load AutoCAD .dxf configurations dynamically straight to individual tables." },
+    { name: "WhatsApp checkout triggers", code: "WHATSAPP_ADDON", monthlyPrice: 20, yearlyPrice: 200, status: "ACTIVE", description: "Configure custom template alerts notifying buyers about broker updates." },
+    { name: "Custom Domain Mapping SSL", code: "CUSTOM_DOMAIN_ADDON", monthlyPrice: 15, yearlyPrice: 150, status: "ACTIVE", description: "Proxy workspace containers onto localized web addresses securely." }
+  ]);
 
   // Plan Feature Matrix Cells
-  const [matrix, setMatrix] = useState<Record<string, Record<string, "ENABLED" | "DISABLED" | "ADDON" | "ENTERPRISE">>>(() => {
-    const l = localStorage.getItem("bhoomi_matrix");
-    if (l) return JSON.parse(l);
-    return {
-      STARTER: { PROJECTS: "ENABLED", LAYOUTS: "ENABLED", PLOTS: "ENABLED", CUSTOMERS: "ENABLED", AGENTS: "DISABLED", DXF_UPLOAD: "ADDON", MAP_INTERACTION: "DISABLED", WHATSAPP_TRIGGERS: "DISABLED", API_ACCESS: "DISABLED" },
-      GROWTH: { PROJECTS: "ENABLED", LAYOUTS: "ENABLED", PLOTS: "ENABLED", CUSTOMERS: "ENABLED", AGENTS: "ENABLED", DXF_UPLOAD: "ENABLED", MAP_INTERACTION: "ADDON", WHATSAPP_TRIGGERS: "ADDON", API_ACCESS: "DISABLED" },
-      PROFESSIONAL: { PROJECTS: "ENABLED", LAYOUTS: "ENABLED", PLOTS: "ENABLED", CUSTOMERS: "ENABLED", AGENTS: "ENABLED", DXF_UPLOAD: "ENABLED", MAP_INTERACTION: "ENABLED", WHATSAPP_TRIGGERS: "ENABLED", API_ACCESS: "ENABLED" },
-      ENTERPRISE: { PROJECTS: "ENABLED", LAYOUTS: "ENABLED", PLOTS: "ENABLED", CUSTOMERS: "ENABLED", AGENTS: "ENABLED", DXF_UPLOAD: "ENABLED", MAP_INTERACTION: "ENABLED", WHATSAPP_TRIGGERS: "ENABLED", API_ACCESS: "ENABLED" }
-    };
+  const [matrix, setMatrix] = useState<Record<string, Record<string, "ENABLED" | "DISABLED" | "ADDON" | "ENTERPRISE">>>({
+    STARTER: { PROJECTS: "ENABLED", LAYOUTS: "ENABLED", PLOTS: "ENABLED", CUSTOMERS: "ENABLED", AGENTS: "DISABLED", DXF_UPLOAD: "ADDON", MAP_INTERACTION: "DISABLED", WHATSAPP_TRIGGERS: "DISABLED", API_ACCESS: "DISABLED" },
+    GROWTH: { PROJECTS: "ENABLED", LAYOUTS: "ENABLED", PLOTS: "ENABLED", CUSTOMERS: "ENABLED", AGENTS: "ENABLED", DXF_UPLOAD: "ENABLED", MAP_INTERACTION: "ADDON", WHATSAPP_TRIGGERS: "ADDON", API_ACCESS: "DISABLED" },
+    PROFESSIONAL: { PROJECTS: "ENABLED", LAYOUTS: "ENABLED", PLOTS: "ENABLED", CUSTOMERS: "ENABLED", AGENTS: "ENABLED", DXF_UPLOAD: "ENABLED", MAP_INTERACTION: "ENABLED", WHATSAPP_TRIGGERS: "ENABLED", API_ACCESS: "ENABLED" },
+    ENTERPRISE: { PROJECTS: "ENABLED", LAYOUTS: "ENABLED", PLOTS: "ENABLED", CUSTOMERS: "ENABLED", AGENTS: "ENABLED", DXF_UPLOAD: "ENABLED", MAP_INTERACTION: "ENABLED", WHATSAPP_TRIGGERS: "ENABLED", API_ACCESS: "ENABLED" }
   });
 
   // Tenant Custom Subscriptions (bridges baseline plans & dynamic overrides catalog)
-  const [tenantSubscriptions, setTenantSubscriptions] = useState<Record<string, TenantSubscription>>(() => {
-    const l = localStorage.getItem("bhoomi_tenant_subs");
-    if (l) return JSON.parse(l);
-    return {};
-  });
+  const [tenantSubscriptions, setTenantSubscriptions] = useState<Record<string, TenantSubscription>>({});
 
-  // State persistence synchronization
-  useEffect(() => { localStorage.setItem("bhoomi_modules", JSON.stringify(modules)); }, [modules]);
-  useEffect(() => { localStorage.setItem("bhoomi_features", JSON.stringify(features)); }, [features]);
-  useEffect(() => { localStorage.setItem("bhoomi_plans", JSON.stringify(plans)); }, [plans]);
-  useEffect(() => { localStorage.setItem("bhoomi_plan_limits", JSON.stringify(planLimits)); }, [planLimits]);
-  useEffect(() => { localStorage.setItem("bhoomi_slabs", JSON.stringify(slabs)); }, [slabs]);
-  useEffect(() => { localStorage.setItem("bhoomi_addons", JSON.stringify(addons)); }, [addons]);
-  useEffect(() => { localStorage.setItem("bhoomi_matrix", JSON.stringify(matrix)); }, [matrix]);
-  useEffect(() => { localStorage.setItem("bhoomi_tenant_subs", JSON.stringify(tenantSubscriptions)); }, [tenantSubscriptions]);
+  // Dynamic config loader pointing to standard Relational Postgres endpoints
+  const loadSaasConfig = async (currentTenantsList?: any[]) => {
+    setLoadingConfig(true);
+    setConfigError(null);
+    try {
+      const targetTenants = currentTenantsList || tenants;
+
+      const [modulesData, plansData, addonsData, slabsData] = await Promise.all([
+        api.fetchSaasModules(),
+        api.fetchSaasPlans(),
+        api.fetchSaasAddons(),
+        api.fetchSaasSlabs()
+      ]);
+
+      if (modulesData) setModules(modulesData);
+
+      // Flatten saas_features nested in modules Data
+      const allFeatures: SaasFeature[] = [];
+      modulesData.forEach((m: any) => {
+        if (m.features) {
+          m.features.forEach((f: any) => {
+            allFeatures.push({
+              id: f.id,
+              name: f.name,
+              code: f.code,
+              moduleCode: m.code,
+              group: f.group,
+              description: f.description,
+              status: f.status,
+              defaultEnabled: f.defaultEnabled
+            });
+          });
+        }
+      });
+      if (allFeatures.length > 0) {
+        setFeatures(allFeatures);
+      }
+
+      // Populate plans, baseline planLimits, and planFeatureMatrix
+      const planList: SubscriptionPlan[] = [];
+      const planLimitsObj: Record<string, PlanLimits> = {};
+      const matrixObj: Record<string, Record<string, any>> = {};
+
+      plansData.forEach((p: any) => {
+        planList.push({
+          id: p.id,
+          name: p.name,
+          code: p.plan_code,
+          monthlyPrice: p.monthly_price,
+          yearlyPrice: p.yearly_price,
+          trialDays: p.trial_days,
+          status: p.status,
+          sortOrder: p.sort_order
+        });
+
+        if (p.limits) {
+          planLimitsObj[p.plan_code] = p.limits;
+        }
+        if (p.features) {
+          matrixObj[p.plan_code] = p.features;
+        }
+      });
+
+      if (planList.length > 0) setPlans(planList);
+      setPlanLimits(planLimitsObj);
+      setMatrix(matrixObj);
+
+      if (addonsData) setAddons(addonsData);
+      if (slabsData) setSlabs(slabsData);
+
+      // Load specific tenant subscription status and overrides
+      const tenantSubs: Record<string, TenantSubscription> = {};
+      if (targetTenants && targetTenants.length > 0) {
+        await Promise.all(
+          targetTenants.map(async (t) => {
+            try {
+              const subData = await api.fetchTenantSubscription(t.id || t.code);
+              if (subData) {
+                const addonCodes = (subData.addons || []).map((a: any) => a.addon?.code || a.addon_id);
+                
+                const featureOverrides: Record<string, "ENABLED" | "DISABLED"> = {};
+                (subData.feature_overrides || []).forEach((fo: any) => {
+                  featureOverrides[fo.feature?.code || fo.feature_id] = fo.override_status;
+                });
+
+                const limitOverrides: Record<string, number> = {};
+                (subData.limit_overrides || []).forEach((lo: any) => {
+                  limitOverrides[lo.limit_key] = lo.override_value;
+                });
+
+                tenantSubs[t.code] = {
+                  tenantId: subData.tenant_id || t.id,
+                  tenantCode: t.code,
+                  currentPlanCode: subData.plan?.plan_code || "GROWTH",
+                  status: subData.status || "ACTIVE",
+                  addOnCodes: addonCodes,
+                  subscriptionStartDate: subData.subscription_start_date,
+                  subscriptionExpiryDate: subData.subscription_expiry_date,
+                  trialExpiryDate: subData.trial_expiry_date,
+                  renewalDate: subData.renewal_date,
+                  featureOverrides: featureOverrides,
+                  limitOverrides: limitOverrides
+                };
+              }
+            } catch (err) {
+              console.error(`Error loading subscription for tenant ${t.code}:`, err);
+            }
+          })
+        );
+        setTenantSubscriptions(tenantSubs);
+      }
+    } catch (err: any) {
+      console.error("loadSaasConfig error:", err);
+      setConfigError(err.message || "Failed to load SaaS cluster parameters from relational database server.");
+    } finally {
+      setLoadingConfig(false);
+      setIsInitializing(false);
+    }
+  };
+
+  // Immediate persistence action hooks
+  const handleAddPlan = async (newPlanObj: SubscriptionPlan, limits: PlanLimits, matrixSettings: Record<string, "ENABLED" | "DISABLED" | "ADDON" | "ENTERPRISE">) => {
+    setPlans(prev => [...prev, newPlanObj]);
+    setPlanLimits(prev => {
+      const next = { ...prev };
+      next[newPlanObj.code] = limits;
+      return next;
+    });
+    setMatrix(prev => {
+      const next = { ...prev };
+      next[newPlanObj.code] = matrixSettings;
+      return next;
+    });
+
+    try {
+      await api.saveSaasPlan({
+        plan_code: newPlanObj.code,
+        name: newPlanObj.name,
+        monthly_price: newPlanObj.monthlyPrice,
+        yearly_price: newPlanObj.yearlyPrice,
+        trial_days: newPlanObj.trialDays,
+        status: newPlanObj.status,
+        sort_order: newPlanObj.sortOrder,
+        limits,
+        features: matrixSettings
+      });
+    } catch (err) {
+      console.error("Failed to persist new SaaS plan relation:", err);
+    }
+  };
+
+  const handleUpdatePlan = async (code: string, updates: Partial<SubscriptionPlan>) => {
+    const updatedPlans = plans.map(p => p.code === code ? { ...p, ...updates } : p);
+    setPlans(updatedPlans);
+    const planObj = updatedPlans.find(p => p.code === code);
+    if (!planObj) return;
+
+    try {
+      await api.saveSaasPlan({
+        id: planObj.id,
+        plan_code: planObj.code,
+        name: planObj.name,
+        monthly_price: planObj.monthlyPrice,
+        yearly_price: planObj.yearlyPrice,
+        trial_days: planObj.trialDays,
+        status: planObj.status,
+        sort_order: planObj.sortOrder,
+        limits: planLimits[code],
+        features: matrix[code]
+      });
+    } catch (err) {
+      console.error("Failed to update SaaS plan relation:", err);
+    }
+  };
+
+  const handleUpdatePlanLimit = async (planCode: string, limitKey: keyof PlanLimits, value: number) => {
+    const nextLimits = { ...planLimits };
+    if (!nextLimits[planCode]) nextLimits[planCode] = {} as any;
+    nextLimits[planCode][limitKey] = value;
+    setPlanLimits(nextLimits);
+
+    const planObj = plans.find(p => p.code === planCode);
+    if (!planObj) return;
+
+    try {
+      await api.saveSaasPlan({
+        id: planObj.id,
+        plan_code: planObj.code,
+        name: planObj.name,
+        monthly_price: planObj.monthlyPrice,
+        yearly_price: planObj.yearlyPrice,
+        trial_days: planObj.trialDays,
+        status: planObj.status,
+        sort_order: planObj.sortOrder,
+        limits: nextLimits[planCode],
+        features: matrix[planCode]
+      });
+    } catch (err) {
+      console.error("Failed to update plan limits:", err);
+    }
+  };
+
+  const handleUpdateMatrixCell = async (planCode: string, featCode: string, value: "ENABLED" | "DISABLED" | "ADDON" | "ENTERPRISE") => {
+    const nextMatrix = { ...matrix };
+    if (!nextMatrix[planCode]) nextMatrix[planCode] = {};
+    nextMatrix[planCode][featCode] = value;
+    setMatrix(nextMatrix);
+
+    const planObj = plans.find(p => p.code === planCode);
+    if (!planObj) return;
+
+    try {
+      await api.saveSaasPlan({
+        id: planObj.id,
+        plan_code: planObj.code,
+        name: planObj.name,
+        monthly_price: planObj.monthlyPrice,
+        yearly_price: planObj.yearlyPrice,
+        trial_days: planObj.trialDays,
+        status: planObj.status,
+        sort_order: planObj.sortOrder,
+        limits: planLimits[planCode],
+        features: nextMatrix[planCode]
+      });
+    } catch (err) {
+      console.error("Failed to update plan feature matrix cell:", err);
+    }
+  };
+
+  const handleAddSlab = async (s: PlotBillingSlab) => {
+    setSlabs(prev => [...prev, s]);
+    try {
+      await api.saveSaasSlab({
+        minPlots: s.minPlots,
+        maxPlots: s.maxPlots,
+        monthlyPrice: s.monthlyPrice,
+        yearlyPrice: s.yearlyPrice,
+        status: s.status || "ACTIVE"
+      });
+    } catch (err) {
+      console.error("Failed to persist plot billing slab:", err);
+    }
+  };
+
+  const handleUpdateSlab = async (id: string, updates: Partial<PlotBillingSlab>) => {
+    const updated = slabs.map(s => s.id === id ? { ...s, ...updates } : s);
+    setSlabs(updated);
+    const sObj = updated.find(s => s.id === id);
+    if (!sObj) return;
+
+    try {
+      await api.saveSaasSlab({
+        id: sObj.id,
+        minPlots: sObj.minPlots,
+        maxPlots: sObj.maxPlots,
+        monthlyPrice: sObj.monthlyPrice,
+        yearlyPrice: sObj.yearlyPrice,
+        status: sObj.status
+      });
+    } catch (err) {
+      console.error("Failed to update plot billing slab:", err);
+    }
+  };
+
+  const handleAddAddon = async (a: AddonCatalogItem) => {
+    setAddons(prev => [...prev, a]);
+    try {
+      await api.saveSaasAddon({
+        code: a.code,
+        name: a.name,
+        monthlyPrice: a.monthlyPrice,
+        yearlyPrice: a.yearlyPrice,
+        description: a.description,
+        status: a.status || "ACTIVE"
+      });
+    } catch (err) {
+      console.error("Failed to persist billing addon:", err);
+    }
+  };
+
+  const handleUpdateAddon = async (code: string, updates: Partial<AddonCatalogItem>) => {
+    const updated = addons.map(a => a.code === code ? { ...a, ...updates } : a);
+    setAddons(updated);
+    const aObj = updated.find(a => a.code === code);
+    if (!aObj) return;
+
+    try {
+      await api.saveSaasAddon({
+        id: aObj.id,
+        code: aObj.code,
+        name: aObj.name,
+        monthlyPrice: aObj.monthlyPrice,
+        yearlyPrice: aObj.yearlyPrice,
+        description: aObj.description,
+        status: aObj.status
+      });
+    } catch (err) {
+      console.error("Failed to update billing addon:", err);
+    }
+  };
+
+  const handleUpdateSubscription = async (updatedSub: TenantSubscription) => {
+    const next = { ...tenantSubscriptions };
+    next[updatedSub.tenantCode] = updatedSub;
+    setTenantSubscriptions(next);
+
+    try {
+      const tenant = tenants.find(t => t.code === updatedSub.tenantCode);
+      if (!tenant) return;
+
+      const planObj = plans.find(p => p.code === updatedSub.currentPlanCode);
+      if (!planObj) return;
+
+      const addonIds: string[] = [];
+      updatedSub.addOnCodes.forEach(code => {
+        const match = addons.find(a => a.code === code);
+        if (match && match.id) addonIds.push(match.id);
+      });
+
+      const fOverrides: Record<string, string> = {};
+      Object.entries(updatedSub.featureOverrides).forEach(([code, status]) => {
+        const match = features.find(f => f.code === code);
+        if (match && match.id && status !== "DEFAULT") {
+          fOverrides[match.id] = status;
+        }
+      });
+
+      await api.assignTenantPlan(tenant.id || tenant.code, {
+        plan_id: planObj.id,
+        start_date: updatedSub.subscriptionStartDate,
+        status: updatedSub.status,
+        trial_days: updatedSub.trialExpiryDate ? 14 : undefined
+      });
+
+      await api.saveTenantOverrides(tenant.id || tenant.code, {
+        addons: addonIds,
+        limit_overrides: updatedSub.limitOverrides,
+        feature_overrides: fOverrides
+      });
+    } catch (err) {
+      console.error("Failed to persist custom subscription overrides:", err);
+    }
+  };
 
   // Sync basic loaded Tenants list with deep subscriptions map
   useEffect(() => {
@@ -215,8 +533,10 @@ export default function SaaSAdminApp() {
     try {
       const data = await api.fetchAdminTenants();
       setTenants(data);
+      return data;
     } catch (err: any) {
       setTenantsError(err.message || "Failed to load tenant clusters from database server.");
+      return [];
     } finally {
       setLoadingTenants(false);
     }
@@ -237,8 +557,11 @@ export default function SaaSAdminApp() {
 
   useEffect(() => {
     if (currentUser) {
-      loadTenants();
-      loadAuditLogs();
+      (async () => {
+        const fetchedTenants = await loadTenants();
+        loadAuditLogs();
+        await loadSaasConfig(fetchedTenants);
+      })();
     }
   }, [currentUser]);
 
@@ -377,13 +700,17 @@ export default function SaaSAdminApp() {
         {/* Dynamic Navigation Tabs Menu */}
         <div className="flex border-b border-slate-200 overflow-x-auto gap-1" id="saas-admin-tabpanel">
           {[
-            { id: "clusters", label: "Clusters", icon: Globe },
-            { id: "plans", label: "Plan Matrix & Limits", icon: SlidersHorizontal },
-            { id: "modules", label: "Module Registries", icon: Box },
-            { id: "billing", label: "Rates & Slabs", icon: Layers },
-            { id: "revenue", label: "MRR Analytics", icon: TrendingUp },
-            { id: "logs", label: "Network Ingress Streams", icon: Activity },
-            { id: "settings", label: "Global Params", icon: Settings }
+            { id: "tenant-registry", label: "Tenant Registry", icon: Users },
+            { id: "module-registry", label: "Module Registry", icon: Box },
+            { id: "feature-catalog", label: "Feature Catalog", icon: Zap },
+            { id: "plan-master", label: "Plan Master", icon: DollarSign },
+            { id: "plan-feature-matrix", label: "Plan Feature Matrix", icon: SlidersHorizontal },
+            { id: "usage-limits", label: "Usage Limits", icon: Sliders },
+            { id: "plot-billing", label: "Plot Billing", icon: Layers },
+            { id: "addons", label: "Add-ons", icon: Shield },
+            { id: "mrr-dashboard", label: "MRR Dashboard", icon: TrendingUp },
+            { id: "audit-logs", label: "Audit Logs", icon: Activity },
+            { id: "global-parameters", label: "Global Parameters", icon: Settings }
           ].map(t => {
             const Icon = t.icon;
             return (
@@ -405,7 +732,7 @@ export default function SaaSAdminApp() {
 
         {/* Viewport content */}
         
-        {activeTab === "clusters" && (
+        {activeTab === "tenant-registry" && (
           <div className="space-y-6" id="saas-tab-clusters">
             
             {/* Real stats row synced with persistent data calculations */}
@@ -594,47 +921,62 @@ export default function SaaSAdminApp() {
           </div>
         )}
 
-        {/* Phase 1E Pricing plans & layout grids mapping configuration */}
-        {activeTab === "plans" && (
+        {/* Phase 1E Plan Master */}
+        {activeTab === "plan-master" && (
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs animate-fadeIn">
             <PlanFeatureMatrixTab 
+              defaultTab="tiers"
               plans={plans}
               features={features}
               planLimits={planLimits}
               matrix={matrix}
-              onAddPlan={(newPlanObj, limits, matrixSettings) => {
-                setPlans([...plans, newPlanObj]);
-                const nextLimits = { ...planLimits };
-                nextLimits[newPlanObj.code] = limits;
-                setPlanLimits(nextLimits);
-
-                const nextMatrix = { ...matrix };
-                nextMatrix[newPlanObj.code] = matrixSettings;
-                setMatrix(nextMatrix);
-              }}
-              onUpdatePlan={(code, updates) => {
-                setPlans(plans.map(p => p.code === code ? { ...p, ...updates } : p));
-              }}
-              onUpdatePlanLimit={(planCode, limitKey, value) => {
-                const next = { ...planLimits };
-                if (!next[planCode]) next[planCode] = {} as any;
-                next[planCode][limitKey] = value;
-                setPlanLimits(next);
-              }}
-              onUpdateMatrixCell={(planCode, featCode, value) => {
-                const next = { ...matrix };
-                if (!next[planCode]) next[planCode] = {};
-                next[planCode][featCode] = value;
-                setMatrix(next);
-              }}
+              onAddPlan={handleAddPlan}
+              onUpdatePlan={handleUpdatePlan}
+              onUpdatePlanLimit={handleUpdatePlanLimit}
+              onUpdateMatrixCell={handleUpdateMatrixCell}
             />
           </div>
         )}
 
-        {/* Phase 1E Module & Features registries directory */}
-        {activeTab === "modules" && (
+        {/* Phase 1E Plan Feature Matrix */}
+        {activeTab === "plan-feature-matrix" && (
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs animate-fadeIn">
+            <PlanFeatureMatrixTab 
+              defaultTab="matrix"
+              plans={plans}
+              features={features}
+              planLimits={planLimits}
+              matrix={matrix}
+              onAddPlan={handleAddPlan}
+              onUpdatePlan={handleUpdatePlan}
+              onUpdatePlanLimit={handleUpdatePlanLimit}
+              onUpdateMatrixCell={handleUpdateMatrixCell}
+            />
+          </div>
+        )}
+
+        {/* Phase 1E Usage Limits */}
+        {activeTab === "usage-limits" && (
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs animate-fadeIn">
+            <PlanFeatureMatrixTab 
+              defaultTab="limits"
+              plans={plans}
+              features={features}
+              planLimits={planLimits}
+              matrix={matrix}
+              onAddPlan={handleAddPlan}
+              onUpdatePlan={handleUpdatePlan}
+              onUpdatePlanLimit={handleUpdatePlanLimit}
+              onUpdateMatrixCell={handleUpdateMatrixCell}
+            />
+          </div>
+        )}
+
+        {/* Phase 1E Module Registry Directory */}
+        {activeTab === "module-registry" && (
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs animate-fadeIn">
             <ModuleRegistryTab 
+              defaultTab="modules"
               modules={modules}
               features={features}
               onAddModule={(m) => setModules([...modules, m])}
@@ -645,23 +987,55 @@ export default function SaaSAdminApp() {
           </div>
         )}
 
-        {/* Phase 1E Plot volume billing slabs & micro services addons */}
-        {activeTab === "billing" && (
+        {/* Phase 1E Feature Catalog */}
+        {activeTab === "feature-catalog" && (
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs animate-fadeIn">
+            <ModuleRegistryTab 
+              defaultTab="features"
+              modules={modules}
+              features={features}
+              onAddModule={(m) => setModules([...modules, m])}
+              onUpdateModule={(code, updates) => setModules(modules.map(m => m.code === code ? { ...m, ...updates } : m))}
+              onAddFeature={(f) => setFeatures([...features, f])}
+              onUpdateFeature={(code, updates) => setFeatures(features.map(f => f.code === code ? { ...f, ...updates } : f))}
+            />
+          </div>
+        )}
+
+        {/* Phase 1E Plot Billing */}
+        {activeTab === "plot-billing" && (
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs animate-fadeIn font-sans">
             <AddonsBillingTab 
+              defaultTab="slabs"
               slabs={slabs}
               addons={addons}
-              onAddSlab={(s) => setSlabs([...slabs, s])}
-              onUpdateSlab={(id, updates) => setSlabs(slabs.map(s => s.id === id ? { ...s, ...updates } : s))}
+              onAddSlab={handleAddSlab}
+              onUpdateSlab={handleUpdateSlab}
               onDeleteSlab={(id) => setSlabs(slabs.filter(s => s.id !== id))}
-              onAddAddon={(a) => setAddons([...addons, a])}
-              onUpdateAddon={(code, updates) => setAddons(addons.map(a => a.code === code ? { ...a, ...updates } : a))}
+              onAddAddon={handleAddAddon}
+              onUpdateAddon={handleUpdateAddon}
+            />
+          </div>
+        )}
+
+        {/* Phase 1E Add-ons */}
+        {activeTab === "addons" && (
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs animate-fadeIn font-sans font-sans">
+            <AddonsBillingTab 
+              defaultTab="addons"
+              slabs={slabs}
+              addons={addons}
+              onAddSlab={handleAddSlab}
+              onUpdateSlab={handleUpdateSlab}
+              onDeleteSlab={(id) => setSlabs(slabs.filter(s => s.id !== id))}
+              onAddAddon={handleAddAddon}
+              onUpdateAddon={handleUpdateAddon}
             />
           </div>
         )}
 
         {/* Phase 1E Real-time aggregated supercharged MRR Analytics */}
-        {activeTab === "revenue" && (
+        {activeTab === "mrr-dashboard" && (
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs animate-fadeIn font-sans">
             <div className="border-b border-slate-100 pb-3 mb-5">
               <h2 className="text-sm font-bold text-slate-900 uppercase">Enterprise Revenue Analytics</h2>
@@ -678,7 +1052,7 @@ export default function SaaSAdminApp() {
         )}
 
         {/* Original Ingress Trail Stream Telemetry */}
-        {activeTab === "logs" && (
+        {activeTab === "audit-logs" && (
           <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-xs" id="saas-tab-logs">
             <div className="flex justify-between items-center pb-3 border-b border-slate-150">
               <div>
@@ -737,7 +1111,7 @@ export default function SaaSAdminApp() {
         )}
 
         {/* Global configuration params */}
-        {activeTab === "settings" && (
+        {activeTab === "global-parameters" && (
           <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6 shadow-xs" id="saas-tab-settings font-sans">
             <div>
               <h2 className="text-xs font-bold text-slate-900 uppercase">Global DNS Parameters</h2>
@@ -806,12 +1180,8 @@ export default function SaaSAdminApp() {
           features={features}
           planLimits={planLimits}
           onClose={() => setSelectedTenantSub(null)}
-          onUpdateSubscription={(updatedSub) => {
-            const next = { ...tenantSubscriptions };
-            next[updatedSub.tenantCode] = updatedSub;
-            setTenantSubscriptions(next);
-          }}
-          onLifecycleAction={(action) => {
+          onUpdateSubscription={handleUpdateSubscription}
+          onLifecycleAction={async (action) => {
             const next = { ...tenantSubscriptions };
             const sub = next[selectedTenantSub.code];
             if (!sub) return;
@@ -820,18 +1190,21 @@ export default function SaaSAdminApp() {
               if (window.confirm(`Suspend workspace container '${selectedTenantSub.name}' and pause access tunnels?`)) {
                 sub.status = "SUSPENDED";
                 setTenantSubscriptions(next);
+                await handleUpdateSubscription(sub);
                 alert("Tenant cluster suspended successfully.");
               }
             } else if (action === "REACTIVATE") {
               if (window.confirm(`Reactivate workspace '${selectedTenantSub.name}' and restore proxy vectors?`)) {
                 sub.status = "ACTIVE";
                 setTenantSubscriptions(next);
+                await handleUpdateSubscription(sub);
                 alert("Tenant cluster reactivated successfully.");
               }
             } else if (action === "ARCHIVE") {
               if (window.confirm(`Warning: Archiving '${selectedTenantSub.name}' routes cold-stores database schemas permanantly. Proceed?`)) {
                 sub.status = "ARCHIVED";
                 setTenantSubscriptions(next);
+                await handleUpdateSubscription(sub);
                 alert("Tenant cluster archived successfully.");
               }
             }
