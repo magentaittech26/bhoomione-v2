@@ -196,11 +196,13 @@ Route::prefix('v1')->group(function () {
     Route::post('/admin/slabs', [SaasController::class, 'savePlotSlab'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
 
     Route::get('/admin/tenants/{id}/subscription', [SaasController::class, 'getTenantSubscriptionProfile'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::get('/admin/tenants/{id}/subscription-summary', [SaasController::class, 'getTenantSubscriptionSummary'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
     Route::post('/admin/tenants/{id}/subscription', [SaasController::class, 'assignTenantSubscription'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
     Route::post('/admin/tenants/{id}/subscription/lifecycle', [SaasController::class, 'updateLifecycle'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
     Route::post('/admin/tenants/{id}/subscription/overrides', [SaasController::class, 'saveOverrides'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
 
     // Tenant-level route checking for tenant-level permission
+    Route::get('/tenant/subscription-summary', [SaasController::class, 'getMySubscriptionSummary'])->middleware([TenantResolverMiddleware::class]);
     Route::get('/tenant/users', function () {
         return response()->json([
             'message' => 'Access authorized. Retrieved current workspace active member roster.',
@@ -240,22 +242,24 @@ Route::prefix('v1')->group(function () {
             return response()->json(\App\Models\MeasurementUnit::all());
         })->middleware([PermissionRequirementMiddleware::class . ':projects.view']);
 
-        // DXF Group
-        Route::get('/dxf/files', [DxfController::class, 'listFiles'])->middleware([PermissionRequirementMiddleware::class . ':dxf.view']);
-        Route::get('/dxf/jobs', [DxfController::class, 'listJobs'])->middleware([PermissionRequirementMiddleware::class . ':dxf.view']);
-        Route::get('/dxf/jobs/{id}', [DxfController::class, 'getJob'])->middleware([PermissionRequirementMiddleware::class . ':dxf.view']);
-        Route::get('/dxf/jobs/{id}/review', [DxfController::class, 'getJobReview'])->middleware([PermissionRequirementMiddleware::class . ':dxf.view']);
-        Route::post('/dxf/jobs/{id}/dispatch', [DxfController::class, 'dispatchJobGeneration'])->middleware([PermissionRequirementMiddleware::class . ':dxf.process']);
-        Route::post('/dxf/generation-batches/{id}/rollback', [DxfController::class, 'rollbackBatch'])->middleware([PermissionRequirementMiddleware::class . ':dxf.process']);
-        Route::post('/dxf/generation-batches/{id}/compile-svg', [DxfController::class, 'compileSvgDocument'])->middleware([PermissionRequirementMiddleware::class . ':dxf.process']);
-        Route::get('/dxf/svg-documents/{id}', [DxfController::class, 'getSvgDocument'])->middleware([PermissionRequirementMiddleware::class . ':dxf.view']);
-        Route::get('/dxf/style-profiles', [DxfController::class, 'getStyleProfiles'])->middleware([PermissionRequirementMiddleware::class . ':dxf.view']);
-        Route::post('/dxf/upload', [DxfController::class, 'upload'])->middleware([PermissionRequirementMiddleware::class . ':dxf.upload']);
-        Route::post('/dxf/mappings', [DxfController::class, 'saveMappings'])->middleware([PermissionRequirementMiddleware::class . ':dxf.process']);
-        Route::post('/dxf/process', [DxfController::class, 'approveMapping'])->middleware([PermissionRequirementMiddleware::class . ':dxf.process']);
-        Route::post('/dxf/templates', [DxfController::class, 'storeTemplate'])->middleware([PermissionRequirementMiddleware::class . ':dxf.process']);
-        Route::get('/dxf/templates', [DxfController::class, 'listTemplates'])->middleware([PermissionRequirementMiddleware::class . ':dxf.view']);
-        Route::delete('/dxf/templates/{id}', [DxfController::class, 'destroyTemplate'])->middleware([PermissionRequirementMiddleware::class . ':dxf.process']);
+        // DXF Group protected by subscription-level permissions
+        Route::middleware([\App\Http\Middleware\SubscriptionFeatureGate::class . ':DXF'])->group(function () {
+            Route::get('/dxf/files', [DxfController::class, 'listFiles'])->middleware([PermissionRequirementMiddleware::class . ':dxf.view']);
+            Route::get('/dxf/jobs', [DxfController::class, 'listJobs'])->middleware([PermissionRequirementMiddleware::class . ':dxf.view']);
+            Route::get('/dxf/jobs/{id}', [DxfController::class, 'getJob'])->middleware([PermissionRequirementMiddleware::class . ':dxf.view']);
+            Route::get('/dxf/jobs/{id}/review', [DxfController::class, 'getJobReview'])->middleware([PermissionRequirementMiddleware::class . ':dxf.view']);
+            Route::post('/dxf/jobs/{id}/dispatch', [DxfController::class, 'dispatchJobGeneration'])->middleware([PermissionRequirementMiddleware::class . ':dxf.process']);
+            Route::post('/dxf/generation-batches/{id}/rollback', [DxfController::class, 'rollbackBatch'])->middleware([PermissionRequirementMiddleware::class . ':dxf.process']);
+            Route::post('/dxf/generation-batches/{id}/compile-svg', [DxfController::class, 'compileSvgDocument'])->middleware([PermissionRequirementMiddleware::class . ':dxf.process']);
+            Route::get('/dxf/svg-documents/{id}', [DxfController::class, 'getSvgDocument'])->middleware([PermissionRequirementMiddleware::class . ':dxf.view']);
+            Route::get('/dxf/style-profiles', [DxfController::class, 'getStyleProfiles'])->middleware([PermissionRequirementMiddleware::class . ':dxf.view']);
+            Route::post('/dxf/upload', [DxfController::class, 'upload'])->middleware([PermissionRequirementMiddleware::class . ':dxf.upload']);
+            Route::post('/dxf/mappings', [DxfController::class, 'saveMappings'])->middleware([PermissionRequirementMiddleware::class . ':dxf.process']);
+            Route::post('/dxf/process', [DxfController::class, 'approveMapping'])->middleware([PermissionRequirementMiddleware::class . ':dxf.process']);
+            Route::post('/dxf/templates', [DxfController::class, 'storeTemplate'])->middleware([PermissionRequirementMiddleware::class . ':dxf.process']);
+            Route::get('/dxf/templates', [DxfController::class, 'listTemplates'])->middleware([PermissionRequirementMiddleware::class . ':dxf.view']);
+            Route::delete('/dxf/templates/{id}', [DxfController::class, 'destroyTemplate'])->middleware([PermissionRequirementMiddleware::class . ':dxf.process']);
+        });
     });
 
 });

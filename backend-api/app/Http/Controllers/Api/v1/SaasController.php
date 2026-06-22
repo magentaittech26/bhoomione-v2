@@ -170,4 +170,80 @@ class SaasController extends Controller
         $sub = SaasSubscriptionService::saveOverrides($id, $validated, $context);
         return response()->json($sub);
     }
+
+    /**
+     * GET /api/v1/admin/tenants/{id}/subscription-summary
+     */
+    public function getTenantSubscriptionSummary($id)
+    {
+        $tenantId = $id;
+        $sub = \App\Services\SubscriptionEnforcementEngine::getTenantSubscription($tenantId);
+
+        $activePlanName = "Starter (Trial)";
+        $activePlanCode = "STARTER";
+        $activeAddons = [];
+
+        if ($sub) {
+            $plan = \App\Models\SubscriptionPlan::find($sub->plan_id);
+            if ($plan) {
+                $activePlanName = $plan->name;
+                $activePlanCode = $plan->plan_code;
+            }
+
+            // Find assigned addons
+            $addonIds = \Illuminate\Support\Facades\DB::table('tenant_addons')
+                ->where('tenant_subscription_id', $sub->id)
+                ->pluck('addon_id')
+                ->toArray();
+
+            if (!empty($addonIds)) {
+                $activeAddons = \App\Models\SubscriptionAddon::whereIn('id', $addonIds)
+                    ->where('status', 'ACTIVE')
+                    ->select('code', 'name')
+                    ->get()
+                    ->toArray();
+            }
+        }
+
+        $limits = \App\Services\SubscriptionEnforcementEngine::getEffectiveLimits($tenantId);
+        $usage = \App\Services\SubscriptionEnforcementEngine::getUsage($tenantId);
+        
+        $plotsCount = $usage['plots_count'];
+        $slab = \App\Services\SubscriptionEnforcementEngine::getPlotBillingSlab($plotsCount);
+
+        // Utilization rates
+        $utilization = [
+            'projects' => $limits['projectsLimit'] > 0 ? round(($usage['projects_count'] / $limits['projectsLimit']) * 100, 1) : 0,
+            'layouts' => $limits['layoutsLimit'] > 0 ? round(($usage['layouts_count'] / $limits['layoutsLimit']) * 100, 1) : 0,
+            'plots' => $limits['plotsLimit'] > 0 ? round(($usage['plots_count'] / $limits['plotsLimit']) * 100, 1) : 0,
+            'users' => $limits['usersLimit'] > 0 ? round(($usage['users_count'] / $limits['usersLimit']) * 100, 1) : 0,
+            'storage' => $limits['fileStorageGb'] > 0 ? round(($usage['storage_used_gb'] / $limits['fileStorageGb']) * 100, 1) : 0,
+        ];
+
+        return response()->json([
+            'tenant_id' => $tenantId,
+            'active_plan_code' => $activePlanCode,
+            'active_plan_name' => $activePlanName,
+            'active_addons' => $activeAddons,
+            'limits' => $limits,
+            'usages' => $usage,
+            'utilization' => $utilization,
+            'plot_billing_slab' => $slab,
+        ]);
+    }
+
+    /**
+     * GET /api/v1/tenant/subscription-summary
+     */
+    public function getMySubscriptionSummary(Request $request)
+    {
+        $resolvedTenant = $request->attributes->get('resolvedTenant');
+        $tenantId = $resolvedTenant ? $resolvedTenant->id : ($request->attributes->get('authenticatedUserPayload')['tenantId'] ?? null);
+
+        if (!$tenantId) {
+            return response()->json(['error' => 'Tenant context couldn\'t be resolved.'], 400);
+        }
+
+        return $this->getTenantSubscriptionSummary($tenantId);
+    }
 }

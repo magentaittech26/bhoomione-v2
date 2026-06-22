@@ -270,6 +270,18 @@ class ApiClient {
     });
   }
 
+  async fetchTenantSubscriptionSummary(id: string): Promise<any> {
+    return this.request<any>(`/admin/tenants/${id}/subscription-summary`, {
+      method: "GET"
+    });
+  }
+
+  async fetchMySubscriptionSummary(): Promise<any> {
+    return this.request<any>("/tenant/subscription-summary", {
+      method: "GET"
+    });
+  }
+
   async fetchAdminTenants(): Promise<any[]> {
     return this.request<any[]>("/admin/tenants", {
       method: "GET"

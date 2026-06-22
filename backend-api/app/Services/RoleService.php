@@ -52,6 +52,17 @@ class RoleService
             return false;
         }
 
+        // Check if user is already mapped to this tenant
+        $exists = DB::table('tenant_users')
+            ->where('tenant_id', $tenantId)
+            ->where('user_id', $user->id)
+            ->exists();
+
+        if (!$exists) {
+            // Enforce users limit on active tenant workspace
+            \App\Services\SubscriptionEnforcementEngine::checkLimit($tenantId, 'users');
+        }
+
         // In tenant_users table, the PK is (tenant_id, user_id).
         // Since a user can only have one role per tenant (based on PK layout), we update or insert.
         DB::table('tenant_users')->updateOrInsert(

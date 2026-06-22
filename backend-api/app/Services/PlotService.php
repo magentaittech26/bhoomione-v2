@@ -115,6 +115,9 @@ class PlotService
      */
     public static function create(array $data, string $tenantId, ?string $userId, ?array $context)
     {
+        // Enforce plan limits on active tenant workspace
+        \App\Services\SubscriptionEnforcementEngine::checkLimit($tenantId, 'plots');
+
         // Assert layout nested under tenant
         Layout::whereIn('project_id', function ($query) use ($tenantId) {
             $query->select('id')->from('projects')->where('tenant_id', $tenantId);

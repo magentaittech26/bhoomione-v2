@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import api from "../../lib/api.ts";
 import { 
   X, Shield, CreditCard, Sliders, Calendar, AlertTriangle, Check, Play, Ban, Trash2, HelpCircle 
 } from "lucide-react";
@@ -33,6 +34,25 @@ export default function TenantLifecycleDrawer({
   const [selectedPlanCode, setSelectedPlanCode] = useState(subscription.currentPlanCode);
   const [trialDaysToAdd, setTrialDaysToAdd] = useState(14);
   
+  const [liveSummary, setLiveSummary] = useState<any>(null);
+  const [loadingSummary, setLoadingSummary] = useState(false);
+
+  useEffect(() => {
+    if (tenant) {
+      const targetId = tenant.id || tenant.code;
+      setLoadingSummary(true);
+      api.fetchTenantSubscriptionSummary(targetId)
+        .then(data => {
+          setLiveSummary(data);
+          setLoadingSummary(false);
+        })
+        .catch(err => {
+          console.error("Failed to load subscription summary", err);
+          setLoadingSummary(false);
+        });
+    }
+  }, [tenant]);
+
   // Update state helper
   const updateSub = (updates: Partial<TenantSubscription>) => {
     onUpdateSubscription({
@@ -151,6 +171,55 @@ export default function TenantLifecycleDrawer({
           
           {activeSubTab === "plans" && (
             <div className="space-y-5" id="drawer-tab-plans">
+              {loadingSummary && (
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center text-xs text-slate-500 animate-pulse font-sans">
+                  Retrieving real-time workspace resource parameters...
+                </div>
+              )}
+
+              {!loadingSummary && liveSummary && (
+                <div className="bg-slate-900 text-white p-4 rounded-xl space-y-4 border border-slate-950 font-sans shadow-sm" id="live-resource-usage">
+                  <div className="flex justify-between items-center border-b border-white/10 pb-2">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Workspace live metrics</span>
+                    <span className="font-mono text-[10px] bg-indigo-500/30 text-indigo-300 font-bold px-1.5 py-0.5 rounded">Active Slab: {liveSummary.plot_billing_slab?.slab_range} lands</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 pb-2 text-[10.5px]">
+                    <div>
+                      <span className="text-slate-400">Effective Plan:</span> <strong className="text-slate-100 font-bold">{liveSummary.active_plan_name}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Current Cost:</span> <strong className="text-emerald-400 font-mono">${liveSummary.plot_billing_slab?.monthly_price}/mo</strong>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 text-[11px] border-t border-white/10 pt-3">
+                    {[
+                      { label: "Township Projects", usage: liveSummary.usages?.projects_count, limit: liveSummary.limits?.projectsLimit, rate: liveSummary.utilization?.projects },
+                      { label: "Zoned Layouts", usage: liveSummary.usages?.layouts_count, limit: liveSummary.limits?.layoutsLimit, rate: liveSummary.utilization?.layouts },
+                      { label: "Tract Lots (Plots)", usage: liveSummary.usages?.plots_count, limit: liveSummary.limits?.plotsLimit, rate: liveSummary.utilization?.plots },
+                      { label: "Seat Users (Members)", usage: liveSummary.usages?.users_count, limit: liveSummary.limits?.usersLimit, rate: liveSummary.utilization?.users },
+                      { label: "CAD Storage GB", usage: liveSummary.usages?.storage_used_gb, limit: liveSummary.limits?.fileStorageGb, rate: liveSummary.utilization?.storage }
+                    ].map(u => (
+                      <div key={u.label} className="space-y-1">
+                        <div className="flex justify-between text-xs text-slate-300">
+                          <span>{u.label}</span>
+                          <span className="font-mono text-[10px]">
+                            {u.usage} / {u.limit} ({u.rate}%)
+                          </span>
+                        </div>
+                        <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-1.5 rounded-full transition-all duration-500 ${u.rate >= 90 ? 'bg-red-500' : u.rate >= 75 ? 'bg-amber-500' : 'bg-emerald-400'}`} 
+                            style={{ width: `${Math.min(u.rate, 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="bg-slate-50 border border-slate-150 p-4 rounded-xl space-y-3">
                 <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">Change plan tier</h4>
                 <p className="text-[11px] text-slate-500 leading-normal">

@@ -3,7 +3,7 @@ import api from "../../lib/api.ts";
 import AdminLogin from "../AdminLogin.tsx";
 import { UserProfile } from "../../types/auth.ts";
 import { 
-  ShieldAlert, Database, Users, Activity, TrendingUp, Server, Plus, Check, RefreshCw, Globe, Settings, CreditCard, Layers, LogOut, Sliders, Terminal, Clock, AlertTriangle, ToggleLeft, ToggleRight, Trash2, Edit3, Shield, Box, Zap, DollarSign, Calendar, SlidersHorizontal, Info, Play, CheckCircle, X
+  ShieldAlert, Database, Users, Activity, TrendingUp, Server, Plus, Check, RefreshCw, Globe, Settings, CreditCard, Layers, LogOut, Sliders, Terminal, Clock, AlertTriangle, ToggleLeft, ToggleRight, Trash2, Edit3, Shield, Box, Zap, DollarSign, Calendar, SlidersHorizontal, Info, Play, CheckCircle, X, LayoutDashboard
 } from "lucide-react";
 
 // Modular Import
@@ -19,20 +19,37 @@ import MrrDashboardTab from "../saas/MrrDashboardTab.tsx";
 export default function SaaSAdminApp() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   
-  // Expanded 11 SaaS admin tabs selection
+  // Re-organized final navigation hierarchy
   const [activeTab, setActiveTab] = useState<
-    | "tenant-registry"
+    | "dashboard"
+    | "tenants"
+    | "subscription-center"
     | "module-registry"
-    | "feature-catalog"
+    | "tenant-overrides"
+    | "audit-logs"
+    | "settings"
+    | "mrr-dashboard"
+    | "tenant-registry"
     | "plan-master"
     | "plan-feature-matrix"
     | "usage-limits"
     | "plot-billing"
     | "addons"
-    | "mrr-dashboard"
-    | "audit-logs"
     | "global-parameters"
-  >("tenant-registry");
+    | "feature-catalog"
+  >("mrr-dashboard");
+
+  // Inner sub-views states to avoid horizontal cluttering
+  const [activeSubscriptionSub, setActiveSubscriptionSub] = useState<"plans" | "matrix" | "limits" | "slabs" | "addons">("plans");
+  const [activeModuleRegistrySub, setActiveModuleRegistrySub] = useState<"modules" | "features">("modules");
+
+  // Dedicated states for the powerful Tenant Overrides view
+  const [selectedOverrideTenantCode, setSelectedOverrideTenantCode] = useState<string>("");
+  const [editFeatureOverrides, setEditFeatureOverrides] = useState<Record<string, "ENABLED" | "DISABLED" | "DEFAULT">>({});
+  const [editLimitOverrides, setEditLimitOverrides] = useState<Partial<PlanLimits>>({});
+  const [editAddonCodes, setEditAddonCodes] = useState<string[]>([]);
+  const [isSavingOverrides, setIsSavingOverrides] = useState(false);
+  const [overrideFormSuccess, setOverrideFormSuccess] = useState<string | null>(null);
   
   const [tenants, setTenants] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
@@ -505,6 +522,21 @@ export default function SaaSAdminApp() {
     }
   }, [tenants]);
 
+  // Sync selected override tenant subscription into local edit states
+  useEffect(() => {
+    const sub = selectedOverrideTenantCode ? tenantSubscriptions[selectedOverrideTenantCode] : null;
+    if (sub) {
+      setEditFeatureOverrides(sub.featureOverrides || {});
+      setEditLimitOverrides(sub.limitOverrides || {});
+      setEditAddonCodes(sub.addOnCodes || []);
+    } else {
+      setEditFeatureOverrides({});
+      setEditLimitOverrides({});
+      setEditAddonCodes([]);
+    }
+    setOverrideFormSuccess(null);
+  }, [selectedOverrideTenantCode, tenantSubscriptions]);
+
   // Sync back state properties from subscriptions overrides to general tenants list
   const getSubbedPlanForTenant = (tenantCode: string, fallback: string) => {
     const sub = tenantSubscriptions[tenantCode];
@@ -552,6 +584,47 @@ export default function SaaSAdminApp() {
       setLogsError(err.message || "Failed to load ingress audit logs from admin endpoint.");
     } finally {
       setLoadingLogs(false);
+    }
+  };
+
+  const handleSaveTenantOverrides = async () => {
+    if (!selectedOverrideTenantCode) return;
+    const sub = tenantSubscriptions[selectedOverrideTenantCode];
+    if (!sub) return;
+
+    setIsSavingOverrides(true);
+    setOverrideFormSuccess(null);
+    try {
+      const payload = {
+        featureOverrides: editFeatureOverrides,
+        limitOverrides: editLimitOverrides,
+        addOnCodes: editAddonCodes
+      };
+
+      const tenant = tenants.find(t => t.code === selectedOverrideTenantCode);
+      const targetId = tenant?.id || sub.tenantId || selectedOverrideTenantCode;
+      
+      const res = await api.saveTenantOverrides(targetId, payload);
+      
+      if (res && res.success) {
+        const nextSubs = { ...tenantSubscriptions };
+        nextSubs[selectedOverrideTenantCode] = {
+          ...sub,
+          featureOverrides: editFeatureOverrides,
+          limitOverrides: editLimitOverrides,
+          addOnCodes: editAddonCodes
+        };
+        setTenantSubscriptions(nextSubs);
+        setOverrideFormSuccess("Workspace subscription overrides saved successfully to PostgreSQL database.");
+        await loadTenants();
+        await loadAuditLogs();
+      } else {
+        throw new Error("Failed to persist subscription modifications.");
+      }
+    } catch (err: any) {
+      alert(err.message || "An error occurred while transmitting credentials to API.");
+    } finally {
+      setIsSavingOverrides(false);
     }
   };
 
@@ -655,22 +728,113 @@ export default function SaaSAdminApp() {
   const selectedTenantSubscription = selectedTenantSub ? tenantSubscriptions[selectedTenantSub.code] : null;
 
   return (
-    <div className="bg-slate-50 min-h-screen text-slate-800 font-sans" id="saas-admin-supervision-suite">
-      <div className="max-w-7xl mx-auto p-6 space-y-6">
-        
-        {/* Header Block */}
-        <div className="bg-slate-905 bg-slate-900 text-white rounded-2xl p-6 lg:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 shadow-sm border border-slate-950" id="saas-admin-header">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-xs font-mono">
-              <Shield className="w-3.5 h-3.5" />
-              <span>Admin Profile: {currentUser.name} (Platform Administrator)</span>
+    <div className="bg-slate-100 min-h-screen text-slate-805 font-sans flex flex-col md:flex-row" id="saas-admin-supervision-suite">
+      
+      {/* 1. LEFT SIDEBAR NAVIGATION */}
+      <aside className="w-full md:w-64 bg-slate-900 text-slate-100 flex flex-col shrink-0 border-r border-slate-950 md:sticky md:top-0 md:h-screen" id="saas-sidebar-navigation">
+        {/* Sidebar Brand Header */}
+        <div className="p-6 border-b border-slate-850 flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <div className="bg-indigo-600 text-white rounded-lg p-1.5 shadow-sm">
+              <Database className="w-5 h-5 animate-pulse" />
             </div>
-            <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white leading-none">
-              BhoomiOne SaaS Control Panel
-            </h1>
-            <p className="text-xs text-slate-400 max-w-xl">
-              Platform administration dashboard. Monitor and modify sub-modules, feature matrix mappings, capacity pricing slab nodes, and active overrides.
-            </p>
+            <div>
+              <h1 className="font-extrabold text-sm leading-tight tracking-wider uppercase">BhoomiOne</h1>
+              <p className="text-[10px] text-indigo-400 font-bold font-mono tracking-wider">SAAS CONTROL PANEL</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Navigation Items (Left sidebar vertical layout) */}
+        <nav className="flex-1 p-4 space-y-1.5 overflow-y-auto" id="saas-sidebar-nav-items">
+          {[
+            { id: "mrr-dashboard", label: "Dashboard", icon: LayoutDashboard },
+            { id: "tenant-registry", label: "Workspace Tenants", icon: Users },
+            { id: "subscription-center", label: "Subscription Center", icon: CreditCard },
+            { id: "module-registry", label: "Module Registry", icon: Box },
+            { id: "tenant-overrides", label: "Tenant Overrides", icon: Sliders },
+            { id: "audit-logs", label: "Audit Logs", icon: Terminal },
+            { id: "global-parameters", label: "Settings", icon: Settings },
+          ].map(t => {
+            const Icon = t.icon;
+            // Map active state properly to handle both top-level and inner-tabs
+            const isSelected = activeTab === t.id || 
+              (t.id === "subscription-center" && ["plan-master", "plan-feature-matrix", "usage-limits", "plot-billing", "addons"].includes(activeTab)) ||
+              (t.id === "module-registry" && ["module-registry", "feature-catalog"].includes(activeTab));
+
+            return (
+              <button
+                key={t.id}
+                onClick={() => {
+                  if (t.id === "subscription-center") {
+                    setActiveTab("plan-master");
+                  } else if (t.id === "module-registry") {
+                    setActiveTab("module-registry");
+                  } else {
+                    setActiveTab(t.id as any);
+                  }
+                }}
+                className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold transition-all flex items-center gap-3 cursor-pointer ${
+                  isSelected 
+                    ? "bg-indigo-600 text-white shadow-md font-extrabold" 
+                    : "text-slate-400 hover:text-slate-100 hover:bg-slate-800/50"
+                }`}
+              >
+                <Icon className="w-4 h-4 shrink-0" />
+                <span>{t.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* User profile section at bottom of sidebar */}
+        <div className="p-4 border-t border-slate-800 space-y-3 bg-slate-950/40 font-sans">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-full bg-slate-850 text-slate-350 flex items-center justify-center font-bold text-xs uppercase border border-slate-700">
+              {currentUser.name ? currentUser.name[0] : "A"}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold text-slate-200 truncate">{currentUser.name}</p>
+              <p className="text-[9px] text-indigo-400 font-mono uppercase font-bold truncate">ADMINISTRATOR</p>
+            </div>
+          </div>
+          <button 
+            onClick={handleLogout}
+            className="w-full bg-slate-800 hover:bg-red-900/30 hover:text-red-400 text-slate-300 text-xs font-bold py-2 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-slate-700 hover:border-red-900/20 shadow-xs"
+            id="saas-admin-logout-btn"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Sign Out</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* 2. RIGHT MAIN CONTENT AREA */}
+      <main className="flex-1 flex flex-col min-w-0" id="saas-main-viewport">
+        
+        {/* Top bar with Breadcrumbs / Header action buttons */}
+        <header className="bg-white border-b border-slate-200 py-4 px-6 md:px-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sticky top-0 z-10 shadow-3xs">
+          <div>
+            <div className="flex items-center gap-1 text-[10px] text-slate-450 font-bold uppercase tracking-wider font-mono">
+              <span>SaaS Control Panel</span>
+              <span>/</span>
+              <span className="text-slate-655 font-sans font-bold">
+                {activeTab === "mrr-dashboard" ? "Dashboard" :
+                 activeTab === "tenant-registry" ? "Workspace Tenants" :
+                 ["plan-master", "plan-feature-matrix", "usage-limits", "plot-billing", "addons"].includes(activeTab) ? "Subscription Center" :
+                 ["module-registry", "feature-catalog"].includes(activeTab) ? "Module Registry" :
+                 activeTab === "tenant-overrides" ? "Tenant Overrides overrides" :
+                 activeTab === "audit-logs" ? "Telemetry Audit Logs" : "System Settings"}
+              </span>
+            </div>
+            <h2 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider mt-0.5" id="header-main-title">
+              {activeTab === "mrr-dashboard" ? "Revenue & Operations Analytics Dashboard" :
+               activeTab === "tenant-registry" ? "Active Tenant Workspace Clusters" :
+               ["plan-master", "plan-feature-matrix", "usage-limits", "plot-billing", "addons"].includes(activeTab) ? "Global Subscription Center / Pricing Packages" :
+               ["module-registry", "feature-catalog"].includes(activeTab) ? "Platform Module Registry & Features Catalog" :
+               activeTab === "tenant-overrides" ? "Dynamic Tenant Overrides Plan Manager" :
+               activeTab === "audit-logs" ? "Telemetry Ingress Audit Logs Streams" : "DNS & Network Settings"}
+            </h2>
           </div>
 
           <div className="flex items-center gap-3">
@@ -680,57 +844,76 @@ export default function SaaSAdminApp() {
                 setSubmitSuccess(null);
                 setShowAddTenant(true);
               }}
-              className="bg-indigo-650 hover:bg-indigo-750 text-white text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+              className="bg-indigo-650 hover:bg-indigo-750 text-white text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-sm animate-pulse"
               id="provision-tenant-init-btn"
             >
               <Plus className="w-4 h-4" />
               <span>Provision Workspace</span>
             </button>
-            <button 
-              onClick={handleLogout}
-              className="bg-slate-800 hover:bg-slate-705 text-slate-300 hover:text-white text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer shadow-sm border border-slate-700"
-              id="saas-admin-logout-btn"
-            >
-              <LogOut className="w-4 h-4" />
-              <span>Disconnect</span>
-            </button>
           </div>
-        </div>
+        </header>
 
-        {/* Dynamic Navigation Tabs Menu */}
-        <div className="flex border-b border-slate-200 overflow-x-auto gap-1" id="saas-admin-tabpanel">
-          {[
-            { id: "tenant-registry", label: "Tenant Registry", icon: Users },
-            { id: "module-registry", label: "Module Registry", icon: Box },
-            { id: "feature-catalog", label: "Feature Catalog", icon: Zap },
-            { id: "plan-master", label: "Plan Master", icon: DollarSign },
-            { id: "plan-feature-matrix", label: "Plan Feature Matrix", icon: SlidersHorizontal },
-            { id: "usage-limits", label: "Usage Limits", icon: Sliders },
-            { id: "plot-billing", label: "Plot Billing", icon: Layers },
-            { id: "addons", label: "Add-ons", icon: Shield },
-            { id: "mrr-dashboard", label: "MRR Dashboard", icon: TrendingUp },
-            { id: "audit-logs", label: "Audit Logs", icon: Activity },
-            { id: "global-parameters", label: "Global Parameters", icon: Settings }
-          ].map(t => {
-            const Icon = t.icon;
-            return (
-              <button
-                key={t.id}
-                onClick={() => setActiveTab(t.id as any)}
-                className={`px-4 py-2.5 text-xs font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
-                  activeTab === t.id 
-                    ? "border-indigo-600 text-indigo-700 bg-white font-extrabold rounded-t-lg shadow-2xs" 
-                    : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100/40"
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                {t.label}
-              </button>
-            );
-          })}
-        </div>
+        {/* MAIN BODY SCROLL CONTAINER */}
+        <div className="flex-1 p-6 md:p-8 space-y-6 overflow-y-auto">
 
-        {/* Viewport content */}
+          {/* INNER TABS FOR SUBSCRIPTION CENTER */}
+          {["plan-master", "plan-feature-matrix", "usage-limits", "plot-billing", "addons"].includes(activeTab) && (
+            <div className="flex border-b border-slate-200 overflow-x-auto gap-1 bg-white p-2 rounded-xl border mb-6 shadow-3xs shrink-0">
+              {[
+                { id: "plan-master", label: "Plan Master Tiers", icon: DollarSign },
+                { id: "plan-feature-matrix", label: "Feature Matrix Grid", icon: SlidersHorizontal },
+                { id: "usage-limits", label: "Usage Limit Quotas", icon: Sliders },
+                { id: "plot-billing", label: "Plot Billing Slabs", icon: Layers },
+                { id: "addons", label: "Add-on Packages Catalog", icon: Shield }
+              ].map(sub => {
+                const isActive = activeTab === sub.id;
+                const Icon = sub.icon;
+                return (
+                  <button
+                    key={sub.id}
+                    onClick={() => setActiveTab(sub.id as any)}
+                    className={`px-4 py-2 text-xs font-bold transition-all flex items-center gap-1.5 rounded-lg whitespace-nowrap cursor-pointer ${
+                      isActive 
+                        ? "bg-slate-950 text-white shadow-xs font-extrabold" 
+                        : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    <span>{sub.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* INNER TABS FOR MODULE REGISTRY */}
+          {["module-registry", "feature-catalog"].includes(activeTab) && (
+            <div className="flex border-b border-slate-200 overflow-x-auto gap-1 bg-white p-2 rounded-xl border mb-6 shadow-3xs shrink-0">
+              {[
+                { id: "module-registry", label: "Modules Directory", icon: Box },
+                { id: "feature-catalog", label: "Feature Catalog", icon: Zap }
+              ].map(sub => {
+                const isActive = activeTab === sub.id;
+                const Icon = sub.icon;
+                return (
+                  <button
+                    key={sub.id}
+                    onClick={() => setActiveTab(sub.id as any)}
+                    className={`px-4 py-2 text-xs font-bold transition-all flex items-center gap-1.5 rounded-lg whitespace-nowrap cursor-pointer ${
+                      isActive 
+                        ? "bg-slate-950 text-white shadow-xs font-extrabold" 
+                        : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    <span>{sub.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Viewport content */}
         
         {activeTab === "tenant-registry" && (
           <div className="space-y-6" id="saas-tab-clusters">
@@ -1168,7 +1351,8 @@ export default function SaaSAdminApp() {
           </div>
         )}
 
-      </div>
+        </div>
+      </main>
 
       {/* Dynamic Workspace Slide Over / Drawer customizer */}
       {selectedTenantSub && selectedTenantSubscription && (

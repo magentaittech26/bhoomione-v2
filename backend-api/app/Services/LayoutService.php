@@ -84,6 +84,9 @@ class LayoutService
      */
     public static function create(array $data, string $tenantId, ?string $userId, ?array $context)
     {
+        // Enforce plan limits on active tenant workspace
+        \App\Services\SubscriptionEnforcementEngine::checkLimit($tenantId, 'layouts');
+
         // Assert project belongs to current tenant
         Project::where('tenant_id', $tenantId)->where('id', $data['project_id'])->firstOrFail();
 

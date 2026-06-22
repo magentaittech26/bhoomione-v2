@@ -183,7 +183,27 @@ export default function PlanFeatureMatrixTab({
                         </div>
                       </td>
                       {plans.map(p => {
-                        const cellVal = matrix[p.code]?.[f.code] || "DISABLED";
+                        const planCodeUpper = p.code.toUpperCase();
+                        const featCodeUpper = f.code.toUpperCase();
+                        
+                        const planKey = Object.keys(matrix).find(k => k.toUpperCase() === planCodeUpper) || p.code;
+                        const planFeatures = matrix[planKey] || {};
+                        
+                        const featKey = Object.keys(planFeatures).find(k => k.toUpperCase() === featCodeUpper) || f.code;
+                        const rawVal = planFeatures[featKey];
+                        
+                        let cellVal: "ENABLED" | "DISABLED" | "ADDON" | "ENTERPRISE" = "DISABLED";
+                        if (rawVal) {
+                          const upperVal = String(rawVal).toUpperCase();
+                          if (upperVal === "ENABLED" || upperVal === "TRUE" || (rawVal as any) === true) {
+                            cellVal = "ENABLED";
+                          } else if (upperVal === "ADDON" || upperVal === "ADD_ON") {
+                            cellVal = "ADDON";
+                          } else if (upperVal === "ENTERPRISE") {
+                            cellVal = "ENTERPRISE";
+                          }
+                        }
+
                         return (
                           <td key={p.code} className="px-3 py-3 text-center border-l border-slate-100">
                             <select

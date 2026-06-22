@@ -77,6 +77,9 @@ class ProjectService
      */
     public static function create(array $data, string $tenantId, ?string $userId, ?array $context)
     {
+        // Enforce plan limits on active tenant workspace
+        \App\Services\SubscriptionEnforcementEngine::checkLimit($tenantId, 'projects');
+
         $uuid = (string) Str::uuid();
         
         $project = DB::transaction(function() use ($uuid, $tenantId, $data) {

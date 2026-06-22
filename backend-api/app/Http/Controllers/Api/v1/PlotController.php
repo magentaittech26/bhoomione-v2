@@ -78,6 +78,12 @@ class PlotController extends Controller
             $plot = PlotService::create($request->validated(), $tenantId, $aux['userId'], $aux['context']);
             return response()->json($plot, 201);
         } catch (\Exception $e) {
+            if ($e->getMessage() === 'LIMIT_EXCEEDED') {
+                return response()->json([
+                    'error' => 'LIMIT_EXCEEDED',
+                    'message' => 'Your subscription plot density limit has been exceeded. Please upgrade your plan.'
+                ], 403);
+            }
             return response()->json(['error' => $e->getMessage() ?: 'Could not create plot.'], 400);
         }
     }
