@@ -113,43 +113,6 @@ export default function PlanFeatureMatrixTab({
   return (
     <div className="space-y-6" id="plan-feature-matrix-tab">
       
-      {/* Sub menu tabs */}
-      <div className="flex border-b border-slate-200">
-        <button
-          onClick={() => setActivePlanSub("matrix")}
-          className={`px-4 py-2 text-xs font-semibold border-b-2 font-sans flex items-center gap-1.5 transition-all ${
-            activePlanSub === "matrix" 
-              ? "border-slate-900 text-slate-900 font-extrabold bg-slate-50 rounded-t-lg" 
-              : "border-transparent text-slate-400 hover:text-slate-800"
-          }`}
-        >
-          <Box className="w-3.5 h-3.5 text-indigo-650" />
-          Plan Feature Matrix Grid
-        </button>
-        <button
-          onClick={() => setActivePlanSub("limits")}
-          className={`px-4 py-2 text-xs font-semibold border-b-2 font-sans flex items-center gap-1.5 transition-all ${
-            activePlanSub === "limits" 
-              ? "border-slate-900 text-slate-900 font-extrabold bg-slate-50 rounded-t-lg" 
-              : "border-transparent text-slate-400 hover:text-slate-800"
-          }`}
-        >
-          <Sliders className="w-3.5 h-3.5 text-indigo-650" />
-          Usage Limits Engine
-        </button>
-        <button
-          onClick={() => setActivePlanSub("tiers")}
-          className={`px-4 py-2 text-xs font-semibold border-b-2 font-sans flex items-center gap-1.5 transition-all ${
-            activePlanSub === "tiers" 
-              ? "border-slate-900 text-slate-900 font-extrabold bg-slate-50 rounded-t-lg" 
-              : "border-transparent text-slate-400 hover:text-slate-800"
-          }`}
-        >
-          <DollarSign className="w-3.5 h-3.5 text-indigo-650" />
-          Plan Master Packages
-        </button>
-      </div>
-
       {activePlanSub === "matrix" && (
         <div className="space-y-4" id="matrix-grid-view">
           <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200">

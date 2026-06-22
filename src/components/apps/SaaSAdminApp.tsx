@@ -860,11 +860,11 @@ export default function SaaSAdminApp() {
           {["plan-master", "plan-feature-matrix", "usage-limits", "plot-billing", "addons"].includes(activeTab) && (
             <div className="flex border-b border-slate-200 overflow-x-auto gap-1 bg-white p-2 rounded-xl border mb-6 shadow-3xs shrink-0">
               {[
-                { id: "plan-master", label: "Plan Master Tiers", icon: DollarSign },
-                { id: "plan-feature-matrix", label: "Feature Matrix Grid", icon: SlidersHorizontal },
-                { id: "usage-limits", label: "Usage Limit Quotas", icon: Sliders },
-                { id: "plot-billing", label: "Plot Billing Slabs", icon: Layers },
-                { id: "addons", label: "Add-on Packages Catalog", icon: Shield }
+                { id: "plan-master", label: "Plans", icon: DollarSign },
+                { id: "plan-feature-matrix", label: "Feature Matrix", icon: SlidersHorizontal },
+                { id: "usage-limits", label: "Usage Limits", icon: Sliders },
+                { id: "plot-billing", label: "Plot Billing", icon: Layers },
+                { id: "addons", label: "Add-ons", icon: Shield }
               ].map(sub => {
                 const isActive = activeTab === sub.id;
                 const Icon = sub.icon;

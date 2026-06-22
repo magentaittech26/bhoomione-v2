@@ -96,32 +96,6 @@ export default function AddonsBillingTab({
   return (
     <div className="space-y-6" id="addons-billing-tab-container">
       
-      {/* Sub menu tabs */}
-      <div className="flex border-b border-slate-200">
-        <button
-          onClick={() => setActiveTab("slabs")}
-          className={`px-4 py-2 text-xs font-semibold border-b-2 font-sans flex items-center gap-1.5 transition-all ${
-            activeTab === "slabs" 
-              ? "border-slate-900 text-slate-900 font-extrabold bg-slate-50 rounded-t-lg" 
-              : "border-transparent text-slate-400 hover:text-slate-800"
-          }`}
-        >
-          <Layers className="w-3.5 h-3.5 text-indigo-650" />
-          Plot-Based Capacity Billing Slabs ({slabs.length})
-        </button>
-        <button
-          onClick={() => setActiveTab("addons")}
-          className={`px-4 py-2 text-xs font-semibold border-b-2 font-sans flex items-center gap-1.5 transition-all ${
-            activeTab === "addons" 
-              ? "border-slate-900 text-slate-900 font-extrabold bg-slate-50 rounded-t-lg" 
-              : "border-transparent text-slate-400 hover:text-slate-800"
-          }`}
-        >
-          <Shield className="w-3.5 h-3.5 text-emerald-600" />
-          Add-on Features Catalog ({addons.length})
-        </button>
-      </div>
-
       {activeTab === "slabs" ? (
         <div className="space-y-4 font-sans" id="slab-settings-view">
           <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200">
