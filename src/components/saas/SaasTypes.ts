@@ -1,0 +1,80 @@
+export interface SaasModule {
+  name: string;
+  code: string;
+  group: string;
+  description: string;
+  status: "ACTIVE" | "DISABLED";
+  isCore: boolean;
+  isBillable: boolean;
+  defaultFeatureAccess: string[];
+  sortOrder: number;
+  tierRequirement?: "ALL" | "GROWTH_PLUS" | "PROFESSIONAL_PLUS" | "ENTERPRISE_ONLY";
+}
+
+export interface SaasFeature {
+  name: string;
+  code: string;
+  moduleCode: string;
+  group: string;
+  description: string;
+  status: "ACTIVE" | "DISABLED";
+  defaultEnabled: boolean;
+}
+
+export interface SubscriptionPlan {
+  name: string;
+  code: string;
+  monthlyPrice: number;
+  yearlyPrice: number;
+  trialDays: number;
+  status: "ACTIVE" | "DISABLED";
+  sortOrder: number;
+}
+
+export interface PlanLimits {
+  projectsLimit: number; // -1 for unlimited
+  layoutsLimit: number;
+  plotsLimit: number;
+  customersLimit: number;
+  usersLimit: number;
+  agentsLimit: number;
+  storageLimitGb: number;
+  documentsLimit: number;
+  dxfFilesLimit: number;
+  marketplaceListingsLimit: number;
+  apiCallsLimit: number;
+  whatsAppMessagesLimit: number;
+  aiCreditsLimit: number;
+}
+
+export interface PlotBillingSlab {
+  id: string;
+  minPlots: number;
+  maxPlots: number;
+  monthlyPrice: number;
+  yearlyPrice: number;
+  status: "ACTIVE" | "DISABLED";
+}
+
+export interface AddonCatalogItem {
+  name: string;
+  code: string;
+  monthlyPrice: number;
+  yearlyPrice: number;
+  status: "ACTIVE" | "DISABLED";
+  description: string;
+}
+
+export interface TenantSubscription {
+  tenantId: string;
+  tenantCode: string;
+  currentPlanCode: string;
+  status: "TRIAL" | "ACTIVE" | "EXPIRED" | "SUSPENDED" | "ARCHIVED";
+  addOnCodes: string[];
+  subscriptionStartDate: string;
+  subscriptionExpiryDate: string;
+  trialExpiryDate: string;
+  renewalDate: string;
+  featureOverrides: Record<string, "ENABLED" | "DISABLED" | "DEFAULT">;
+  limitOverrides: Partial<PlanLimits>;
+}

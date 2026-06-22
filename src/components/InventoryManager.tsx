@@ -133,6 +133,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
   const [filterPlotMinArea, setFilterPlotMinArea] = useState("");
   const [filterPlotMaxArea, setFilterPlotMaxArea] = useState("");
   const [filterPlotRoadWidth, setFilterPlotRoadWidth] = useState("");
+  const [filterPlotLayoutId, setFilterPlotLayoutId] = useState("ALL");
 
   // Selectable row IDs for bulk actions
   const [selectedPlotIds, setSelectedPlotIds] = useState<string[]>([]);
@@ -284,6 +285,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
         status: filterPlotStatus === "ALL" ? "" : filterPlotStatus,
         facing: filterPlotFacing === "ALL" ? "" : filterPlotFacing,
         corner_plot: filterPlotCorner === "ALL" ? "" : (filterPlotCorner === "YES" ? "true" : "false"),
+        layout_id: filterPlotLayoutId === "ALL" ? "" : filterPlotLayoutId,
         road_width_min: filterPlotRoadWidth,
         area_min: filterPlotMinArea,
         area_max: filterPlotMaxArea,
@@ -335,7 +337,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
     if (activeTab === "plots") {
       fetchPlotsPage();
     }
-  }, [activeTab, plotPage, debouncedSearch, filterPlotStatus, filterPlotFacing, filterPlotCorner, filterPlotRoadWidth, filterPlotMinArea, filterPlotMaxArea, plotSortBy, plotSortDir]);
+  }, [activeTab, plotPage, debouncedSearch, filterPlotStatus, filterPlotFacing, filterPlotCorner, filterPlotLayoutId, filterPlotRoadWidth, filterPlotMinArea, filterPlotMaxArea, plotSortBy, plotSortDir]);
 
   // Alert notifier timer helper
   const displaySuccess = (msg: string) => {
@@ -534,13 +536,59 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
     e.preventDefault();
     setErrorMess(null);
     try {
+      if (!formPlot.layout_id) {
+        setErrorMess("Validation Error: Parent Layout subdivision is required.");
+        return;
+      }
+      if (!formPlot.plot_number.trim()) {
+        setErrorMess("Validation Error: Plot Number designation cannot be empty.");
+        return;
+      }
+
+      // 1. Collision check inside same layout
+      const hasCollision = plots.some(
+        (p: any) =>
+          p.layout_id === formPlot.layout_id &&
+          p.plot_number.trim().toLowerCase() === formPlot.plot_number.trim().toLowerCase() &&
+          p.id !== editId
+      );
+      if (hasCollision) {
+        setErrorMess(`Validation Error: A plot with designation/number '${formPlot.plot_number}' already exists in this parent layout subdivision.`);
+        return;
+      }
+
+      // 2. Strict Area/dimensions positive check
+      const areaVal = Number(formPlot.area_value);
+      if (isNaN(areaVal) || areaVal <= 0) {
+        setErrorMess("Validation Error: Plot physical Area size must be a positive numeric value larger than 0.");
+        return;
+      }
+
+      const len = formPlot.length ? Number(formPlot.length) : null;
+      if (len !== null && (isNaN(len) || len <= 0)) {
+        setErrorMess("Validation Error: Physical length must be a positive numeric value higher than 0.");
+        return;
+      }
+
+      const wid = formPlot.width ? Number(formPlot.width) : null;
+      if (wid !== null && (isNaN(wid) || wid <= 0)) {
+        setErrorMess("Validation Error: Physical width must be a positive numeric value higher than 0.");
+        return;
+      }
+
+      const roadWid = formPlot.road_width ? Number(formPlot.road_width) : null;
+      if (roadWid !== null && (isNaN(roadWid) || roadWid < 0)) {
+        setErrorMess("Validation Error: Access road width must be non-negative.");
+        return;
+      }
+
       const parsedDimMeta = tryParseJSON(formPlot.dimensions_metadata);
       const payload = {
         ...formPlot,
-        area_value: Number(formPlot.area_value),
-        length: formPlot.length ? Number(formPlot.length) : null,
-        width: formPlot.width ? Number(formPlot.width) : null,
-        road_width: formPlot.road_width ? Number(formPlot.road_width) : 0,
+        area_value: areaVal,
+        length: len,
+        width: wid,
+        road_width: roadWid || 0,
         dimensions_metadata: parsedDimMeta
       };
 
@@ -1419,7 +1467,20 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                   <Filter className="w-3.5 h-3.5" />
                   <span>Interactive Filtering Parameters</span>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  <div>
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Layout subdivision</label>
+                    <select
+                      value={filterPlotLayoutId}
+                      onChange={(e) => { setFilterPlotLayoutId(e.target.value); setPlotPage(1); }}
+                      className="w-full bg-white border border-slate-200 rounded-lg p-1.5 text-xs text-slate-700 focus:outline-none"
+                    >
+                      <option value="ALL">All Layouts</option>
+                      {lookupLayouts.map(l => (
+                        <option key={l.id} value={l.id}>[{l.code}] {l.name}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div>
                     <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Plot status</label>
                     <select
@@ -1558,6 +1619,21 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                             <td className="px-4 py-3.5 font-mono font-bold text-slate-900">
                               <p>{pl.plot_number}</p>
                               <p className="text-[9px] text-slate-400 font-normal">Layout: {pl.layout_name || pl.layout?.name || "N/A"}</p>
+                              {(() => {
+                                const meta = tryParseJSON(pl.dimensions_metadata, {});
+                                const attrs = Object.entries(meta.plot_attributes || {})
+                                  .filter(([_, val]) => val === true || val === "true" || val === 1);
+                                if (attrs.length === 0) return null;
+                                return (
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {attrs.map(([key]) => (
+                                      <span key={key} className="inline-block px-1 py-[2px] bg-slate-100 border border-slate-200 rounded text-[7.5px] text-slate-600 font-sans tracking-wide font-normal">
+                                        ✨ {key}
+                                      </span>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
                             </td>
                             <td className="px-4 py-3.5 text-right font-mono font-bold text-slate-800">
                               {Number(pl.area_value).toFixed(2)}
@@ -2167,7 +2243,24 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
               </div>
               <div className="grid grid-cols-2 gap-3.5">
                 <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Net Area Value *</label>
+                  <div className="flex items-center justify-between mb-1 mb-0 pb-0">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Net Area Value *</label>
+                    {formPlot.length && formPlot.width && !isNaN(Number(formPlot.length)) && !isNaN(Number(formPlot.width)) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const area = Number(formPlot.length) * Number(formPlot.width);
+                          if (!isNaN(area)) {
+                            setFormPlot(prev => ({ ...prev, area_value: String(area.toFixed(2)) }));
+                          }
+                        }}
+                        className="text-[9px] text-indigo-650 hover:text-indigo-850 font-bold hover:underline transition-colors focus:outline-none"
+                        title="Auto-calculate area from Length * Width"
+                      >
+                        Auto-calc ({Number(formPlot.length) * Number(formPlot.width)})
+                      </button>
+                    )}
+                  </div>
                   <input required type="number" step="any" value={formPlot.area_value} onChange={(e) => setFormPlot({ ...formPlot, area_value: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
                 </div>
                 <div>

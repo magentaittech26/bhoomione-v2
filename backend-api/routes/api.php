@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\v1\ProjectController;
 use App\Http\Controllers\Api\v1\LayoutController;
 use App\Http\Controllers\Api\v1\PlotController;
 use App\Http\Controllers\Api\v1\DxfController;
+use App\Http\Controllers\Api\v1\SaasController;
 use App\Http\Middleware\TenantResolverMiddleware;
 use App\Http\Middleware\PermissionRequirementMiddleware;
 
@@ -182,6 +183,22 @@ Route::prefix('v1')->group(function () {
             'timestamp' => now()->toIso8601String()
         ], 201);
     })->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+
+    // -------------------------------------------------------------------------
+    // DYNAMIC SAAS SUBSCRIPTION PERSISTENCE ENDPOINTS (Phase 1E-A)
+    // -------------------------------------------------------------------------
+    Route::get('/admin/modules', [SaasController::class, 'getModules'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::get('/admin/plans', [SaasController::class, 'getPlans'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::post('/admin/plans', [SaasController::class, 'savePlan'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::get('/admin/addons', [SaasController::class, 'getAddons'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::post('/admin/addons', [SaasController::class, 'saveAddon'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::get('/admin/slabs', [SaasController::class, 'getPlotSlabs'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::post('/admin/slabs', [SaasController::class, 'savePlotSlab'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+
+    Route::get('/admin/tenants/{id}/subscription', [SaasController::class, 'getTenantSubscriptionProfile'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::post('/admin/tenants/{id}/subscription', [SaasController::class, 'assignTenantSubscription'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/tenants/{id}/subscription/lifecycle', [SaasController::class, 'updateLifecycle'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/tenants/{id}/subscription/overrides', [SaasController::class, 'saveOverrides'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
 
     // Tenant-level route checking for tenant-level permission
     Route::get('/tenant/users', function () {

@@ -3,29 +3,24 @@ import api from "../../lib/api.ts";
 import AdminLogin from "../AdminLogin.tsx";
 import { UserProfile } from "../../types/auth.ts";
 import { 
-  ShieldAlert, 
-  Database, 
-  Users, 
-  Activity, 
-  TrendingUp, 
-  Server, 
-  Plus, 
-  Check, 
-  RefreshCw,
-  Globe,
-  Settings,
-  CreditCard,
-  Layers,
-  LogOut,
-  Sliders,
-  Terminal,
-  Clock,
-  AlertTriangle
+  ShieldAlert, Database, Users, Activity, TrendingUp, Server, Plus, Check, RefreshCw, Globe, Settings, CreditCard, Layers, LogOut, Sliders, Terminal, Clock, AlertTriangle, ToggleLeft, ToggleRight, Trash2, Edit3, Shield, Box, Zap, DollarSign, Calendar, SlidersHorizontal, Info, Play, CheckCircle, X
 } from "lucide-react";
+
+// Modular Import
+import { 
+  SaasModule, SaasFeature, SubscriptionPlan, PlanLimits, PlotBillingSlab, AddonCatalogItem, TenantSubscription 
+} from "../saas/SaasTypes.ts";
+import TenantLifecycleDrawer from "../saas/TenantLifecycleDrawer.tsx";
+import ModuleRegistryTab from "../saas/ModuleRegistryTab.tsx";
+import PlanFeatureMatrixTab from "../saas/PlanFeatureMatrixTab.tsx";
+import AddonsBillingTab from "../saas/AddonsBillingTab.tsx";
+import MrrDashboardTab from "../saas/MrrDashboardTab.tsx";
 
 export default function SaaSAdminApp() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
-  const [activeTab, setActiveTab] = useState<"clusters" | "logs" | "revenue" | "settings">("clusters");
+  
+  // Expanded tab selections
+  const [activeTab, setActiveTab] = useState<"clusters" | "plans" | "modules" | "billing" | "revenue" | "logs" | "settings">("clusters");
   
   const [tenants, setTenants] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
@@ -40,15 +35,173 @@ export default function SaaSAdminApp() {
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
 
   const [showAddTenant, setShowAddTenant] = useState(false);
-  const [newTenant, setNewTenant] = useState({ name: "", code: "", plan: "GROWTH", company: "" });
+  const [newTenant, setNewTenant] = useState({ name: "", code: "", plan: "GROWTH" });
+
+  // Selected tenant for sidebar/drawer subscription customizing
+  const [selectedTenantSub, setSelectedTenantSub] = useState<any | null>(null);
+
+  // ==========================================
+  // PHASE 1E - PERSISTENT STATE ENGINE
+  // ==========================================
   
-  const [stats, setStats] = useState({
-    activeTenants: 0,
-    totalPlots: 0,
-    dbConnections: 12,
-    subscriptionRevenue: "$0 / mo"
+  // Module Registry
+  const [modules, setModules] = useState<SaasModule[]>(() => {
+    const l = localStorage.getItem("bhoomi_modules");
+    if (l) return JSON.parse(l);
+    return [
+      { name: "SaaS Admin Core", code: "SAAS_ADMIN", group: "System", description: "Global multi-tenant supervisory console and DNS cluster config.", status: "ACTIVE", isCore: true, isBillable: false, sortOrder: 1 },
+      { name: "Tenant Workspace", code: "TENANT_WORKSPACE", group: "System", description: "Self-service tenant environment routing framework.", status: "ACTIVE", isCore: true, isBillable: false, sortOrder: 2 },
+      { name: "Projects Catalog", code: "PROJECTS", group: "Core Planning", description: "Design, catalog, track, and administer township real estate projects.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 3 },
+      { name: "Layout Subdivisions", code: "LAYOUTS", group: "Core Planning", description: "Phased land parcel plans and sector map zoning layouts.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 4 },
+      { name: "Plot Parcels Registry", code: "PLOTS", group: "Core Planning", description: "Individual tract plots inventory ledger catalog with custom attributes.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 5 },
+      { name: "Customer Management", code: "CUSTOMERS", group: "CRM", description: "All-inclusive lead nurturing, contact profiles, and buyer records.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 6 },
+      { name: "Agent Workspace", code: "AGENTS", group: "CRM", description: "Broker network controls, dynamic agent performance, and metrics.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 7 },
+      { name: "Interactive Map", code: "INTERACTIVE_MAP", group: "Integrations", description: "Realtime SVG CAD mapper with plot reservation visual indicators.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 8 },
+      { name: "DXF Engine Parser", code: "DXF_ENGINE", group: "Integrations", description: "Heavy CAD drawing parser to translate design diagrams into databases.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 9 },
+      { name: "WhatsApp Integrations", code: "WHATSAPP", group: "Integrations", description: "Automated direct trigger alerts on user reservation checkouts.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 10 }
+    ];
   });
 
+  // Feature Catalog
+  const [features, setFeatures] = useState<SaasFeature[]>(() => {
+    const l = localStorage.getItem("bhoomi_features");
+    if (l) return JSON.parse(l);
+    return [
+      { name: "Township projects catalog", code: "PROJECTS", moduleCode: "PROJECTS", group: "Core Planning", description: "Create and scale township planning models.", status: "ACTIVE", defaultEnabled: true },
+      { name: "Subdivision planning tool", code: "LAYOUTS", moduleCode: "LAYOUTS", group: "Core Planning", description: "Zoned sector plans and division lines.", status: "ACTIVE", defaultEnabled: true },
+      { name: "Physical lot registers", code: "PLOTS", moduleCode: "PLOTS", group: "Core Planning", description: "Assign coordinates, lot numbers and PLC rates.", status: "ACTIVE", defaultEnabled: true },
+      { name: "Buyer records logs", code: "CUSTOMERS", moduleCode: "CUSTOMERS", group: "CRM", description: "Manage customer profiles and reservation ledgers.", status: "ACTIVE", defaultEnabled: true },
+      { name: "Broker agent scorecard", code: "AGENTS", moduleCode: "AGENTS", group: "CRM", description: "Keep logs on external broker sales targets and payouts.", status: "ACTIVE", defaultEnabled: true },
+      { name: "DXF CAD Drawing upload", code: "DXF_UPLOAD", moduleCode: "DXF_ENGINE", group: "Integrations", description: "Render canvas lots directly out of dynamic .dxf blueprints.", status: "ACTIVE", defaultEnabled: true },
+      { name: "Interactive property layouts", code: "MAP_INTERACTION", moduleCode: "INTERACTIVE_MAP", group: "Integrations", description: "Visual parcel lockups on mapping widgets.", status: "ACTIVE", defaultEnabled: true },
+      { name: "Automated reservation alerts", code: "WHATSAPP_TRIGGERS", moduleCode: "WHATSAPP", group: "Integrations", description: "Automatic WhatsApp broadcast warnings on payment locks.", status: "ACTIVE", defaultEnabled: true },
+      { name: "Custom API client keys", code: "API_ACCESS", moduleCode: "SAAS_ADMIN", group: "System", description: "Export telemetry datasets to external ERP software.", status: "ACTIVE", defaultEnabled: true }
+    ];
+  });
+
+  // Subscription Plans
+  const [plans, setPlans] = useState<SubscriptionPlan[]>(() => {
+    const l = localStorage.getItem("bhoomi_plans");
+    if (l) return JSON.parse(l);
+    return [
+      { name: "Starter Package", code: "STARTER", monthlyPrice: 99, yearlyPrice: 990, trialDays: 14, status: "ACTIVE", sortOrder: 1 },
+      { name: "Growth Engine", code: "GROWTH", monthlyPrice: 249, yearlyPrice: 2490, trialDays: 14, status: "ACTIVE", sortOrder: 2 },
+      { name: "Professional Plus", code: "PROFESSIONAL", monthlyPrice: 499, yearlyPrice: 4990, trialDays: 30, status: "ACTIVE", sortOrder: 3 },
+      { name: "Enterprise Custom", code: "ENTERPRISE", monthlyPrice: 999, yearlyPrice: 9990, trialDays: 30, status: "ACTIVE", sortOrder: 4 }
+    ];
+  });
+
+  // Plan general Baseline Limits
+  const [planLimits, setPlanLimits] = useState<Record<string, PlanLimits>>(() => {
+    const l = localStorage.getItem("bhoomi_plan_limits");
+    if (l) return JSON.parse(l);
+    return {
+      STARTER: { projectsLimit: 3, layoutsLimit: 5, plotsLimit: 150, customersLimit: 300, usersLimit: 5, agentsLimit: 2, storageLimitGb: 10, documentsLimit: 50, dxfFilesLimit: 1, marketplaceListingsLimit: 2, apiCallsLimit: 1000, whatsAppMessagesLimit: 100, aiCreditsLimit: 50 },
+      GROWTH: { projectsLimit: 10, layoutsLimit: 20, plotsLimit: 500, customersLimit: 1000, usersLimit: 15, agentsLimit: 5, storageLimitGb: 25, documentsLimit: 250, dxfFilesLimit: 5, marketplaceListingsLimit: 10, apiCallsLimit: 5000, whatsAppMessagesLimit: 500, aiCreditsLimit: 150 },
+      PROFESSIONAL: { projectsLimit: 30, layoutsLimit: 60, plotsLimit: 2000, customersLimit: 5000, usersLimit: 50, agentsLimit: 20, storageLimitGb: 100, documentsLimit: 1000, dxfFilesLimit: 20, marketplaceListingsLimit: 50, apiCallsLimit: 25000, whatsAppMessagesLimit: 2000, aiCreditsLimit: 500 },
+      ENTERPRISE: { projectsLimit: 100, layoutsLimit: 200, plotsLimit: 10000, customersLimit: 20000, usersLimit: 200, agentsLimit: 100, storageLimitGb: 500, documentsLimit: 5000, dxfFilesLimit: 100, marketplaceListingsLimit: 200, apiCallsLimit: 100000, whatsAppMessagesLimit: 10000, aiCreditsLimit: 2000 }
+    };
+  });
+
+  // Plot Slabs
+  const [slabs, setSlabs] = useState<PlotBillingSlab[]>(() => {
+    const l = localStorage.getItem("bhoomi_slabs");
+    if (l) return JSON.parse(l);
+    return [
+      { id: "slab_1", minPlots: 1, maxPlots: 50, monthlyPrice: 15, yearlyPrice: 150, status: "ACTIVE" },
+      { id: "slab_2", minPlots: 51, maxPlots: 200, monthlyPrice: 40, yearlyPrice: 400, status: "ACTIVE" },
+      { id: "slab_3", minPlots: 201, maxPlots: 500, monthlyPrice: 75, yearlyPrice: 750, status: "ACTIVE" },
+      { id: "slab_4", minPlots: 501, maxPlots: 99999, monthlyPrice: 150, yearlyPrice: 1500, status: "ACTIVE" }
+    ];
+  });
+
+  // Add-ons
+  const [addons, setAddons] = useState<AddonCatalogItem[]>(() => {
+    const l = localStorage.getItem("bhoomi_addons");
+    if (l) return JSON.parse(l);
+    return [
+      { name: "Interactive Township Map", code: "INTERACTIVE_MAP_ADDON", monthlyPrice: 35, yearlyPrice: 350, status: "ACTIVE", description: "Enables customers to pick and book township plot positions on customized canvas overlays." },
+      { name: "Heavy DXF Upload Parser", code: "DXF_ENGINE_ADDON", monthlyPrice: 50, yearlyPrice: 500, status: "ACTIVE", description: "Batch load AutoCAD .dxf configurations dynamically straight to individual tables." },
+      { name: "WhatsApp checkout triggers", code: "WHATSAPP_ADDON", monthlyPrice: 20, yearlyPrice: 200, status: "ACTIVE", description: "Configure custom template alerts notifying buyers about broker updates." },
+      { name: "Custom Domain Mapping SSL", code: "CUSTOM_DOMAIN_ADDON", monthlyPrice: 15, yearlyPrice: 150, status: "ACTIVE", description: "Proxy workspace containers onto localized web addresses securely." }
+    ];
+  });
+
+  // Plan Feature Matrix Cells
+  const [matrix, setMatrix] = useState<Record<string, Record<string, "ENABLED" | "DISABLED" | "ADDON" | "ENTERPRISE">>>(() => {
+    const l = localStorage.getItem("bhoomi_matrix");
+    if (l) return JSON.parse(l);
+    return {
+      STARTER: { PROJECTS: "ENABLED", LAYOUTS: "ENABLED", PLOTS: "ENABLED", CUSTOMERS: "ENABLED", AGENTS: "DISABLED", DXF_UPLOAD: "ADDON", MAP_INTERACTION: "DISABLED", WHATSAPP_TRIGGERS: "DISABLED", API_ACCESS: "DISABLED" },
+      GROWTH: { PROJECTS: "ENABLED", LAYOUTS: "ENABLED", PLOTS: "ENABLED", CUSTOMERS: "ENABLED", AGENTS: "ENABLED", DXF_UPLOAD: "ENABLED", MAP_INTERACTION: "ADDON", WHATSAPP_TRIGGERS: "ADDON", API_ACCESS: "DISABLED" },
+      PROFESSIONAL: { PROJECTS: "ENABLED", LAYOUTS: "ENABLED", PLOTS: "ENABLED", CUSTOMERS: "ENABLED", AGENTS: "ENABLED", DXF_UPLOAD: "ENABLED", MAP_INTERACTION: "ENABLED", WHATSAPP_TRIGGERS: "ENABLED", API_ACCESS: "ENABLED" },
+      ENTERPRISE: { PROJECTS: "ENABLED", LAYOUTS: "ENABLED", PLOTS: "ENABLED", CUSTOMERS: "ENABLED", AGENTS: "ENABLED", DXF_UPLOAD: "ENABLED", MAP_INTERACTION: "ENABLED", WHATSAPP_TRIGGERS: "ENABLED", API_ACCESS: "ENABLED" }
+    };
+  });
+
+  // Tenant Custom Subscriptions (bridges baseline plans & dynamic overrides catalog)
+  const [tenantSubscriptions, setTenantSubscriptions] = useState<Record<string, TenantSubscription>>(() => {
+    const l = localStorage.getItem("bhoomi_tenant_subs");
+    if (l) return JSON.parse(l);
+    return {};
+  });
+
+  // State persistence synchronization
+  useEffect(() => { localStorage.setItem("bhoomi_modules", JSON.stringify(modules)); }, [modules]);
+  useEffect(() => { localStorage.setItem("bhoomi_features", JSON.stringify(features)); }, [features]);
+  useEffect(() => { localStorage.setItem("bhoomi_plans", JSON.stringify(plans)); }, [plans]);
+  useEffect(() => { localStorage.setItem("bhoomi_plan_limits", JSON.stringify(planLimits)); }, [planLimits]);
+  useEffect(() => { localStorage.setItem("bhoomi_slabs", JSON.stringify(slabs)); }, [slabs]);
+  useEffect(() => { localStorage.setItem("bhoomi_addons", JSON.stringify(addons)); }, [addons]);
+  useEffect(() => { localStorage.setItem("bhoomi_matrix", JSON.stringify(matrix)); }, [matrix]);
+  useEffect(() => { localStorage.setItem("bhoomi_tenant_subs", JSON.stringify(tenantSubscriptions)); }, [tenantSubscriptions]);
+
+  // Sync basic loaded Tenants list with deep subscriptions map
+  useEffect(() => {
+    if (tenants.length > 0) {
+      const updatedSubs = { ...tenantSubscriptions };
+      let updated = false;
+      
+      tenants.forEach(t => {
+        if (!updatedSubs[t.code]) {
+          updatedSubs[t.code] = {
+            tenantId: t.id || `tenant_${t.code}`,
+            tenantCode: t.code,
+            currentPlanCode: t.plan || "GROWTH",
+            status: (t.status === "ACTIVE" ? "ACTIVE" : "SUSPENDED") as any,
+            addOnCodes: [],
+            subscriptionStartDate: new Date().toISOString().split('T')[0],
+            subscriptionExpiryDate: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().split('T')[0],
+            trialExpiryDate: new Date(Date.now() + 14 * 24 * 3600 * 1000).toISOString().split('T')[0],
+            renewalDate: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().split('T')[0],
+            featureOverrides: {},
+            limitOverrides: {}
+          };
+          updated = true;
+        }
+      });
+
+      if (updated) {
+        setTenantSubscriptions(updatedSubs);
+      }
+    }
+  }, [tenants]);
+
+  // Sync back state properties from subscriptions overrides to general tenants list
+  const getSubbedPlanForTenant = (tenantCode: string, fallback: string) => {
+    const sub = tenantSubscriptions[tenantCode];
+    return sub ? sub.currentPlanCode : fallback;
+  };
+
+  const getSubbedStatusForTenant = (tenantCode: string, fallback: string) => {
+    const sub = tenantSubscriptions[tenantCode];
+    return sub ? sub.status : fallback;
+  };
+
+  // ==========================================
+  // DISCOVERY SERVICES SYNC LOGIC
+  // ==========================================
+  
   useEffect(() => {
     const user = api.getCurrentUser();
     if (user && user.role === "admin") {
@@ -62,26 +215,6 @@ export default function SaaSAdminApp() {
     try {
       const data = await api.fetchAdminTenants();
       setTenants(data);
-      
-      // Calculate stats based on real API response
-      const activeCount = data.filter(t => t.status === "ACTIVE").length;
-      const totalPlotsCount = data.reduce((acc, curr) => acc + (curr.plots || 0), 0);
-      
-      let mrr = 0;
-      data.forEach(t => {
-        if (t.status === "ACTIVE") {
-          if (t.plan === "STARTER") mrr += 99;
-          else if (t.plan === "PROFESSIONAL") mrr += 499;
-          else mrr += 249; // Default GROWTH
-        }
-      });
-
-      setStats(prev => ({
-        ...prev,
-        activeTenants: data.length,
-        totalPlots: totalPlotsCount,
-        subscriptionRevenue: `$${mrr.toLocaleString()} / mo`
-      }));
     } catch (err: any) {
       setTenantsError(err.message || "Failed to load tenant clusters from database server.");
     } finally {
@@ -117,7 +250,7 @@ export default function SaaSAdminApp() {
     try {
       await api.logout();
     } catch (e) {
-      // safe logout
+      // safe bypass
     }
     setCurrentUser(null);
     setTenants([]);
@@ -144,15 +277,34 @@ export default function SaaSAdminApp() {
       if (res && res.tenant) {
         setSubmitSuccess(`Tenant namespace '${payload.code}' was successfully provisioned in the database!`);
         
-        // Reload all metrics & lists immediately to reflect changes
+        // Register default Subscription metadata as well
+        const freshSub: TenantSubscription = {
+          tenantId: res.tenant.id || `tenant_${payload.code}`,
+          tenantCode: payload.code,
+          currentPlanCode: payload.plan,
+          status: "ACTIVE",
+          addOnCodes: [],
+          subscriptionStartDate: new Date().toISOString().split('T')[0],
+          subscriptionExpiryDate: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().split('T')[0],
+          trialExpiryDate: new Date(Date.now() + 14 * 24 * 3600 * 1000).toISOString().split('T')[0],
+          renewalDate: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().split('T')[0],
+          featureOverrides: {},
+          limitOverrides: {}
+        };
+
+        const updatedSubs = { ...tenantSubscriptions };
+        updatedSubs[payload.code] = freshSub;
+        setTenantSubscriptions(updatedSubs);
+
+        // Reload lists to coordinate mapping
         await loadTenants();
         await loadAuditLogs();
 
         setTimeout(() => {
           setShowAddTenant(false);
-          setNewTenant({ name: "", code: "", plan: "GROWTH", company: "" });
+          setNewTenant({ name: "", code: "", plan: "GROWTH" });
           setSubmitSuccess(null);
-        }, 1500);
+        }, 1200);
       } else {
         throw new Error("Unexpected response structure from tenant provision authority.");
       }
@@ -169,28 +321,32 @@ export default function SaaSAdminApp() {
         <div className="w-full max-w-md">
           <AdminLogin 
             onLoginSuccess={handleLoginSuccess}
-            onForgotPassword={() => alert("Simulation module reset request. Use standard admin parameters to sign in.")}
+            onForgotPassword={() => alert("Simulation module reset request. Use standard admin credentials to sign in.")}
           />
         </div>
       </div>
     );
   }
 
+  // Retrieve selected tenant subscription info
+  const selectedTenantSubscription = selectedTenantSub ? tenantSubscriptions[selectedTenantSub.code] : null;
+
   return (
-    <div className="bg-slate-50 min-h-screen text-slate-800 font-sans" id="saas-admin-root">
+    <div className="bg-slate-50 min-h-screen text-slate-800 font-sans" id="saas-admin-supervision-suite">
       <div className="max-w-7xl mx-auto p-6 space-y-6">
-        {/* SaaS Admin Hero Header and Logout */}
-        <div className="bg-slate-900 text-white rounded-2xl p-6 lg:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 shadow-md" id="saas-admin-header">
+        
+        {/* Header Block */}
+        <div className="bg-slate-905 bg-slate-900 text-white rounded-2xl p-6 lg:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 shadow-sm border border-slate-950" id="saas-admin-header">
           <div className="space-y-2">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-xs font-mono">
-              <ShieldAlert className="w-3.5 h-3.5" />
-              <span>Supervisor: {currentUser.name} (Global Administrator)</span>
+              <Shield className="w-3.5 h-3.5" />
+              <span>Admin Profile: {currentUser.name} (Platform Administrator)</span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white">
-              SaaS Control Center
+            <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white leading-none">
+              BhoomiOne SaaS Control Panel
             </h1>
             <p className="text-xs text-slate-400 max-w-xl">
-              Platform administration workspace. Control database namespaces, monitor audit metrics, manage active tenant subscriptions and configure gateway limits.
+              Platform administration dashboard. Monitor and modify sub-modules, feature matrix mappings, capacity pricing slab nodes, and active overrides.
             </p>
           </div>
 
@@ -201,15 +357,15 @@ export default function SaaSAdminApp() {
                 setSubmitSuccess(null);
                 setShowAddTenant(true);
               }}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-2 transition-all cursor-pointer shadow-sm"
+              className="bg-indigo-650 hover:bg-indigo-750 text-white text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
               id="provision-tenant-init-btn"
             >
               <Plus className="w-4 h-4" />
-              <span>Provision Tenant</span>
+              <span>Provision Workspace</span>
             </button>
             <button 
               onClick={handleLogout}
-              className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-2 transition-all cursor-pointer shadow-sm border border-slate-700"
+              className="bg-slate-800 hover:bg-slate-705 text-slate-300 hover:text-white text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer shadow-sm border border-slate-700"
               id="saas-admin-logout-btn"
             >
               <LogOut className="w-4 h-4" />
@@ -218,201 +374,218 @@ export default function SaaSAdminApp() {
           </div>
         </div>
 
-        {/* Tab-driven Navigation Menu Structure */}
-        <div className="flex border-b border-slate-200" id="saas-admin-navigation">
-          <button
-            onClick={() => setActiveTab("clusters")}
-            className={`px-4 py-2.5 text-xs font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
-              activeTab === "clusters" 
-                ? "border-slate-900 text-slate-900 bg-slate-100/50 rounded-t-lg" 
-                : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-50"
-            }`}
-          >
-            <Globe className="w-4 h-4" />
-            Active Subdomain Clusters
-          </button>
-          <button
-            onClick={() => setActiveTab("logs")}
-            className={`px-4 py-2.5 text-xs font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
-              activeTab === "logs" 
-                ? "border-slate-900 text-slate-900 bg-slate-100/50 rounded-t-lg" 
-                : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-50"
-            }`}
-          >
-            <Activity className="w-4 h-4" />
-            Ingress Audit Trails
-          </button>
-          <button
-            onClick={() => setActiveTab("revenue")}
-            className={`px-4 py-2.5 text-xs font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
-              activeTab === "revenue" 
-                ? "border-slate-900 text-slate-900 bg-slate-100/50 rounded-t-lg" 
-                : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-50"
-            }`}
-          >
-            <CreditCard className="w-4 h-4" />
-            License Billing / MRR
-          </button>
-          <button
-            onClick={() => setActiveTab("settings")}
-            className={`px-4 py-2.5 text-xs font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
-              activeTab === "settings" 
-                ? "border-slate-900 text-slate-900 bg-slate-100/50 rounded-t-lg" 
-                : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-50"
-            }`}
-          >
-            <Settings className="w-4 h-4" />
-            Global Parameters
-          </button>
+        {/* Dynamic Navigation Tabs Menu */}
+        <div className="flex border-b border-slate-200 overflow-x-auto gap-1" id="saas-admin-tabpanel">
+          {[
+            { id: "clusters", label: "Clusters", icon: Globe },
+            { id: "plans", label: "Plan Matrix & Limits", icon: SlidersHorizontal },
+            { id: "modules", label: "Module Registries", icon: Box },
+            { id: "billing", label: "Rates & Slabs", icon: Layers },
+            { id: "revenue", label: "MRR Analytics", icon: TrendingUp },
+            { id: "logs", label: "Network Ingress Streams", icon: Activity },
+            { id: "settings", label: "Global Params", icon: Settings }
+          ].map(t => {
+            const Icon = t.icon;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setActiveTab(t.id as any)}
+                className={`px-4 py-2.5 text-xs font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+                  activeTab === t.id 
+                    ? "border-indigo-600 text-indigo-700 bg-white font-extrabold rounded-t-lg shadow-2xs" 
+                    : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-100/40"
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                {t.label}
+              </button>
+            );
+          })}
         </div>
 
-        {/* Viewport Render Block based on current tab state */}
+        {/* Viewport content */}
+        
         {activeTab === "clusters" && (
           <div className="space-y-6" id="saas-tab-clusters">
-            {/* Stats Overview */}
+            
+            {/* Real stats row synced with persistent data calculations */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
               <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-1">
-                <p className="text-[10px] uppercase text-slate-400 font-bold tracking-wider">Tenant Namespaces</p>
+                <p className="text-[10px] uppercase text-slate-400 font-extrabold tracking-wider">Workspace Clusters</p>
                 <div className="flex items-center justify-between">
-                  <p className="text-2xl font-bold text-slate-900">{stats.activeTenants}</p>
+                  <p className="text-2xl font-bold text-slate-900">{tenants.length}</p>
                   <Users className="w-5 h-5 text-indigo-600" />
                 </div>
-                <p className="text-[10px] text-slate-500">Live matched DNS records</p>
+                <p className="text-[10px] text-slate-500">Live matched domain networks</p>
               </div>
+
               <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-1">
-                <p className="text-[10px] uppercase text-slate-400 font-bold tracking-wider">Physical Land Lots</p>
+                <p className="text-[10px] uppercase text-slate-400 font-extrabold tracking-wider">Dynamic Subscribed Add-ons</p>
                 <div className="flex items-center justify-between">
-                  <p className="text-2xl font-bold text-slate-900">{stats.totalPlots}</p>
-                  <Layers className="w-5 h-5 text-emerald-600" />
+                  <p className="text-2xl font-bold text-slate-905">
+                    {Object.values(tenantSubscriptions).reduce((sum, s) => sum + s.addOnCodes.length, 0)}
+                  </p>
+                  <Shield className="w-5 h-5 text-emerald-600" />
                 </div>
-                <p className="text-[10px] text-slate-500">Managed in separate DB tables</p>
+                <p className="text-[10px] text-slate-500">Self-service integrations assigned</p>
               </div>
+
               <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-1">
-                <p className="text-[10px] uppercase text-slate-400 font-bold tracking-wider">PostgreSQL Connection Pool</p>
+                <p className="text-[10px] uppercase text-slate-400 font-extrabold tracking-wider">Current Licensing MRR</p>
                 <div className="flex items-center justify-between">
-                  <p className="text-2xl font-bold text-slate-900">{stats.dbConnections}</p>
-                  <Database className="w-5 h-5 text-amber-600" />
+                  <p className="text-2xl font-bold text-slate-900">
+                    ${(() => {
+                      let total = 0;
+                      Object.values(tenantSubscriptions).forEach(sub => {
+                        if (sub.status === "ACTIVE" || sub.status === "TRIAL") {
+                          const plan = plans.find(p => p.code === sub.currentPlanCode);
+                          if (plan) total += plan.monthlyPrice;
+                          sub.addOnCodes.forEach(acode => {
+                            const add = addons.find(a => a.code === acode);
+                            if (add) total += add.monthlyPrice;
+                          });
+                        }
+                      });
+                      return total.toLocaleString();
+                    })()} / mo
+                  </p>
+                  <TrendingUp className="w-5 h-5 text-indigo-600" />
                 </div>
-                <p className="text-[10px] text-slate-500">Active physical connections</p>
+                <p className="text-[10px] text-slate-500">Aggregate platform subscription receipts</p>
               </div>
             </div>
 
-            {/* List */}
+            {/* Clusters table list */}
             <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-xs">
               <div className="flex justify-between items-center">
                 <div>
-                  <h2 className="text-base font-bold text-slate-900">Tenant Clusters</h2>
+                  <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Tenant Workspace Clusters</h2>
                   <p className="text-xs text-slate-500 mt-1">
-                    Active isolated developer schemes. Authenticated administrative users are permitted to manage parameters.
+                    Control workspace configurations, customize usage limits, configure overrides or change subscription packages live.
                   </p>
                 </div>
                 <button 
                   onClick={loadTenants}
                   disabled={loadingTenants}
                   className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-                  id="re-fetch-tenants-btn"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${loadingTenants ? 'animate-spin' : ''}`} />
-                  Refresh Matrix
+                  Refresh
                 </button>
               </div>
 
-              {/* Error State */}
               {tenantsError && (
-                <div className="p-4 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-700 text-xs shadow-sm">
+                <div className="p-4 bg-red-50 border border-red-150 rounded-xl flex items-center gap-3 text-red-750 text-xs">
                   <AlertTriangle className="w-5 h-5 text-red-500 shrink-0" />
                   <div className="flex-1">
-                    <p className="font-semibold">Failed to load tenant directory</p>
-                    <p className="text-red-650 mt-0.5">{tenantsError}</p>
+                    <p className="font-semibold">Failed to fetch subdomain database records</p>
+                    <p className="text-[11px] text-slate-500">{tenantsError}</p>
                   </div>
                   <button onClick={loadTenants} className="bg-red-100 hover:bg-red-200 text-red-800 font-bold px-3 py-1.5 rounded-lg">
-                    Retry Sync
+                    Retry Synchronization
                   </button>
                 </div>
               )}
 
-              {/* Loading State Skeleton */}
               {loadingTenants && (
                 <div className="space-y-3 py-4 animate-pulse">
                   <div className="h-8 bg-slate-100 rounded-lg w-full" />
                   <div className="h-10 bg-slate-50 rounded-lg w-full" />
                   <div className="h-10 bg-slate-50 rounded-lg w-full" />
-                  <div className="h-10 bg-slate-50 rounded-lg w-full" />
                 </div>
               )}
 
-              {/* Empty/No Data State */}
               {!loadingTenants && !tenantsError && tenants.length === 0 && (
-                <div className="py-12 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50 space-y-3">
-                  <div className="p-3 bg-slate-100 rounded-full w-fit mx-auto text-slate-400">
-                    <Globe className="w-6 h-6" />
-                  </div>
-                  <h3 className="text-sm font-semibold text-slate-900">No tenant registry entries found</h3>
-                  <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                    Global database registry returned an empty cluster matrix. Click "Provision Tenant" to configure a new environment.
-                  </p>
-                  <button 
-                    onClick={() => {
-                      setSubmitError(null);
-                      setSubmitSuccess(null);
-                      setShowAddTenant(true);
-                    }}
-                    className="bg-slate-900 text-white hover:bg-slate-800 text-xs font-bold px-4 py-2 rounded-lg"
-                  >
-                    Provision First Tenant
-                  </button>
+                <div className="py-12 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50 space-y-3 font-sans">
+                  <Globe className="w-6 h-6 text-slate-400 mx-auto" />
+                  <h3 className="text-sm font-semibold text-slate-900">No active tenant databases resolved</h3>
+                  <p className="text-xs text-slate-500">Run Provision Workspace to set up database schemas.</p>
                 </div>
               )}
 
-              {/* Real Table list */}
+              {/* Dynamic synchronized clusters list */}
               {!loadingTenants && !tenantsError && tenants.length > 0 && (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-xs text-left text-slate-600">
+                  <table className="w-full text-xs text-left text-slate-650">
                     <thead className="bg-slate-50 text-slate-400 font-bold text-[10px] uppercase">
                       <tr>
-                        <th className="px-4 py-3">Tenant Name / Label</th>
-                        <th className="px-4 py-3">Inbound Subdomain Mapping</th>
-                        <th className="px-4 py-3 text-center">License Level</th>
-                        <th className="px-4 py-3 text-center">Physical Plots</th>
-                        <th className="px-4 py-3 text-center">SQL Footprint</th>
-                        <th className="px-4 py-3 text-right">Cluster State</th>
+                        <th className="px-5 py-3">Tenant Name & Workspace</th>
+                        <th className="px-5 py-3">Inbound DNS Mapping</th>
+                        <th className="px-5 py-3 text-center">Active Add-ons</th>
+                        <th className="px-5 py-3 text-center">Active Price Tier</th>
+                        <th className="px-5 py-3 text-center">Calculated MRR</th>
+                        <th className="px-5 py-3 text-center">Workspace Status</th>
+                        <th className="px-5 py-3 text-right">Licensing Control</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {tenants.map(t => (
-                        <tr key={t.id} className="hover:bg-slate-50/50">
-                          <td className="px-4 py-3 font-semibold text-slate-900">
-                            <div>
-                              <p className="text-sm font-semibold text-slate-950">{t.name}</p>
-                              <p className="text-[10px] text-indigo-600 font-mono mt-0.5">namespace: {t.code}</p>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="space-y-0.5 font-mono text-[10px]">
-                              <p className="text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded w-fit select-all">{t.domain || `${t.code}.bhoomione.in`}</p>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className="bg-amber-50 text-amber-800 px-2.5 py-0.5 rounded text-[10px] font-bold border border-amber-100">
-                              {t.plan}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-center font-mono font-semibold text-slate-700">
-                            {t.plots}
-                          </td>
-                          <td className="px-4 py-3 text-center font-mono text-slate-500">{t.dbSize || "14.2 MB"}</td>
-                          <td className="px-4 py-3 text-right">
-                            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
-                              t.status === "ACTIVE" 
-                                ? "bg-emerald-50 text-emerald-800 border border-emerald-150" 
-                                : "bg-red-50 text-red-800 border border-red-150"
-                            }`}>
-                              <div className={`w-1.5 h-1.5 rounded-full ${t.status === "ACTIVE" ? "bg-emerald-500" : "bg-red-500"}`} />
-                              {t.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                      {tenants.map(t => {
+                        const currentPlan = getSubbedPlanForTenant(t.code, t.plan || "GROWTH");
+                        const sub = tenantSubscriptions[t.code];
+                        const countAddons = sub ? sub.addOnCodes.length : 0;
+                        const finalStatus = getSubbedStatusForTenant(t.code, t.status || "ACTIVE");
+
+                        // Addon contribution rate
+                        let totalCost = 0;
+                        const planObj = plans.find(p => p.code === currentPlan);
+                        if (planObj) totalCost += planObj.monthlyPrice;
+                        if (sub) {
+                          sub.addOnCodes.forEach(code => {
+                            const add = addons.find(a => a.code === code);
+                            if (add) totalCost += add.monthlyPrice;
+                          });
+                        }
+
+                        return (
+                          <tr key={t.id} className="hover:bg-slate-50/50 font-sans">
+                            <td className="px-5 py-4">
+                              <div>
+                                <p className="text-xs font-bold text-slate-950">{t.name}</p>
+                                <p className="text-[10px] text-indigo-600 font-semibold font-mono uppercase mt-0.5">ns: {t.code}</p>
+                              </div>
+                            </td>
+                            <td className="px-5 py-4 text-[11px] font-mono">
+                              <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-150 select-all">
+                                {t.code}.bhoomione.in
+                              </span>
+                            </td>
+                            <td className="px-5 py-4 text-center">
+                              <span className={`inline-block px-1.5 py-0.5 rounded text-[9.5px] font-bold ${
+                                countAddons > 0 ? "bg-emerald-50 text-emerald-805 border" : "bg-slate-50 text-slate-400"
+                              }`}>
+                                {countAddons > 0 ? `✓ ${countAddons} Add-on` : "None"}
+                              </span>
+                            </td>
+                            <td className="px-5 py-4 text-center font-bold">
+                              <span className="bg-slate-900 text-white font-mono rounded px-1.5 py-0.5 text-[10px] border">
+                                {currentPlan}
+                              </span>
+                            </td>
+                            <td className="px-5 py-4 text-center font-mono font-extrabold text-emerald-705">
+                              ${totalCost}/mo
+                            </td>
+                            <td className="px-5 py-4 text-center">
+                              <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
+                                finalStatus === "ACTIVE" ? "bg-emerald-50 text-emerald-805 border border-emerald-150" :
+                                finalStatus === "TRIAL" ? "bg-indigo-50 text-indigo-805 border border-indigo-150" :
+                                "bg-red-50 text-red-805 border border-red-150"
+                              }`}>
+                                <div className={`w-1.5 h-1.5 rounded-full ${finalStatus === "ACTIVE" || finalStatus === "TRIAL" ? "bg-emerald-505 bg-emerald-500" : "bg-red-500"}`} />
+                                {finalStatus}
+                              </span>
+                            </td>
+                            <td className="px-5 py-4 text-right">
+                              <button
+                                onClick={() => setSelectedTenantSub(t)}
+                                className="bg-slate-950 hover:bg-slate-800 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 justify-end ml-auto transition-all cursor-pointer border border-transparent shadow-2xs"
+                              >
+                                <SlidersHorizontal className="w-3.5 h-3.5" />
+                                Custom Sub
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -421,68 +594,141 @@ export default function SaaSAdminApp() {
           </div>
         )}
 
+        {/* Phase 1E Pricing plans & layout grids mapping configuration */}
+        {activeTab === "plans" && (
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs animate-fadeIn">
+            <PlanFeatureMatrixTab 
+              plans={plans}
+              features={features}
+              planLimits={planLimits}
+              matrix={matrix}
+              onAddPlan={(newPlanObj, limits, matrixSettings) => {
+                setPlans([...plans, newPlanObj]);
+                const nextLimits = { ...planLimits };
+                nextLimits[newPlanObj.code] = limits;
+                setPlanLimits(nextLimits);
+
+                const nextMatrix = { ...matrix };
+                nextMatrix[newPlanObj.code] = matrixSettings;
+                setMatrix(nextMatrix);
+              }}
+              onUpdatePlan={(code, updates) => {
+                setPlans(plans.map(p => p.code === code ? { ...p, ...updates } : p));
+              }}
+              onUpdatePlanLimit={(planCode, limitKey, value) => {
+                const next = { ...planLimits };
+                if (!next[planCode]) next[planCode] = {} as any;
+                next[planCode][limitKey] = value;
+                setPlanLimits(next);
+              }}
+              onUpdateMatrixCell={(planCode, featCode, value) => {
+                const next = { ...matrix };
+                if (!next[planCode]) next[planCode] = {};
+                next[planCode][featCode] = value;
+                setMatrix(next);
+              }}
+            />
+          </div>
+        )}
+
+        {/* Phase 1E Module & Features registries directory */}
+        {activeTab === "modules" && (
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs animate-fadeIn">
+            <ModuleRegistryTab 
+              modules={modules}
+              features={features}
+              onAddModule={(m) => setModules([...modules, m])}
+              onUpdateModule={(code, updates) => setModules(modules.map(m => m.code === code ? { ...m, ...updates } : m))}
+              onAddFeature={(f) => setFeatures([...features, f])}
+              onUpdateFeature={(code, updates) => setFeatures(features.map(f => f.code === code ? { ...f, ...updates } : f))}
+            />
+          </div>
+        )}
+
+        {/* Phase 1E Plot volume billing slabs & micro services addons */}
+        {activeTab === "billing" && (
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs animate-fadeIn font-sans">
+            <AddonsBillingTab 
+              slabs={slabs}
+              addons={addons}
+              onAddSlab={(s) => setSlabs([...slabs, s])}
+              onUpdateSlab={(id, updates) => setSlabs(slabs.map(s => s.id === id ? { ...s, ...updates } : s))}
+              onDeleteSlab={(id) => setSlabs(slabs.filter(s => s.id !== id))}
+              onAddAddon={(a) => setAddons([...addons, a])}
+              onUpdateAddon={(code, updates) => setAddons(addons.map(a => a.code === code ? { ...a, ...updates } : a))}
+            />
+          </div>
+        )}
+
+        {/* Phase 1E Real-time aggregated supercharged MRR Analytics */}
+        {activeTab === "revenue" && (
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs animate-fadeIn font-sans">
+            <div className="border-b border-slate-100 pb-3 mb-5">
+              <h2 className="text-sm font-bold text-slate-900 uppercase">Enterprise Revenue Analytics</h2>
+              <p className="text-xs text-slate-500 mt-1">Real-time analytical graphs, billing projections and workspace MRR multipliers.</p>
+            </div>
+            
+            <MrrDashboardTab 
+              tenants={tenants}
+              subscriptions={Object.values(tenantSubscriptions)}
+              plans={plans}
+              addons={addons}
+            />
+          </div>
+        )}
+
+        {/* Original Ingress Trail Stream Telemetry */}
         {activeTab === "logs" && (
           <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-xs" id="saas-tab-logs">
             <div className="flex justify-between items-center pb-3 border-b border-slate-150">
               <div>
-                <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <Terminal className="w-5 h-5 text-slate-800" />
-                  Telemetry Handshake Auditing
-                </h2>
-                <p className="text-xs text-slate-500">
-                  Raw stream trackers from container ingress, RBAC privileges, and vacuum queries.
-                </p>
+                <h2 className="text-xs font-bold text-slate-900 uppercase">Telemetry Audit Log Streams</h2>
+                <p className="text-xs text-slate-500 mt-0.5">Raw telemetry records from system gateways.</p>
               </div>
               <button 
                 onClick={loadAuditLogs}
                 disabled={loadingLogs}
                 className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-                id="re-fetch-logs-btn"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${loadingLogs ? 'animate-spin' : ''}`} />
-                Refresh
+                Refresh Logs
               </button>
             </div>
 
-            {/* Ingress Error */}
             {logsError && (
-              <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-red-700 text-xs shadow-sm">
-                <p className="font-semibold">Telemetry extraction failed</p>
-                <p className="text-red-650 text-[11px] mt-0.5">{logsError}</p>
+              <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-red-700 text-xs shadow-sm font-sans">
+                <p className="font-semibold">Telemetry extraction neglected</p>
+                <p className="text-red-655 mt-0.5">{logsError}</p>
               </div>
             )}
 
-            {/* Spinner */}
             {loadingLogs && (
               <div className="space-y-3 py-4 animate-pulse">
-                <div className="h-16 bg-slate-900 rounded-xl w-full" />
-                <div className="h-16 bg-slate-900 rounded-xl w-full" />
+                <div className="h-10 bg-slate-105 rounded-lg w-full" />
+                <div className="h-10 bg-slate-105 rounded-lg w-full" />
               </div>
             )}
 
-            {/* Empty check */}
             {!loadingLogs && !logsError && auditLogs.length === 0 && (
-              <div className="py-12 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl font-sans">
-                <Terminal className="w-6 h-6 text-slate-400 mx-auto mb-2" />
-                <p className="text-xs font-semibold text-slate-800">No logs found</p>
-                <p className="text-slate-500 text-[11px] mt-0.5">The platform audit logs directory is currently empty.</p>
+              <div className="py-12 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl">
+                <Terminal className="w-5 h-5 text-slate-400 mx-auto mb-2" />
+                <p className="text-xs font-semibold text-slate-800">No stream logs cached.</p>
               </div>
             )}
 
-            {/* Logs List representation */}
             {!loadingLogs && !logsError && auditLogs.length > 0 && (
-              <div className="space-y-3">
+              <div className="space-y-3 font-mono text-[11px]">
                 {auditLogs.map(l => (
-                  <div key={l.id} className="p-4 bg-slate-900 text-slate-200 border border-slate-950 rounded-xl space-y-2 font-mono text-[11px] shadow-inner">
-                    <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 text-slate-400">
-                      <span className="font-bold text-emerald-400">{l.action}</span>
-                      <span className="text-[10px] flex items-center gap-1">
+                  <div key={l.id} className="p-4 bg-slate-905 bg-slate-900 text-slate-200 border border-slate-950 rounded-xl space-y-2">
+                    <div className="flex justify-between text-slate-400 border-b border-slate-800 pb-1">
+                      <span className="font-bold text-indigo-400">{l.action}</span>
+                      <span className="flex items-center gap-1 text-[10px]">
                         <Clock className="w-3 h-3 text-slate-500" />
-                        {new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        {new Date(l.timestamp).toLocaleTimeString()}
                       </span>
                     </div>
-                    <p className="text-slate-100 leading-relaxed text-xs font-sans">{l.details || `Admin execution trigger: ${l.action}`}</p>
-                    <p className="text-[10px] text-slate-500">operator: {l.operator} • cluster namespace target: {l.target}</p>
+                    <p className="text-slate-100 font-sans text-xs">{l.details || `Triggered action: ${l.action}`}</p>
+                    <p className="text-[10px] text-slate-500">operator: {l.operator} • target: {l.target}</p>
                   </div>
                 ))}
               </div>
@@ -490,138 +736,127 @@ export default function SaaSAdminApp() {
           </div>
         )}
 
-        {activeTab === "revenue" && (
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6 shadow-xs animate-fadeIn" id="saas-tab-revenue">
-            <div>
-              <h2 className="text-base font-bold text-slate-900">Subscription Licenses and MRR Summary</h2>
-              <p className="text-xs text-slate-500 mt-1">
-                Track dynamic billing outputs and upcoming renewals in real-time.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-slate-50 p-6 border border-slate-200 rounded-2xl space-y-4">
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Dynamic License MRR</p>
-                <p className="text-4xl font-extrabold text-emerald-700 font-mono">{stats.subscriptionRevenue}</p>
-                <div className="pt-2 border-t border-dashed border-slate-200 text-slate-600">
-                  <div className="flex justify-between text-xs py-1">
-                    <span className="text-slate-500">Starter Tier ($99/mo)</span>
-                    <span className="font-semibold text-slate-805">
-                      {tenants.filter(t => t.plan === "STARTER" && t.status === "ACTIVE").length} active
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-xs py-1">
-                    <span className="text-slate-500">Growth Tier ($249/mo)</span>
-                    <span className="font-semibold text-slate-805">
-                      {tenants.filter(t => (t.plan === "GROWTH" || !t.plan) && t.status === "ACTIVE").length} active
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-xs py-1">
-                    <span className="text-slate-500">Professional Enterprise ($499/mo)</span>
-                    <span className="font-semibold text-slate-805">
-                      {tenants.filter(t => t.plan === "PROFESSIONAL" && t.status === "ACTIVE").length} active
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-6 border border-slate-200 rounded-2xl flex flex-col justify-between">
-                <div className="space-y-2">
-                  <h4 className="text-xs font-bold text-slate-900">Dynamic Billing Status</h4>
-                  <p className="text-xs text-slate-500 leading-relaxed">
-                    Recurring client invocations are billed automatically on the 1st of every calendar month through automated Stripe hooks. Use settings to declare public payment accounts.
-                  </p>
-                </div>
-                <div className="bg-yellow-50 text-yellow-850 border border-yellow-105 text-[11px] p-3 rounded-lg font-medium flex items-start gap-2 mt-4">
-                  <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5 text-yellow-600" />
-                  <span>Staging billing metrics correspond to sandboxed transaction logs only.</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
+        {/* Global configuration params */}
         {activeTab === "settings" && (
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6 shadow-xs" id="saas-tab-settings">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6 shadow-xs" id="saas-tab-settings font-sans">
             <div>
-              <h2 className="text-base font-bold text-slate-900">Global DNS and Security Parameters</h2>
-              <p className="text-xs text-slate-500 mt-1">
-                System parameters controlling hostname routing and root credentials locks.
-              </p>
+              <h2 className="text-xs font-bold text-slate-900 uppercase">Global DNS Parameters</h2>
+              <p className="text-xs text-slate-500 mt-1">Configure global hostname resolution policies and API gateway ports.</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs text-slate-750 font-sans">
               <div className="space-y-4">
                 <div>
-                  <h4 className="font-bold text-slate-800 mb-2">Multi-Tenant Routing Policy</h4>
+                  <h4 className="font-bold text-slate-800 mb-2">Workspace Routing Protocol</h4>
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
                     <div className="flex items-center justify-between">
-                      <span>Strict Hostname matching rules</span>
-                      <span className="text-emerald-700 font-bold uppercase text-[10px] bg-emerald-50 px-2 py-0.5 rounded">Enforced</span>
+                      <span>Strict cluster domain names mapping</span>
+                      <span className="text-emerald-700 font-bold uppercase text-[9px] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">Active Enforced</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span>Dynamic Subdomains provisioning</span>
-                      <span className="text-emerald-700 font-bold uppercase text-[10px] bg-emerald-50 px-2 py-0.5 rounded">Enforced</span>
+                      <span>Dynamic automated Nginx DNS schemas</span>
+                      <span className="text-emerald-700 font-bold uppercase text-[9px] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">Active Enforced</span>
                     </div>
                   </div>
                 </div>
 
                 <div>
-                  <h4 className="font-bold text-slate-800 mb-2">Database Limits</h4>
+                  <h4 className="font-bold text-slate-800 mb-2">Base Cluster Quotas</h4>
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 font-mono text-[11px]">
                     <div className="flex justify-between">
-                      <span className="font-sans text-slate-500">Max schema namespace clusters</span>
-                      <span className="font-bold text-slate-850">Unlimited</span>
+                      <span className="font-sans text-slate-500">Multi-tenant limits policy</span>
+                      <span className="font-bold text-slate-850">Subscription Enforced</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="font-sans text-slate-500">Max plots table allocation</span>
-                      <span className="font-bold text-slate-850">10,000 lots / cluster</span>
+                      <span className="font-sans text-slate-500">Plot list table sizes boundary</span>
+                      <span className="font-bold text-slate-850">Dynamic Overridable</span>
                     </div>
                   </div>
                 </div>
               </div>
 
               <div>
-                <h4 className="font-bold text-slate-800 mb-2">Ingress Control Core Security</h4>
+                <h4 className="font-bold text-slate-800 mb-2">Gateway Ingress Port Nodes</h4>
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
                   <div className="space-y-1">
-                    <p className="font-bold text-slate-900">Server Container Node</p>
-                    <p className="text-slate-500 leading-normal">
-                      The service binds directly to host IP <strong className="font-mono text-slate-705">0.0.0.0</strong> mapping ingress to internal container PORT <strong className="font-mono text-slate-705">3000</strong> behind modern reverse proxies.
+                    <p className="font-bold text-slate-900 text-xs">Sandbox Networking Connection</p>
+                    <p className="text-slate-500 leading-normal text-xs text-slate-650">
+                      The supervisor container matches ingress bindings to IP address <strong className="font-mono text-slate-705">0.0.0.0</strong> corresponding to port <strong className="font-mono text-slate-750">3000</strong>. This secures single-source proxies perfectly.
                     </p>
                   </div>
-                  
-                  <div className="pt-3 border-t border-slate-250 flex items-center gap-2">
-                    <Server className="w-4 h-4 text-slate-500" />
-                    <span className="font-semibold text-[11px] text-slate-600 font-mono">BhoomiOne Server Handshake 3.5.21V</span>
+                  <div className="pt-3 border-t border-slate-200 flex items-center gap-1.5 text-slate-400 font-mono text-[10px]">
+                    <Server className="w-4 h-4 text-slate-550" />
+                    <span>BhoomiOne Proxy Core Node 3.5.21V</span>
                   </div>
                 </div>
               </div>
             </div>
           </div>
         )}
+
       </div>
 
-      {/* Provision new tenant modal drawer */}
+      {/* Dynamic Workspace Slide Over / Drawer customizer */}
+      {selectedTenantSub && selectedTenantSubscription && (
+        <TenantLifecycleDrawer 
+          tenant={selectedTenantSub}
+          subscription={selectedTenantSubscription}
+          plans={plans}
+          addons={addons}
+          features={features}
+          planLimits={planLimits}
+          onClose={() => setSelectedTenantSub(null)}
+          onUpdateSubscription={(updatedSub) => {
+            const next = { ...tenantSubscriptions };
+            next[updatedSub.tenantCode] = updatedSub;
+            setTenantSubscriptions(next);
+          }}
+          onLifecycleAction={(action) => {
+            const next = { ...tenantSubscriptions };
+            const sub = next[selectedTenantSub.code];
+            if (!sub) return;
+
+            if (action === "SUSPEND") {
+              if (window.confirm(`Suspend workspace container '${selectedTenantSub.name}' and pause access tunnels?`)) {
+                sub.status = "SUSPENDED";
+                setTenantSubscriptions(next);
+                alert("Tenant cluster suspended successfully.");
+              }
+            } else if (action === "REACTIVATE") {
+              if (window.confirm(`Reactivate workspace '${selectedTenantSub.name}' and restore proxy vectors?`)) {
+                sub.status = "ACTIVE";
+                setTenantSubscriptions(next);
+                alert("Tenant cluster reactivated successfully.");
+              }
+            } else if (action === "ARCHIVE") {
+              if (window.confirm(`Warning: Archiving '${selectedTenantSub.name}' routes cold-stores database schemas permanantly. Proceed?`)) {
+                sub.status = "ARCHIVED";
+                setTenantSubscriptions(next);
+                alert("Tenant cluster archived successfully.");
+              }
+            }
+          }}
+        />
+      )}
+
+      {/* Add Domain Workspace Modal */}
       {showAddTenant && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="bg-white border border-slate-100 rounded-2xl shadow-2xl p-6 max-w-md w-full space-y-4" id="provision-tenant-modal">
-            <h2 className="text-lg font-bold text-slate-900">Provision Tenant Domain Suite</h2>
+            <h2 className="text-[15px] font-extrabold text-slate-900 uppercase">Provision Tenant Domain</h2>
             <p className="text-xs text-slate-500 leading-normal">
-              Entering the parameters below registers a new PostgreSQL schema configuration dynamically. This updates mapping matrices in real-time.
+              Register an isolated subdomain template scheme. Base tables, security hashes and storage volumes adapt dynamically.
             </p>
 
-            {/* Error Message banner */}
             {submitError && (
-              <div className="p-3 bg-red-50 border border-red-100 rounded-lg text-red-650 text-xs flex items-start gap-2" id="provision-err-msg">
+              <div className="p-3 bg-red-50 border border-red-100 rounded-lg text-red-650 text-xs flex items-start gap-2">
                 <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
                 <span>{submitError}</span>
               </div>
             )}
 
-            {/* Success Message banner */}
             {submitSuccess && (
-              <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-lg text-emerald-805 text-xs flex items-center gap-2" id="provision-success-msg">
+              <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-lg text-emerald-805 text-xs flex items-center gap-2">
                 <Check className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span>{submitSuccess}</span>
               </div>
@@ -629,54 +864,54 @@ export default function SaaSAdminApp() {
 
             <form onSubmit={handleCreateTenant} className="space-y-4" id="provision-tenant-form">
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Company/Authority Name</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Company/Authority Name</label>
                 <input 
                   type="text"
                   required
                   disabled={loading}
-                  placeholder="e.g. Prestige Planners Ltd"
+                  placeholder="e.g. Sobha Planners Ltd"
                   value={newTenant.name}
                   onChange={(e) => {
                     const cleanCode = e.target.value.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
                     setNewTenant({ ...newTenant, name: e.target.value, code: cleanCode });
                   }}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs focus:ring-1 focus:ring-slate-900 focus:outline-none disabled:opacity-60"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs focus:ring-1 focus:outline-none"
                   id="provision-comp-input"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Domain Namespace / Code</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Domain Namespace / Subdomain</label>
                 <div className="flex items-center gap-1">
                   <input 
                     type="text"
                     required
                     disabled={loading}
-                    placeholder="e.g. prestige"
+                    placeholder="e.g. sobha"
                     value={newTenant.code}
                     onChange={(e) => {
                       const strictCode = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "");
                       setNewTenant({ ...newTenant, code: strictCode });
                     }}
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs focus:ring-1 focus:ring-slate-900 focus:outline-none font-mono disabled:opacity-60"
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs font-mono"
                     id="provision-code-input"
                   />
-                  <span className="text-xs text-slate-500 font-semibold font-mono">.bhoomione.in</span>
+                  <span className="text-xs text-slate-400 font-bold font-mono">.bhoomione.in</span>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Subscription License Tier</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Subscription License Tier</label>
                 <select
                   disabled={loading}
                   value={newTenant.plan}
                   onChange={(e) => setNewTenant({ ...newTenant, plan: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs focus:ring-1 focus:ring-slate-900 focus:outline-none disabled:opacity-60"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs focus:outline-none"
                   id="provision-plan-select"
                 >
-                  <option value="STARTER">Starter Plan ($99/mo)</option>
-                  <option value="GROWTH">Growth Plan ($249/mo)</option>
-                  <option value="PROFESSIONAL">Professional Enterprise ($499/mo)</option>
+                  {plans.map(p => (
+                    <option key={p.code} value={p.code}>{p.name} (${p.monthlyPrice}/mo)</option>
+                  ))}
                 </select>
               </div>
 
@@ -685,25 +920,24 @@ export default function SaaSAdminApp() {
                   type="button"
                   disabled={loading}
                   onClick={() => setShowAddTenant(false)}
-                  className="flex-1 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-100 font-semibold text-xs py-2 disabled:opacity-50"
-                  id="provision-close-btn"
+                  className="flex-1 bg-slate-100 rounded-lg text-slate-755 font-bold text-xs py-2.5 disabled:opacity-50"
                 >
                   Close
                 </button>
                 <button 
                   type="submit"
                   disabled={loading}
-                  className="flex-1 bg-indigo-650 hover:bg-indigo-700 text-white rounded-lg font-semibold text-xs py-2 transition-colors cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
-                  id="provision-submit-btn"
+                  className="flex-1 bg-indigo-650 hover:bg-indigo-750 text-white rounded-lg font-bold text-xs py-2.5 disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm"
                 >
                   {loading && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
-                  <span>{loading ? "Registering..." : "Authorize Registry"}</span>
+                  <span>Provision Node</span>
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
     </div>
   );
 }
