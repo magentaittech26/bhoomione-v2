@@ -40,6 +40,11 @@ export default function TenantOverridesTab({ showToast }: TenantOverridesTabProp
 
   const [saving, setSaving] = useState<boolean>(false);
 
+  // Plan Assignment local form states
+  const [assignPlanId, setAssignPlanId] = useState<string>("");
+  const [assignBillingPeriod, setAssignBillingPeriod] = useState<"MONTHLY" | "YEARLY">("MONTHLY");
+  const [assignTrialDays, setAssignTrialDays] = useState<number>(0);
+
   // Initial Data Fetch
   useEffect(() => {
     fetchInitialEcosystem();
@@ -124,6 +129,68 @@ export default function TenantOverridesTab({ showToast }: TenantOverridesTabProp
     } catch (err) {
       console.error("Failed to fetch tenant subscription profile:", err);
       showToast("Failed to load specific override mappings.", "error");
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+
+  // Assign standard 14-day trial or standard custom licensing plans
+  const handleApplyStarterTrial = async () => {
+    if (!selectedTenant) return;
+    const starterPlan = plans.find(p => p.plan_code === "STARTER" || p.name?.toUpperCase().includes("STARTER"));
+    const planId = starterPlan?.id || plans[0]?.id;
+    if (!planId) {
+      showToast("No Standard plan available to trigger trial allocation.", "error");
+      return;
+    }
+    setLoadingProfile(true);
+    try {
+      const res = await api.assignTenantPlan(selectedTenant.id, {
+        plan_id: planId,
+        billing_period: "MONTHLY",
+        trial_days: 14
+      });
+      if (res.success) {
+        showToast("Standard 14-day starter trial successfully allocated.", "success");
+        // Reload profile
+        await handleSelectTenant(selectedTenant);
+      } else {
+        showToast(res.message || "Could not allocate standard trial.", "error");
+      }
+    } catch (err) {
+      console.error(err);
+      showToast("Subscription trial provisioning failure.", "error");
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+
+  const handleAssignSelectedPlan = async () => {
+    if (!selectedTenant) return;
+    if (!assignPlanId) {
+      showToast("Please select a target plan to assign.", "error");
+      return;
+    }
+    setLoadingProfile(true);
+    try {
+      const res = await api.assignTenantPlan(selectedTenant.id, {
+        plan_id: assignPlanId,
+        billing_period: assignBillingPeriod,
+        trial_days: assignTrialDays > 0 ? assignTrialDays : null
+      });
+      if (res.success) {
+        showToast("Tenant licensing profile updated successfully.", "success");
+        // Reset local input states
+        setAssignPlanId("");
+        setAssignTrialDays(0);
+        // Reload profile
+        await handleSelectTenant(selectedTenant);
+      } else {
+        showToast(res.message || "Failed to update tenant subscription.", "error");
+      }
+    } catch (err) {
+      console.error(err);
+      showToast("Database level subscription linkage error.", "error");
     } finally {
       setLoadingProfile(false);
     }
@@ -229,12 +296,12 @@ export default function TenantOverridesTab({ showToast }: TenantOverridesTabProp
   // Filter tenants
   const filteredTenants = tenants.filter(t => {
     const searchLow = searchQuery.toLowerCase();
-    const codeMatches = t.code?.toLowerCase().includes(searchLow);
-    const nameMatches = t.name?.toLowerCase().includes(searchLow);
-    const domainMatches = t.domain?.toLowerCase().includes(searchLow);
+    const codeMatches = (t.tenant_code || t.code || "").toLowerCase().includes(searchLow);
+    const nameMatches = (t.name || "").toLowerCase().includes(searchLow);
+    const domainMatches = (t.domain || "").toLowerCase().includes(searchLow);
     
     const matchesSearch = codeMatches || nameMatches || domainMatches;
-    const matchesFilter = planFilter === "ALL" || t.plan?.toUpperCase() === planFilter.toUpperCase();
+    const matchesFilter = planFilter === "ALL" || (t.plan || "").toUpperCase() === planFilter.toUpperCase();
 
     return matchesSearch && matchesFilter;
   });
@@ -242,7 +309,8 @@ export default function TenantOverridesTab({ showToast }: TenantOverridesTabProp
   // Filter Logs by Selected Tenant ID/Code
   const filteredLogs = logs.filter(l => {
     if (!selectedTenant) return false;
-    const tCode = selectedTenant.code.toLowerCase();
+    const tCode = (selectedTenant.tenant_code || selectedTenant.code || "").toLowerCase();
+    if (!tCode) return false;
     return (l.details && l.details.toLowerCase().includes(tCode)) || 
            (l.target && l.target.toLowerCase().includes(tCode)) ||
            (l.details && l.details.toLowerCase().includes("tenantoverride")) ||
@@ -259,7 +327,7 @@ export default function TenantOverridesTab({ showToast }: TenantOverridesTabProp
       fileStorageGb: 5,
     };
 
-    if (!subscriptionProfile?.plan?.planLimits) return defaultBaselines;
+    if (!subscriptionProfile?.plan?.planLimits || !Array.isArray(subscriptionProfile.plan.planLimits)) return defaultBaselines;
 
     const baselines = { ...defaultBaselines };
     subscriptionProfile.plan.planLimits.forEach((pl: any) => {
@@ -373,7 +441,7 @@ export default function TenantOverridesTab({ showToast }: TenantOverridesTabProp
                       Plan: <strong className="font-extrabold text-slate-700">{tenant.plan || "Starter"}</strong>
                     </span>
                     <span className="text-[9px] font-mono">
-                      No: {tenant.code}
+                      No: {tenant.tenant_code || tenant.code}
                     </span>
                   </div>
                 </button>
@@ -466,7 +534,129 @@ export default function TenantOverridesTab({ showToast }: TenantOverridesTabProp
               </div>
 
               {/* OVERRIDES SECTIONS GROUPED */}
-              <form onSubmit={handleSaveChanges} className="space-y-6">
+              {subscriptionProfile?.has_subscription === false ? (
+                // NO ACTIVE SUBSCRIPTION SPECIAL WIDGET WITH ACTIONS: Assign Plan, Apply Trial, Close
+                <div className="space-y-6">
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 flex items-start gap-4 shadow-3xs">
+                    <div className="p-3 bg-amber-100 rounded-xl text-amber-800 shrink-0">
+                      <AlertTriangle className="w-6 h-6" />
+                    </div>
+                    <div className="space-y-2">
+                      <h3 className="text-sm font-bold text-amber-950 uppercase">
+                        No active subscription assigned
+                      </h3>
+                      <p className="text-xs text-amber-800 leading-relaxed font-sans">
+                        This tenant workspace node is registered but does not currently possess an active licensing subscription. Please choose to automatically apply a standard 14-day starter trial or manually specify and assign a custom license tier below.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* OPTION 1: QUICK STARTER TRIAL */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4 shadow-3xs flex flex-col justify-between">
+                      <div className="space-y-1.5">
+                        <div className="w-10 h-10 bg-indigo-50 border border-indigo-150 rounded-xl flex items-center justify-center text-indigo-650">
+                          <Zap className="w-5 h-5" />
+                        </div>
+                        <h4 className="text-xs font-bold text-slate-800 uppercase">Apply Standard Starter Trial</h4>
+                        <p className="text-[11px] text-slate-450 leading-relaxed">
+                          Provision standard Starter features, limits, and system configurations for a 14-day evaluation period.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleApplyStarterTrial}
+                        className="w-full bg-indigo-650 hover:bg-indigo-755 text-white py-2 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-98 mt-4 cursor-pointer border-0"
+                      >
+                        <Zap className="w-3.5 h-3.5" />
+                        Apply 14-Day Trial
+                      </button>
+                    </div>
+
+                    {/* OPTION 2: ASSIGN PLAN */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4 shadow-3xs">
+                      <div className="space-y-1.5">
+                        <div className="w-10 h-10 bg-emerald-50 border border-emerald-150 rounded-xl flex items-center justify-center text-emerald-800">
+                          <Check className="w-5 h-5" />
+                        </div>
+                        <h4 className="text-xs font-bold text-slate-800 uppercase">Assign License Tier</h4>
+                        <p className="text-[11px] text-slate-450 leading-relaxed">
+                          Select one of the standard licensing catalog plans to establish a custom paid subscription immediately.
+                        </p>
+                      </div>
+
+                      <div className="space-y-3 pt-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Select Plan</label>
+                          <select
+                            value={assignPlanId}
+                            onChange={(e) => setAssignPlanId(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700"
+                          >
+                            <option value="">-- Choose Plan --</option>
+                            {plans.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name} (₹{p.monthly_price}/mo)
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Billing Period</label>
+                            <select
+                              value={assignBillingPeriod}
+                              onChange={(e) => setAssignBillingPeriod(e.target.value as any)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700"
+                            >
+                              <option value="MONTHLY">Monthly</option>
+                              <option value="YEARLY">Yearly</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Trial Days (Optional)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              value={assignTrialDays || ""}
+                              onChange={(e) => setAssignTrialDays(parseInt(e.target.value) || 0)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700"
+                            />
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleAssignSelectedPlan}
+                          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-98 mt-2 cursor-pointer border-0"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          Assign Active Plan
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* CLOSE FOOTER ACTIONS */}
+                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl flex items-center justify-between shadow-3xs">
+                    <span className="text-[11px] text-slate-500 font-sans">
+                      Deselect this workspace node to return to the cluster registry interface.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTenant(null)}
+                      className="bg-slate-200 hover:bg-slate-300 text-slate-700 py-1.5 px-4 rounded-xl font-bold text-xs transition-all cursor-pointer border-0"
+                    >
+                      Close Panel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handleSaveChanges} className="space-y-6">
 
                 {/* SECTION B: FEATURE OVERRIDES */}
                 <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-3xs space-y-4">
@@ -824,6 +1014,7 @@ export default function TenantOverridesTab({ showToast }: TenantOverridesTabProp
                 </div>
 
               </form>
+              )}
 
             </motion.div>
           )}

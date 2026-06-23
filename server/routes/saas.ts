@@ -385,14 +385,6 @@ router.get("/admin/tenants/:id/subscription", requireAuth, async (req: Authentic
       [sub.id]
     );
 
-    // 6. Load billing overrides
-    const billingOverridesRes = await pool.query(
-      `SELECT custom_monthly_fee, custom_annual_fee, custom_discount_percentage, special_contract_notes
-       FROM tenant_billing_overrides
-       WHERE tenant_subscription_id = $1 LIMIT 1`,
-      [sub.id]
-    );
-
     // Construct profile matching Laravel service structure
     res.json({
       has_subscription: true,
@@ -438,12 +430,7 @@ router.get("/admin/tenants/:id/subscription", requireAuth, async (req: Authentic
         limit_key: lo.limit_key,
         override_value: lo.override_value
       })),
-      billing_override: billingOverridesRes.rows[0] ? {
-        custom_monthly_fee: Number(billingOverridesRes.rows[0].custom_monthly_fee),
-        custom_annual_fee: Number(billingOverridesRes.rows[0].custom_annual_fee),
-        custom_discount_percentage: Number(billingOverridesRes.rows[0].custom_discount_percentage),
-        special_contract_notes: billingOverridesRes.rows[0].special_contract_notes
-      } : null
+      billing_override: null
     });
   } catch (err: any) {
     console.error("GET /admin/tenants/:id/subscription Error:", err);
@@ -566,100 +553,6 @@ router.post("/admin/tenants/:id/subscription/lifecycle", requireAuth, async (req
   } catch (err: any) {
     console.error("POST /admin/tenants/:id/subscription/lifecycle Error:", err);
     res.status(500).json({ error: "Failed to update subscription lifecycle status." });
-  }
-});
-
-/**
- * POST /api/v1/admin/tenants/:id/subscription/overrides
- * Applies custom overrides to feature matrix, limits and assigns addons.
- */
-router.post("/api/v1/admin/tenants/:id/subscription/overrides", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  const tenantLookupVal = req.params.id;
-  const { limit_overrides, feature_overrides, addons } = req.body;
-
-  const pool = getPool();
-  try {
-    await pool.query("BEGIN");
-
-    // Resolve tenant
-    const tenantRes = await pool.query(
-      `SELECT id FROM tenants WHERE id::text = $1 OR tenant_code = $1 LIMIT 1`,
-      [tenantLookupVal]
-    );
-    if (tenantRes.rows.length === 0) {
-      res.status(404).json({ error: "Tenant not found." });
-      return;
-    }
-    const tenantId = tenantRes.rows[0].id;
-
-    const subQuery = await pool.query(`SELECT id FROM tenant_subscriptions WHERE tenant_id = $1 LIMIT 1`, [tenantId]);
-    if (subQuery.rows.length === 0) {
-      res.status(404).json({ error: "Active subscription required to apply overrides." });
-      return;
-    }
-    const subId = subQuery.rows[0].id;
-
-    // Apply limits overrides
-    if (limit_overrides) {
-      await pool.query(`DELETE FROM tenant_limit_overrides WHERE tenant_subscription_id = $1`, [subId]);
-      for (const [key, val] of Object.entries(limit_overrides)) {
-        if (val !== null && val !== undefined) {
-          await pool.query(
-            `INSERT INTO tenant_limit_overrides (tenant_subscription_id, limit_key, override_value)
-             VALUES ($1, $2, $3)`,
-            [subId, key, Number(val)]
-          );
-        }
-      }
-    }
-
-    // Apply features overrides
-    if (feature_overrides) {
-      await pool.query(`DELETE FROM tenant_feature_overrides WHERE tenant_subscription_id = $1`, [subId]);
-      for (const [featId, overrideStatus] of Object.entries(feature_overrides)) {
-        await pool.query(
-          `INSERT INTO tenant_feature_overrides (tenant_subscription_id, feature_id, override_status)
-           VALUES ($1, $2, $3)`,
-          [subId, featId, overrideStatus]
-        );
-      }
-    }
-
-    // Apply addons associations
-    if (addons) {
-      await pool.query(`DELETE FROM tenant_addons WHERE tenant_subscription_id = $1`, [subId]);
-      for (const addonId of addons) {
-        await pool.query(
-          `INSERT INTO tenant_addons (tenant_subscription_id, addon_id)
-           VALUES ($1, $2)`,
-          [subId, addonId]
-        );
-      }
-    }
-
-    // Apply billing overrides
-    const { billing_override } = req.body;
-    if (billing_override) {
-      await pool.query(`DELETE FROM tenant_billing_overrides WHERE tenant_subscription_id = $1`, [subId]);
-      await pool.query(
-        `INSERT INTO tenant_billing_overrides (tenant_subscription_id, custom_monthly_fee, custom_annual_fee, custom_discount_percentage, special_contract_notes)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [
-          subId,
-          billing_override.custom_monthly_fee !== null && billing_override.custom_monthly_fee !== undefined && billing_override.custom_monthly_fee !== "" ? Number(billing_override.custom_monthly_fee) : null,
-          billing_override.custom_annual_fee !== null && billing_override.custom_annual_fee !== undefined && billing_override.custom_annual_fee !== "" ? Number(billing_override.custom_annual_fee) : null,
-          billing_override.custom_discount_percentage !== null && billing_override.custom_discount_percentage !== undefined ? Number(billing_override.custom_discount_percentage) : 0,
-          billing_override.special_contract_notes || null
-        ]
-      );
-    }
-
-    await pool.query("COMMIT");
-    res.json({ success: true, message: "Custom subscription overrides updated." });
-  } catch (err: any) {
-    await pool.query("ROLLBACK");
-    console.error("POST /admin/tenants/:id/subscription/overrides Error:", err);
-    res.status(500).json({ error: "Failed to persist tenant overrides." });
   }
 });
 

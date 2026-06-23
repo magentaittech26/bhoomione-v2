@@ -458,20 +458,6 @@ export async function bootstrapDatabase() {
       )
     `);
 
-    // 33. Relational tenant_billing_overrides Table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS tenant_billing_overrides (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_subscription_id UUID NOT NULL UNIQUE REFERENCES tenant_subscriptions(id) ON DELETE CASCADE,
-        custom_monthly_fee DECIMAL(12,2),
-        custom_annual_fee DECIMAL(12,2),
-        custom_discount_percentage DECIMAL(5,2) DEFAULT 0.00,
-        special_contract_notes TEXT,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
     // Drop obsolete violating JSON config table if active
     await client.query(`DROP TABLE IF EXISTS saas_config CASCADE`);
 

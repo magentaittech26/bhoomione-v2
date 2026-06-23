@@ -37,7 +37,7 @@ class ApiClient {
     sessionStorage.setItem("bhoomi_user_profile", JSON.stringify(user));
   }
 
-  private async request<T>(
+  public async request<T>(
     endpoint: string,
     options: RequestInit = {},
     tenantId?: string | null
