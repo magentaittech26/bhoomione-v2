@@ -404,20 +404,6 @@ export async function bootstrapDatabase() {
       )
     `);
 
-    // 27.5. Relational saas_platform_settings Table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS saas_platform_settings (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        setting_group VARCHAR(100) NOT NULL,
-        setting_key VARCHAR(100) UNIQUE NOT NULL,
-        setting_value TEXT,
-        setting_type VARCHAR(50) DEFAULT 'string',
-        is_public BOOLEAN DEFAULT FALSE,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
     // 28. Support columns for subscription pricing models
     await client.query(`
       ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS monthly_price DECIMAL(12,2) NOT NULL DEFAULT 0.00;
@@ -425,12 +411,6 @@ export async function bootstrapDatabase() {
       ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS trial_days INTEGER DEFAULT 14;
       ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'ACTIVE';
       ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 1;
-    `);
-
-    await client.query(`
-      ALTER TABLE subscription_plot_slabs ADD COLUMN IF NOT EXISTS one_time_license_price DECIMAL(12,2) DEFAULT 0.00;
-      ALTER TABLE subscription_plot_slabs ADD COLUMN IF NOT EXISTS amc_price DECIMAL(12,2) DEFAULT 0.00;
-      ALTER TABLE subscription_plot_slabs ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;
     `);
 
     // 29. Support columns for subscription lifecycles
@@ -959,81 +939,23 @@ export async function bootstrapDatabase() {
 
       // 7. Seed subscription_plot_slabs
       const slabsData = [
-        { minPlots: 1, maxPlots: 50, monthlyPrice: 5000.00, yearlyPrice: 50000.00, oneTimeLicensePrice: 100000.00, amcPrice: 15000.00, sortOrder: 0, status: "ACTIVE" },
-        { minPlots: 51, maxPlots: 100, monthlyPrice: 8000.00, yearlyPrice: 80000.00, oneTimeLicensePrice: 180000.00, amcPrice: 25000.00, sortOrder: 1, status: "ACTIVE" },
-        { minPlots: 101, maxPlots: 250, monthlyPrice: 15000.00, yearlyPrice: 150000.00, oneTimeLicensePrice: 350000.00, amcPrice: 45000.00, sortOrder: 2, status: "ACTIVE" },
-        { minPlots: 251, maxPlots: 500, monthlyPrice: 25000.00, yearlyPrice: 250000.00, oneTimeLicensePrice: 600000.00, amcPrice: 80000.00, sortOrder: 3, status: "ACTIVE" },
-        { minPlots: 501, maxPlots: 1000, monthlyPrice: 40000.00, yearlyPrice: 400000.00, oneTimeLicensePrice: 1000000.00, amcPrice: 150000.00, sortOrder: 4, status: "ACTIVE" },
-        { minPlots: 1001, maxPlots: 2500, monthlyPrice: 70000.00, yearlyPrice: 700000.00, oneTimeLicensePrice: 1800000.00, amcPrice: 250000.00, sortOrder: 5, status: "ACTIVE" },
-        { minPlots: 2501, maxPlots: 5000, monthlyPrice: 120000.00, yearlyPrice: 1200000.00, oneTimeLicensePrice: 3000000.00, amcPrice: 400000.00, sortOrder: 6, status: "ACTIVE" },
-        { minPlots: 5001, maxPlots: 10000, monthlyPrice: 200000.00, yearlyPrice: 2000000.00, oneTimeLicensePrice: 5000000.00, amcPrice: 600000.00, sortOrder: 7, status: "ACTIVE" },
-        { minPlots: 10001, maxPlots: 999999, monthlyPrice: 350000.00, yearlyPrice: 3500000.00, oneTimeLicensePrice: 8500000.00, amcPrice: 1000000.00, sortOrder: 8, status: "ACTIVE" }
+        { minPlots: 1, maxPlots: 50, monthlyPrice: 5000.00, yearlyPrice: 50000.00 },
+        { minPlots: 51, maxPlots: 100, monthlyPrice: 8000.00, yearlyPrice: 80000.00 },
+        { minPlots: 101, maxPlots: 250, monthlyPrice: 15000.00, yearlyPrice: 150000.00 },
+        { minPlots: 251, maxPlots: 500, monthlyPrice: 25000.00, yearlyPrice: 250000.00 },
+        { minPlots: 501, maxPlots: 1000, monthlyPrice: 40000.00, yearlyPrice: 400000.00 },
+        { minPlots: 1001, maxPlots: 2500, monthlyPrice: 70000.00, yearlyPrice: 700000.00 },
+        { minPlots: 2501, maxPlots: 5000, monthlyPrice: 120000.00, yearlyPrice: 1200000.00 },
+        { minPlots: 5001, maxPlots: 10000, monthlyPrice: 200000.00, yearlyPrice: 2000000.00 },
+        { minPlots: 10001, maxPlots: 999999, monthlyPrice: 350000.00, yearlyPrice: 3500000.00 }
       ];
 
       await client.query(`TRUNCATE TABLE subscription_plot_slabs CASCADE`);
       for (const s of slabsData) {
         await client.query(`
-          INSERT INTO subscription_plot_slabs (min_plots, max_plots, monthly_price, yearly_price, one_time_license_price, amc_price, sort_order, status)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        `, [s.minPlots, s.maxPlots, s.monthlyPrice, s.yearlyPrice, s.oneTimeLicensePrice, s.amcPrice, s.sortOrder, s.status]);
-      }
-
-      // 7.5 Seed saas_platform_settings
-      const settingsData = [
-        // General Settings
-        { group: "GENERAL", key: "platform_name", value: "BhoomiOne", type: "string", public: true },
-        { group: "GENERAL", key: "support_email", value: "support@bhoomione.in", type: "string", public: true },
-        { group: "GENERAL", key: "support_phone", value: "+91 98765 43210", type: "string", public: true },
-        { group: "GENERAL", key: "company_name", value: "BhoomiOne Technologies Private Limited", type: "string", public: false },
-        { group: "GENERAL", key: "gst_number", value: "29AAAAA1111A1Z1", type: "string", public: false },
-        { group: "GENERAL", key: "address", value: "Aesthetic Towers, Bangalore, India", type: "string", public: false },
-
-        // Domain Settings
-        { group: "DOMAINS", key: "base_domain", value: "bhoomione.in", type: "string", public: true },
-        { group: "DOMAINS", key: "admin_domain", value: "admin.bhoomione.in", type: "string", public: true },
-        { group: "DOMAINS", key: "marketplace_domain", value: "market.bhoomione.in", type: "string", public: true },
-        { group: "DOMAINS", key: "customer_portal_pattern", value: "{{tenant}}.bhoomione.in/portal", type: "string", public: false },
-        { group: "DOMAINS", key: "agent_portal_pattern", value: "{{tenant}}.bhoomione.in/agent", type: "string", public: false },
-        { group: "DOMAINS", key: "custom_domain_policy", value: "REWRITE_SSL_CNAME", type: "string", public: false },
-
-        // Billing Settings
-        { group: "BILLING", key: "currency", value: "INR", type: "string", public: true },
-        { group: "BILLING", key: "gst_percentage", value: "18", type: "number", public: false },
-        { group: "BILLING", key: "invoice_prefix", value: "BO-INV-", type: "string", public: false },
-        { group: "BILLING", key: "default_trial_days", value: "14", type: "number", public: false },
-        { group: "BILLING", key: "grace_period_days", value: "7", type: "number", public: false },
-        { group: "BILLING", key: "auto_suspend_after_due_days", value: "5", type: "number", public: false },
-        { group: "BILLING", key: "auto_expire_after_days", value: "30", type: "number", public: false },
-
-        // Notification Settings
-        { group: "NOTIFICATIONS", key: "email_provider", value: "SES", type: "string", public: false },
-        { group: "NOTIFICATIONS", key: "whatsapp_provider", value: "Twilio", type: "string", public: false },
-        { group: "NOTIFICATIONS", key: "sms_provider", value: "Twilio", type: "string", public: false },
-        { group: "NOTIFICATIONS", key: "reminder_days_before_renewal", value: "7", type: "number", public: false },
-
-        // Security Settings
-        { group: "SECURITY", key: "session_timeout", value: "120", type: "number", public: true },
-        { group: "SECURITY", key: "password_policy", value: "STRONG", type: "string", public: true },
-        { group: "SECURITY", key: "mfa_required", value: "false", type: "boolean", public: true },
-        { group: "SECURITY", key: "audit_retention_days", value: "365", type: "number", public: false },
-
-        // Storage Settings
-        { group: "STORAGE", key: "default_storage_gb", value: "10", type: "number", public: true },
-        { group: "STORAGE", key: "max_upload_size_mb", value: "100", type: "number", public: false },
-        { group: "STORAGE", key: "dxf_upload_limit_mb", value: "50", type: "number", public: false },
-        { group: "STORAGE", key: "image_upload_limit_mb", value: "20", type: "number", public: false }
-      ];
-
-      for (const s of settingsData) {
-        await client.query(`
-          INSERT INTO saas_platform_settings (setting_group, setting_key, setting_value, setting_type, is_public)
-          VALUES ($1, $2, $3, $4, $5)
-          ON CONFLICT (setting_key) DO UPDATE SET 
-            setting_group = EXCLUDED.setting_group,
-            setting_value = EXCLUDED.setting_value,
-            setting_type = EXCLUDED.setting_type,
-            is_public = EXCLUDED.is_public
-        `, [s.group, s.key, s.value, s.type, s.public]);
+          INSERT INTO subscription_plot_slabs (min_plots, max_plots, monthly_price, yearly_price)
+          VALUES ($1, $2, $3, $4)
+        `, [s.minPlots, s.maxPlots, s.monthlyPrice, s.yearlyPrice]);
       }
 
       // 8. Ensure Tenant Subscriptions exist to connect
