@@ -13,6 +13,9 @@ interface PlanFeatureMatrixTabProps {
   onUpdatePlan: (code: string, updates: Partial<SubscriptionPlan>) => void;
   onUpdatePlanLimit: (planCode: string, limitKey: keyof PlanLimits, value: number) => void;
   onUpdateMatrixCell: (planCode: string, featCode: string, value: "ENABLED" | "DISABLED" | "ADDON" | "ENTERPRISE") => void;
+  onSavePlan?: (code: string) => void;
+  onSaveFeatureMatrix?: () => void;
+  onSaveUsageLimits?: () => void;
   defaultTab?: "tiers" | "matrix" | "limits";
 }
 
@@ -25,6 +28,9 @@ export default function PlanFeatureMatrixTab({
   onUpdatePlan,
   onUpdatePlanLimit,
   onUpdateMatrixCell,
+  onSavePlan,
+  onSaveFeatureMatrix,
+  onSaveUsageLimits,
   defaultTab
 }: PlanFeatureMatrixTabProps) {
   const [activePlanSub, setActivePlanSub] = useState<"tiers" | "matrix" | "limits">(defaultTab || "matrix");
@@ -115,11 +121,20 @@ export default function PlanFeatureMatrixTab({
       
       {activePlanSub === "matrix" && (
         <div className="space-y-4" id="matrix-grid-view">
-          <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200">
+          <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 gap-4 flex-wrap">
             <div className="space-y-0.5">
               <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Plan Feature Matrix Grid</h3>
               <p className="text-[11px] text-slate-500">Enable, disable, or gate access controls across core billing plans using granular variables in real-time.</p>
             </div>
+            {onSaveFeatureMatrix && (
+              <button
+                onClick={() => onSaveFeatureMatrix()}
+                className="bg-emerald-650 hover:bg-emerald-750 text-white rounded-lg px-4 py-2 text-xs font-bold font-sans flex items-center gap-1.5 shadow-xs transition-all whitespace-nowrap cursor-pointer"
+              >
+                <Check className="w-4 h-4 text-white" />
+                Save Feature Matrix
+              </button>
+            )}
           </div>
 
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
@@ -197,11 +212,20 @@ export default function PlanFeatureMatrixTab({
 
       {activePlanSub === "limits" && (
         <div className="space-y-4" id="limits-matrix-view">
-          <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200">
+          <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 gap-4 flex-wrap">
             <div className="space-y-0.5">
               <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Usage Limits Configuration</h3>
-              <p className="text-[11px] text-slate-500">Edit numeric capabilities and cloud allocations assigned globally to subscriptions template. Real-time updates.</p>
+              <p className="text-[11px] text-slate-500">Edit numeric capabilities and cloud allocations assigned globally to subscriptions template.</p>
             </div>
+            {onSaveUsageLimits && (
+              <button
+                onClick={() => onSaveUsageLimits()}
+                className="bg-emerald-650 hover:bg-emerald-750 text-white rounded-lg px-4 py-2 text-xs font-bold font-sans flex items-center gap-1.5 shadow-xs transition-all whitespace-nowrap cursor-pointer"
+              >
+                <Check className="w-4 h-4 text-white" />
+                Save Usage Limits
+              </button>
+            )}
           </div>
 
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
@@ -238,13 +262,18 @@ export default function PlanFeatureMatrixTab({
                         {limit.label}
                       </td>
                       {plans.map(p => {
-                        const currentVal = planLimits[p.code]?.[limit.key as keyof PlanLimits] ?? 0;
+                        const currentVal = planLimits[p.code]?.[limit.key as keyof PlanLimits];
+                        const displayVal = (currentVal === undefined || currentVal === null || currentVal === 0) ? "" : currentVal;
                         return (
                           <td key={p.code} className="px-4 py-3 border-l border-slate-100">
                             <input 
                               type="number"
-                              value={currentVal}
-                              onChange={(e) => onUpdatePlanLimit(p.code, limit.key as keyof PlanLimits, Number(e.target.value))}
+                              value={displayVal}
+                              placeholder="Not configured"
+                              onChange={(e) => {
+                                const val = e.target.value === "" ? 0 : Number(e.target.value);
+                                onUpdatePlanLimit(p.code, limit.key as keyof PlanLimits, val);
+                              }}
                               className="w-full bg-slate-50 border border-slate-200 rounded p-1.5 text-center text-xs font-mono font-bold focus:bg-white focus:outline-none"
                             />
                           </td>
@@ -336,21 +365,33 @@ export default function PlanFeatureMatrixTab({
                   </div>
                 </div>
 
-                <div className="pt-4 border-t border-slate-100 mt-4 flex items-center justify-between">
-                  <button
-                    onClick={() => onUpdatePlan(p.code, { status: p.status === "ACTIVE" ? "DISABLED" : "ACTIVE" })}
-                    className="text-xs font-bold text-slate-650 hover:text-slate-950 hover:underline transition-all"
-                  >
-                    Set {p.status === "ACTIVE" ? "Inactive" : "Active"}
-                  </button>
+                <div className="pt-4 border-t border-slate-100 mt-4 flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex gap-2.5">
+                    <button
+                      onClick={() => onUpdatePlan(p.code, { status: p.status === "ACTIVE" ? "DISABLED" : "ACTIVE" })}
+                      className="text-xs font-bold text-slate-550 hover:text-slate-850 hover:underline transition-all"
+                    >
+                      Set {p.status === "ACTIVE" ? "Inactive" : "Active"}
+                    </button>
 
-                  <button
-                    onClick={() => handleClonePlan(p)}
-                    className="text-xs font-bold text-indigo-650 hover:text-indigo-850 hover:underline flex items-center gap-1 transition-all"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                    Clone Template Structure
-                  </button>
+                    <button
+                      onClick={() => handleClonePlan(p)}
+                      className="text-xs font-bold text-indigo-650 hover:text-indigo-850 hover:underline flex items-center gap-1 transition-all"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      Clone
+                    </button>
+                  </div>
+
+                  {onSavePlan && (
+                    <button
+                      onClick={() => onSavePlan(p.code)}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg px-3 py-1.5 text-xs font-sans flex items-center gap-1 shadow-xs transition-all cursor-pointer"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      Save Changes
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -415,7 +456,7 @@ export default function PlanFeatureMatrixTab({
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-1">Monthly Cost ($)</label>
+                  <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-1">Monthly Cost (₹)</label>
                   <input 
                     type="number" 
                     required
@@ -425,7 +466,7 @@ export default function PlanFeatureMatrixTab({
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-1">Yearly Cost ($)</label>
+                  <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-1">Yearly Cost (₹)</label>
                   <input 
                     type="number" 
                     required

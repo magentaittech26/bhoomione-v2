@@ -217,6 +217,20 @@ class ApiClient {
     });
   }
 
+  async saveSaasModule(payload: any): Promise<any> {
+    return this.request<any>("/admin/modules", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async saveSaasFeature(payload: any): Promise<any> {
+    return this.request<any>("/admin/features", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+  }
+
   async fetchSaasAddons(): Promise<any[]> {
     return this.request<any[]>("/admin/addons", {
       method: "GET"

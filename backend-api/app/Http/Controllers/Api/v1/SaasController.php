@@ -30,6 +30,49 @@ class SaasController extends Controller
     }
 
     /**
+     * POST /api/v1/admin/modules
+     */
+    public function saveModule(Request $request)
+    {
+        $validated = $request->validate([
+            'id' => 'nullable|uuid',
+            'code' => 'required|string|max:100',
+            'name' => 'required|string|max:255',
+            'group' => 'nullable|string|max:100',
+            'description' => 'nullable|string',
+            'status' => 'nullable|string|in:ACTIVE,DISABLED',
+            'is_core' => 'nullable|boolean',
+            'is_billable' => 'nullable|boolean',
+            'sort_order' => 'nullable|integer',
+        ]);
+
+        $context = $this->getContextAndUser($request);
+        $module = SaasSubscriptionService::saveModule($validated, $context);
+        return response()->json($module);
+    }
+
+    /**
+     * POST /api/v1/admin/features
+     */
+    public function saveFeature(Request $request)
+    {
+        $validated = $request->validate([
+            'id' => 'nullable|uuid',
+            'module_id' => 'required|uuid',
+            'code' => 'required|string|max:100',
+            'name' => 'required|string|max:255',
+            'group' => 'nullable|string|max:100',
+            'description' => 'nullable|string',
+            'status' => 'nullable|string|in:ACTIVE,DISABLED',
+            'default_enabled' => 'nullable|boolean',
+        ]);
+
+        $context = $this->getContextAndUser($request);
+        $feature = SaasSubscriptionService::saveFeature($validated, $context);
+        return response()->json($feature);
+    }
+
+    /**
      * GET /api/v1/admin/plans
      */
     public function getPlans()

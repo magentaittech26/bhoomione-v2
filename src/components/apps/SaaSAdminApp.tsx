@@ -77,6 +77,15 @@ export default function SaaSAdminApp() {
   const [loadingConfig, setLoadingConfig] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
 
+  // Local notification toast state (specifically designed to avoid unpermitted global window actions)
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
+  const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast(null);
+    }, 4000);
+  };
+
   // Module Registry
   const [modules, setModules] = useState<SaasModule[]>([
     { name: "SaaS Admin Core", code: "SAAS_ADMIN", group: "System", description: "Global multi-tenant supervisory console and DNS cluster config.", status: "ACTIVE", isCore: true, isBillable: false, sortOrder: 1, defaultFeatureAccess: [] },
@@ -191,31 +200,80 @@ export default function SaaSAdminApp() {
       const matrixObj: Record<string, Record<string, any>> = {};
 
       plansData.forEach((p: any) => {
+        const pCode = p.plan_code || p.code || "";
         planList.push({
           id: p.id,
           name: p.name,
-          code: p.plan_code,
-          monthlyPrice: p.monthly_price,
-          yearlyPrice: p.yearly_price,
-          trialDays: p.trial_days,
-          status: p.status,
-          sortOrder: p.sort_order
+          code: pCode,
+          monthlyPrice: p.monthly_price !== undefined ? Number(p.monthly_price) : Number(p.monthlyPrice || 0),
+          yearlyPrice: p.yearly_price !== undefined ? Number(p.yearly_price) : Number(p.yearlyPrice || 0),
+          trialDays: p.trial_days !== undefined ? Number(p.trial_days) : Number(p.trialDays || 0),
+          status: p.status || "ACTIVE",
+          sortOrder: p.sort_order !== undefined ? Number(p.sort_order) : Number(p.sortOrder || 0)
         });
 
-        if (p.limits) {
-          planLimitsObj[p.plan_code] = p.limits;
+        // 1. Process limits relation (supports snake_camel hybrid)
+        const limits: PlanLimits = {
+          projectsLimit: 5, layoutsLimit: 15, plotsLimit: 250, customersLimit: 1000, usersLimit: 5,
+          agentsLimit: 2, storageLimitGb: 5, documentsLimit: 1000, dxfFilesLimit: 2, marketplaceListingsLimit: 5,
+          apiCallsLimit: 5000, whatsAppMessagesLimit: 100, aiCreditsLimit: 50
+        };
+        const rawLimList = p.plan_limits || p.planLimits || [];
+        if (Array.isArray(rawLimList)) {
+          rawLimList.forEach((lim: any) => {
+            if (lim.limit_key) {
+              limits[lim.limit_key as keyof PlanLimits] = Number(lim.limit_value || 0);
+            }
+          });
         }
-        if (p.features) {
-          matrixObj[p.plan_code] = p.features;
+        planLimitsObj[pCode] = limits;
+
+        // 2. Process features relation
+        const feats: Record<string, "ENABLED" | "DISABLED" | "ADDON" | "ENTERPRISE"> = {};
+        allFeatures.forEach(f => {
+          feats[f.code] = "DISABLED";
+        });
+        const rawFeatList = p.plan_features || p.planFeatures || [];
+        if (Array.isArray(rawFeatList)) {
+          rawFeatList.forEach((pf: any) => {
+            const fCode = pf.feature?.code || pf.feature_code;
+            if (fCode) {
+              const level = pf.access_level || "ENABLED";
+              feats[fCode] = level as any;
+            }
+          });
         }
+        matrixObj[pCode] = feats;
       });
 
       if (planList.length > 0) setPlans(planList);
       setPlanLimits(planLimitsObj);
       setMatrix(matrixObj);
 
-      if (addonsData) setAddons(addonsData);
-      if (slabsData) setSlabs(slabsData);
+      if (addonsData && Array.isArray(addonsData)) {
+        const parsedAddons = addonsData.map((a: any) => ({
+          id: a.id,
+          code: a.code,
+          name: a.name,
+          description: a.description,
+          monthlyPrice: a.monthly_price !== undefined ? Number(a.monthly_price) : Number(a.monthlyPrice || 0),
+          yearlyPrice: a.yearly_price !== undefined ? Number(a.yearly_price) : Number(a.yearlyPrice || 0),
+          status: a.status || "ACTIVE"
+        }));
+        setAddons(parsedAddons);
+      }
+
+      if (slabsData && Array.isArray(slabsData)) {
+        const parsedSlabs = slabsData.map((s: any) => ({
+          id: s.id,
+          minPlots: s.min_plots !== undefined ? Number(s.min_plots) : Number(s.minPlots || 0),
+          maxPlots: s.max_plots !== undefined ? Number(s.max_plots) : Number(s.maxPlots || 0),
+          monthlyPrice: s.monthly_price !== undefined ? Number(s.monthly_price) : Number(s.monthlyPrice || 0),
+          yearlyPrice: s.yearly_price !== undefined ? Number(s.yearly_price) : Number(s.yearlyPrice || 0),
+          status: s.status || "ACTIVE"
+        }));
+        setSlabs(parsedSlabs);
+      }
 
       // Load specific tenant subscription status and overrides
       const tenantSubs: Record<string, TenantSubscription> = {};
@@ -267,8 +325,22 @@ export default function SaaSAdminApp() {
     }
   };
 
-  // Immediate persistence action hooks
+  // Immediate UI local-state updates
   const handleAddPlan = async (newPlanObj: SubscriptionPlan, limits: PlanLimits, matrixSettings: Record<string, "ENABLED" | "DISABLED" | "ADDON" | "ENTERPRISE">) => {
+    // Validation
+    if (newPlanObj.monthlyPrice < 0 || newPlanObj.yearlyPrice < 0) {
+      showToast("Prices cannot be negative values.", "error");
+      return;
+    }
+    if (newPlanObj.trialDays < 0) {
+      showToast("Trial days must be greater than or equal to 0.", "error");
+      return;
+    }
+    if (!newPlanObj.code.trim()) {
+      showToast("Plan code cannot be blank.", "error");
+      return;
+    }
+
     setPlans(prev => [...prev, newPlanObj]);
     setPlanLimits(prev => {
       const next = { ...prev };
@@ -282,6 +354,16 @@ export default function SaaSAdminApp() {
     });
 
     try {
+      const activeFeatureIds: string[] = [];
+      Object.entries(matrixSettings).forEach(([featCode, status]) => {
+        if (status === "ENABLED") {
+          const matched = features.find(f => f.code.toUpperCase() === featCode.toUpperCase());
+          if (matched) {
+            activeFeatureIds.push(matched.id);
+          }
+        }
+      });
+
       await api.saveSaasPlan({
         plan_code: newPlanObj.code,
         name: newPlanObj.name,
@@ -291,74 +373,65 @@ export default function SaaSAdminApp() {
         status: newPlanObj.status,
         sort_order: newPlanObj.sortOrder,
         limits,
-        features: matrixSettings
+        features: activeFeatureIds
       });
+      showToast(`Plan template [${newPlanObj.name}] created and persistent in database!`, "success");
+      await loadSaasConfig();
     } catch (err) {
       console.error("Failed to persist new SaaS plan relation:", err);
+      showToast("Failed to save new plan in PostgreSQL. Check validation.", "error");
     }
   };
 
   const handleUpdatePlan = async (code: string, updates: Partial<SubscriptionPlan>) => {
+    // Only update local state. The explicit "Save" button triggers save!
     const updatedPlans = plans.map(p => p.code === code ? { ...p, ...updates } : p);
     setPlans(updatedPlans);
-    const planObj = updatedPlans.find(p => p.code === code);
-    if (!planObj) return;
-
-    try {
-      await api.saveSaasPlan({
-        id: planObj.id,
-        plan_code: planObj.code,
-        name: planObj.name,
-        monthly_price: planObj.monthlyPrice,
-        yearly_price: planObj.yearlyPrice,
-        trial_days: planObj.trialDays,
-        status: planObj.status,
-        sort_order: planObj.sortOrder,
-        limits: planLimits[code],
-        features: matrix[code]
-      });
-    } catch (err) {
-      console.error("Failed to update SaaS plan relation:", err);
-    }
   };
 
   const handleUpdatePlanLimit = async (planCode: string, limitKey: keyof PlanLimits, value: number) => {
+    // Only update local state. The explicit "Save Limits" button triggers save!
     const nextLimits = { ...planLimits };
     if (!nextLimits[planCode]) nextLimits[planCode] = {} as any;
     nextLimits[planCode][limitKey] = value;
     setPlanLimits(nextLimits);
-
-    const planObj = plans.find(p => p.code === planCode);
-    if (!planObj) return;
-
-    try {
-      await api.saveSaasPlan({
-        id: planObj.id,
-        plan_code: planObj.code,
-        name: planObj.name,
-        monthly_price: planObj.monthlyPrice,
-        yearly_price: planObj.yearlyPrice,
-        trial_days: planObj.trialDays,
-        status: planObj.status,
-        sort_order: planObj.sortOrder,
-        limits: nextLimits[planCode],
-        features: matrix[planCode]
-      });
-    } catch (err) {
-      console.error("Failed to update plan limits:", err);
-    }
   };
 
   const handleUpdateMatrixCell = async (planCode: string, featCode: string, value: "ENABLED" | "DISABLED" | "ADDON" | "ENTERPRISE") => {
+    // Only update local state. The explicit "Save Matrix" button triggers save!
     const nextMatrix = { ...matrix };
     if (!nextMatrix[planCode]) nextMatrix[planCode] = {};
     nextMatrix[planCode][featCode] = value;
     setMatrix(nextMatrix);
+  };
 
-    const planObj = plans.find(p => p.code === planCode);
+  // Dedicated Save Actions
+  const handleSavePlanCard = async (code: string) => {
+    const planObj = plans.find(p => p.code === code);
     if (!planObj) return;
 
+    if (planObj.monthlyPrice < 0 || planObj.yearlyPrice < 0) {
+      showToast("Plan pricing values cannot be negative.", "error");
+      return;
+    }
+    if (planObj.trialDays < 0) {
+      showToast("Trial days must be 0 or more.", "error");
+      return;
+    }
+
     try {
+      const limits = planLimits[code] || {};
+      const planFeatures = matrix[code] || {};
+      const activeFeatureIds: string[] = [];
+      Object.entries(planFeatures).forEach(([featCode, status]) => {
+        if (status === "ENABLED") {
+          const matched = features.find(f => f.code.toUpperCase() === featCode.toUpperCase());
+          if (matched) {
+            activeFeatureIds.push(matched.id);
+          }
+        }
+      });
+
       await api.saveSaasPlan({
         id: planObj.id,
         plan_code: planObj.code,
@@ -368,26 +441,135 @@ export default function SaaSAdminApp() {
         trial_days: planObj.trialDays,
         status: planObj.status,
         sort_order: planObj.sortOrder,
-        limits: planLimits[planCode],
-        features: nextMatrix[planCode]
+        limits,
+        features: activeFeatureIds
       });
-    } catch (err) {
-      console.error("Failed to update plan feature matrix cell:", err);
+      showToast(`Plan '${planObj.name}' details saved!`, "success");
+      await loadSaasConfig();
+    } catch (err: any) {
+      console.error(err);
+      showToast("Failed to save plan changes to PostgreSQL.", "error");
+    }
+  };
+
+  const handleSaveFeatureMatrix = async () => {
+    try {
+      setLoadingConfig(true);
+      for (const p of plans) {
+        const pCode = p.code;
+        const planFeatures = matrix[pCode] || {};
+        const activeFeatureIds: string[] = [];
+        Object.entries(planFeatures).forEach(([featCode, status]) => {
+          if (status === "ENABLED") {
+            const matched = features.find(f => f.code.toUpperCase() === featCode.toUpperCase());
+            if (matched) {
+              activeFeatureIds.push(matched.id);
+            }
+          }
+        });
+
+        await api.saveSaasPlan({
+          id: p.id,
+          plan_code: pCode,
+          name: p.name,
+          monthly_price: p.monthlyPrice,
+          yearly_price: p.yearlyPrice,
+          trial_days: p.trialDays,
+          status: p.status,
+          sort_order: p.sortOrder,
+          limits: planLimits[pCode],
+          features: activeFeatureIds
+        });
+      }
+      showToast("Feature Matrix structure successfully persisted!", "success");
+      await loadSaasConfig();
+    } catch (err: any) {
+      console.error(err);
+      showToast("Failed to save corporate matrix configuration.", "error");
+    } finally {
+      setLoadingConfig(false);
+    }
+  };
+
+  const handleSaveUsageLimits = async () => {
+    let hasNegative = false;
+    plans.forEach(p => {
+      const limits = planLimits[p.code] || {};
+      Object.entries(limits).forEach(([k, v]) => {
+        if (Number(v) < 0) {
+          hasNegative = true;
+        }
+      });
+    });
+
+    if (hasNegative) {
+      showToast("Usage limits cannot have negative allocations.", "error");
+      return;
+    }
+
+    try {
+      setLoadingConfig(true);
+      for (const p of plans) {
+        const pCode = p.code;
+        const limits = planLimits[pCode] || {};
+        const planFeatures = matrix[pCode] || {};
+        const activeFeatureIds: string[] = [];
+        Object.entries(planFeatures).forEach(([featCode, status]) => {
+          if (status === "ENABLED") {
+            const matched = features.find(f => f.code.toUpperCase() === featCode.toUpperCase());
+            if (matched) {
+              activeFeatureIds.push(matched.id);
+            }
+          }
+        });
+
+        await api.saveSaasPlan({
+          id: p.id,
+          plan_code: pCode,
+          name: p.name,
+          monthly_price: p.monthlyPrice,
+          yearly_price: p.yearlyPrice,
+          trial_days: p.trialDays,
+          status: p.status,
+          sort_order: p.sortOrder,
+          limits,
+          features: activeFeatureIds
+        });
+      }
+      showToast("All plan limits parsed and synchronized with server!", "success");
+      await loadSaasConfig();
+    } catch (err: any) {
+      console.error(err);
+      showToast("Failed to update general SaaS plan limits.", "error");
+    } finally {
+      setLoadingConfig(false);
     }
   };
 
   const handleAddSlab = async (s: PlotBillingSlab) => {
+    if (s.monthlyPrice < 0 || s.yearlyPrice < 0) {
+      showToast("Plot slab prices cannot be negative.", "error");
+      return;
+    }
+    if (s.minPlots < 1 || s.maxPlots <= s.minPlots) {
+      showToast("Invalid slab range setup.", "error");
+      return;
+    }
+
     setSlabs(prev => [...prev, s]);
     try {
       await api.saveSaasSlab({
-        minPlots: s.minPlots,
-        maxPlots: s.maxPlots,
-        monthlyPrice: s.monthlyPrice,
-        yearlyPrice: s.yearlyPrice,
+        min_plots: s.minPlots,
+        max_plots: s.maxPlots,
+        monthly_price: s.monthlyPrice,
+        yearly_price: s.yearlyPrice,
         status: s.status || "ACTIVE"
       });
+      showToast(`Plot threshold slab [${s.minPlots}-${s.maxPlots}] created!`, "success");
+      await loadSaasConfig();
     } catch (err) {
       console.error("Failed to persist plot billing slab:", err);
+      showToast("Failed to save plot billing slab.", "error");
     }
   };
 
@@ -397,33 +579,53 @@ export default function SaaSAdminApp() {
     const sObj = updated.find(s => s.id === id);
     if (!sObj) return;
 
+    if (sObj.monthlyPrice < 0 || sObj.yearlyPrice < 0) {
+      showToast("Slab price numbers cannot be negative.", "error");
+      return;
+    }
+
     try {
       await api.saveSaasSlab({
-        id: sObj.id,
-        minPlots: sObj.minPlots,
-        maxPlots: sObj.maxPlots,
-        monthlyPrice: sObj.monthlyPrice,
-        yearlyPrice: sObj.yearlyPrice,
+        id: sObj.id?.startsWith("slab_") ? undefined : sObj.id,
+        min_plots: sObj.minPlots,
+        max_plots: sObj.maxPlots,
+        monthly_price: sObj.monthlyPrice,
+        yearly_price: sObj.yearlyPrice,
         status: sObj.status
       });
+      showToast("Plot capacity slab status updated!", "success");
+      await loadSaasConfig();
     } catch (err) {
       console.error("Failed to update plot billing slab:", err);
+      showToast("Failed to update dynamic capacity slab.", "error");
     }
   };
 
   const handleAddAddon = async (a: AddonCatalogItem) => {
+    if (!a.code?.trim()) {
+      showToast("Addon code cannot be blank.", "error");
+      return;
+    }
+    if (a.monthlyPrice < 0 || a.yearlyPrice < 0) {
+      showToast("Addon prices cannot be negative.", "error");
+      return;
+    }
+
     setAddons(prev => [...prev, a]);
     try {
       await api.saveSaasAddon({
         code: a.code,
         name: a.name,
-        monthlyPrice: a.monthlyPrice,
-        yearlyPrice: a.yearlyPrice,
+        monthly_price: a.monthlyPrice,
+        yearly_price: a.yearlyPrice,
         description: a.description,
         status: a.status || "ACTIVE"
       });
+      showToast(`Addon [${a.name}] created successfully!`, "success");
+      await loadSaasConfig();
     } catch (err) {
       console.error("Failed to persist billing addon:", err);
+      showToast("Failed to create billing addon.", "error");
     }
   };
 
@@ -433,18 +635,129 @@ export default function SaaSAdminApp() {
     const aObj = updated.find(a => a.code === code);
     if (!aObj) return;
 
+    if (aObj.monthlyPrice < 0 || aObj.yearlyPrice < 0) {
+      showToast("Addon prices cannot be negative.", "error");
+      return;
+    }
+
     try {
       await api.saveSaasAddon({
         id: aObj.id,
         code: aObj.code,
         name: aObj.name,
-        monthlyPrice: aObj.monthlyPrice,
-        yearlyPrice: aObj.yearlyPrice,
+        monthly_price: aObj.monthlyPrice,
+        yearly_price: aObj.yearlyPrice,
         description: aObj.description,
         status: aObj.status
       });
+      showToast(`Addon [${aObj.name}] status updated!`, "success");
+      await loadSaasConfig();
     } catch (err) {
       console.error("Failed to update billing addon:", err);
+      showToast("Failed to update billing addon.", "error");
+    }
+  };
+
+  const handleAddModule = async (mod: SaasModule) => {
+    try {
+      await api.saveSaasModule({
+        code: mod.code,
+        name: mod.name,
+        group: mod.group,
+        description: mod.description,
+        status: mod.status,
+        is_core: mod.isCore,
+        is_billable: mod.isBillable,
+        sort_order: mod.sortOrder
+      });
+      showToast(`Module '${mod.name}' successfully registered!`, "success");
+      await loadSaasConfig();
+    } catch (err) {
+      console.error(err);
+      showToast("Failed to register Module to Registry DB.", "error");
+    }
+  };
+
+  const handleUpdateModule = async (code: string, updates: Partial<SaasModule>) => {
+    const existing = modules.find(m => m.code === code);
+    if (!existing) return;
+
+    setModules(prev => prev.map(m => m.code === code ? { ...m, ...updates } : m));
+
+    try {
+      const payload = {
+        id: existing.id,
+        code: existing.code,
+        name: updates.name !== undefined ? updates.name : existing.name,
+        group: updates.group !== undefined ? updates.group : existing.group,
+        description: updates.description !== undefined ? updates.description : existing.description,
+        status: updates.status !== undefined ? updates.status : existing.status,
+        is_core: updates.isCore !== undefined ? updates.isCore : existing.isCore,
+        is_billable: updates.isBillable !== undefined ? updates.isBillable : existing.isBillable,
+        sort_order: updates.sortOrder !== undefined ? updates.sortOrder : existing.sortOrder,
+      };
+
+      await api.saveSaasModule(payload);
+      showToast(`Module '${existing.name}' settings saved!`, "success");
+      await loadSaasConfig();
+    } catch (err) {
+      console.error(err);
+      showToast("Failed to update module configuration in Registry DB.", "error");
+    }
+  };
+
+  const handleAddFeature = async (feat: SaasFeature) => {
+    const modObj = modules.find(m => m.code === feat.moduleCode);
+    if (!modObj) {
+      showToast("Target Module not found in active workspace context.", "error");
+      return;
+    }
+
+    try {
+      await api.saveSaasFeature({
+        module_id: modObj.id,
+        code: feat.code,
+        name: feat.name,
+        group: feat.group,
+        description: feat.description,
+        status: feat.status,
+        default_enabled: feat.defaultEnabled
+      });
+      showToast(`Feature '${feat.name}' successfully cataloged!`, "success");
+      await loadSaasConfig();
+    } catch (err) {
+      console.error(err);
+      showToast("Failed to persist feature inside the catalog database.", "error");
+    }
+  };
+
+  const handleUpdateFeature = async (code: string, updates: Partial<SaasFeature>) => {
+    const existing = features.find(f => f.code === code);
+    if (!existing) return;
+
+    const modObj = modules.find(m => m.code === existing.moduleCode);
+    if (!modObj) return;
+
+    setFeatures(prev => prev.map(f => f.code === code ? { ...f, ...updates } : f));
+
+    try {
+      const payload = {
+        id: existing.id,
+        module_id: modObj.id,
+        code: existing.code,
+        name: updates.name !== undefined ? updates.name : existing.name,
+        group: updates.group !== undefined ? updates.group : existing.group,
+        description: updates.description !== undefined ? updates.description : existing.description,
+        status: updates.status !== undefined ? updates.status : existing.status,
+        default_enabled: updates.defaultEnabled !== undefined ? updates.defaultEnabled : existing.defaultEnabled,
+      };
+
+      await api.saveSaasFeature(payload);
+      showToast(`Feature '${existing.name}' settings saved!`, "success");
+      await loadSaasConfig();
+    } catch (err) {
+      console.error(err);
+      showToast("Failed to update feature definition in backend Catalog.", "error");
     }
   };
 
@@ -1117,6 +1430,9 @@ export default function SaaSAdminApp() {
               onUpdatePlan={handleUpdatePlan}
               onUpdatePlanLimit={handleUpdatePlanLimit}
               onUpdateMatrixCell={handleUpdateMatrixCell}
+              onSavePlan={handleSavePlanCard}
+              onSaveFeatureMatrix={handleSaveFeatureMatrix}
+              onSaveUsageLimits={handleSaveUsageLimits}
             />
           </div>
         )}
@@ -1134,6 +1450,9 @@ export default function SaaSAdminApp() {
               onUpdatePlan={handleUpdatePlan}
               onUpdatePlanLimit={handleUpdatePlanLimit}
               onUpdateMatrixCell={handleUpdateMatrixCell}
+              onSavePlan={handleSavePlanCard}
+              onSaveFeatureMatrix={handleSaveFeatureMatrix}
+              onSaveUsageLimits={handleSaveUsageLimits}
             />
           </div>
         )}
@@ -1151,6 +1470,9 @@ export default function SaaSAdminApp() {
               onUpdatePlan={handleUpdatePlan}
               onUpdatePlanLimit={handleUpdatePlanLimit}
               onUpdateMatrixCell={handleUpdateMatrixCell}
+              onSavePlan={handleSavePlanCard}
+              onSaveFeatureMatrix={handleSaveFeatureMatrix}
+              onSaveUsageLimits={handleSaveUsageLimits}
             />
           </div>
         )}
@@ -1162,10 +1484,10 @@ export default function SaaSAdminApp() {
               defaultTab="modules"
               modules={modules}
               features={features}
-              onAddModule={(m) => setModules([...modules, m])}
-              onUpdateModule={(code, updates) => setModules(modules.map(m => m.code === code ? { ...m, ...updates } : m))}
-              onAddFeature={(f) => setFeatures([...features, f])}
-              onUpdateFeature={(code, updates) => setFeatures(features.map(f => f.code === code ? { ...f, ...updates } : f))}
+              onAddModule={handleAddModule}
+              onUpdateModule={handleUpdateModule}
+              onAddFeature={handleAddFeature}
+              onUpdateFeature={handleUpdateFeature}
             />
           </div>
         )}
@@ -1177,10 +1499,10 @@ export default function SaaSAdminApp() {
               defaultTab="features"
               modules={modules}
               features={features}
-              onAddModule={(m) => setModules([...modules, m])}
-              onUpdateModule={(code, updates) => setModules(modules.map(m => m.code === code ? { ...m, ...updates } : m))}
-              onAddFeature={(f) => setFeatures([...features, f])}
-              onUpdateFeature={(code, updates) => setFeatures(features.map(f => f.code === code ? { ...f, ...updates } : f))}
+              onAddModule={handleAddModule}
+              onUpdateModule={handleUpdateModule}
+              onAddFeature={handleAddFeature}
+              onUpdateFeature={handleUpdateFeature}
             />
           </div>
         )}
@@ -1351,7 +1673,22 @@ export default function SaaSAdminApp() {
           </div>
         )}
 
+
         </div>
+
+        {/* Floating Toast Notification overlay */}
+        {toast && (
+          <div className="fixed bottom-8 right-8 z-[9999] transition-all max-w-sm duration-300">
+            <div className={`rounded-xl px-4 py-3.5 shadow-2xl border flex items-center gap-2.5 text-xs font-bold font-sans ${
+              toast.type === "success" ? "border-emerald-500 bg-emerald-50 text-emerald-900" :
+              toast.type === "error" ? "border-red-500 bg-red-50 text-red-900" :
+              "border-indigo-500 bg-indigo-50 text-indigo-900"
+            }`}>
+              {toast.type === "success" ? <Check className="w-4 h-4 text-emerald-500 shrink-0" /> : <AlertTriangle className="w-4 h-4 text-red-550 shrink-0" />}
+              <span className="flex-1 text-slate-800">{toast.message}</span>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Dynamic Workspace Slide Over / Drawer customizer */}
@@ -1467,7 +1804,7 @@ export default function SaaSAdminApp() {
                   id="provision-plan-select"
                 >
                   {plans.map(p => (
-                    <option key={p.code} value={p.code}>{p.name} (${p.monthlyPrice}/mo)</option>
+                    <option key={p.code} value={p.code}>{p.name} (₹{p.monthlyPrice}/mo)</option>
                   ))}
                 </select>
               </div>

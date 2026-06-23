@@ -27,6 +27,71 @@ class SaasSubscriptionService
     }
 
     /**
+     * Create or Update a SaaS Module.
+     */
+    public static function saveModule(array $data, array $context): SaasModule
+    {
+        $moduleId = $data['id'] ?? (string) Str::uuid();
+        $module = SaasModule::updateOrCreate(
+            ['id' => $moduleId],
+            [
+                'code' => strtoupper($data['code']),
+                'name' => $data['name'],
+                'group' => $data['group'] ?? 'General',
+                'description' => $data['description'] ?? null,
+                'status' => $data['status'] ?? 'ACTIVE',
+                'is_core' => (bool) ($data['is_core'] ?? false),
+                'is_billable' => (bool) ($data['is_billable'] ?? false),
+                'sort_order' => (int) ($data['sort_order'] ?? 10),
+            ]
+        );
+
+        AuditLogService::log([
+            'userId' => $context['userId'] ?? null,
+            'entityName' => 'SaasModule',
+            'entityId' => $module->id,
+            'action' => isset($data['id']) ? 'MODULE_UPDATE_SUCCESS' : 'MODULE_CREATE_SUCCESS',
+            'newValues' => $module->toArray(),
+            'ipAddress' => $context['ip'] ?? null,
+            'userAgent' => $context['userAgent'] ?? null,
+        ]);
+
+        return $module;
+    }
+
+    /**
+     * Create or Update a SaaS Feature.
+     */
+    public static function saveFeature(array $data, array $context): SaasFeature
+    {
+        $featureId = $data['id'] ?? (string) Str::uuid();
+        $feature = SaasFeature::updateOrCreate(
+            ['id' => $featureId],
+            [
+                'module_id' => $data['module_id'],
+                'code' => strtoupper($data['code']),
+                'name' => $data['name'],
+                'group' => $data['group'] ?? 'General',
+                'description' => $data['description'] ?? null,
+                'status' => $data['status'] ?? 'ACTIVE',
+                'default_enabled' => (bool) ($data['default_enabled'] ?? false),
+            ]
+        );
+
+        AuditLogService::log([
+            'userId' => $context['userId'] ?? null,
+            'entityName' => 'SaasFeature',
+            'entityId' => $feature->id,
+            'action' => isset($data['id']) ? 'FEATURE_UPDATE_SUCCESS' : 'FEATURE_CREATE_SUCCESS',
+            'newValues' => $feature->toArray(),
+            'ipAddress' => $context['ip'] ?? null,
+            'userAgent' => $context['userAgent'] ?? null,
+        ]);
+
+        return $feature;
+    }
+
+    /**
      * Retrieve all pricing plans with limits and feature matrices.
      */
     public static function getPlans()

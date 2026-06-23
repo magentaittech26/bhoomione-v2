@@ -130,11 +130,27 @@ export default function AddonsBillingTab({
                       <td className="px-5 py-4 text-left font-sans font-bold text-slate-900">
                         ⚡ {s.minPlots} &mdash; {s.maxPlots === 99999 ? "500+ (Unlimited)" : `${s.maxPlots}`} plots
                       </td>
-                      <td className="px-5 py-4 text-slate-700 font-bold">
-                        ${s.monthlyPrice} / mo
+                      <td className="px-5 py-4 text-center">
+                        <div className="flex justify-center items-center gap-1">
+                          <span className="text-slate-400 font-sans">₹</span>
+                          <input 
+                            type="number"
+                            value={s.monthlyPrice}
+                            onChange={(e) => onUpdateSlab(s.id, { monthlyPrice: Number(e.target.value) })}
+                            className="w-20 bg-slate-50 border border-slate-200 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs focus:bg-white focus:outline-none"
+                          />
+                        </div>
                       </td>
-                      <td className="px-5 py-4 text-slate-500 font-bold">
-                        ${s.yearlyPrice} / yr
+                      <td className="px-5 py-4 text-center">
+                        <div className="flex justify-center items-center gap-1">
+                          <span className="text-slate-400 font-sans">₹</span>
+                          <input 
+                            type="number"
+                            value={s.yearlyPrice}
+                            onChange={(e) => onUpdateSlab(s.id, { yearlyPrice: Number(e.target.value) })}
+                            className="w-20 bg-slate-50 border border-slate-200 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs focus:bg-white focus:outline-none"
+                          />
+                        </div>
                       </td>
                       <td className="px-5 py-4">
                         <button
@@ -147,16 +163,24 @@ export default function AddonsBillingTab({
                         </button>
                       </td>
                       <td className="px-5 py-4 text-right font-sans">
-                        <button
-                          onClick={() => {
-                            if (window.confirm("Confirm deletion of this dynamic capacity tier slab?")) {
-                              onDeleteSlab(s.id);
-                            }
-                          }}
-                          className="text-red-650 hover:text-red-850 hover:underline text-[10px] font-bold"
-                        >
-                          Delete
-                        </button>
+                        <div className="flex justify-end gap-1.5">
+                          <button
+                            onClick={() => onUpdateSlab(s.id, {})}
+                            className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-250 text-emerald-805 rounded px-2 py-1 text-[10px] font-bold"
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (window.confirm("Confirm deletion of this dynamic capacity tier slab?")) {
+                                onDeleteSlab(s.id);
+                              }
+                            }}
+                            className="text-red-650 hover:text-red-850 hover:underline text-[10px] font-bold border border-slate-200 rounded px-2 py-1"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -202,28 +226,36 @@ export default function AddonsBillingTab({
                   <p className="text-[11px] text-slate-400 leading-normal">{a.description}</p>
                 </div>
 
-                <div className="pt-4 border-t border-slate-100 mt-4 flex items-center justify-between text-xs">
-                  <div className="flex gap-4">
-                    <div>
-                      <span className="text-[9px] text-slate-400 font-bold uppercase block">Monthly Fees</span>
-                      <input 
-                        type="number"
-                        value={a.monthlyPrice}
-                        onChange={(e) => onUpdateAddon(a.code, { monthlyPrice: Number(e.target.value) })}
-                        className="w-16 bg-slate-50 border border-slate-200 rounded p-1 font-bold font-mono text-slate-800 text-center"
-                      />
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-slate-400 font-bold uppercase block">Yearly Fees</span>
-                      <input 
-                        type="number"
-                        value={a.yearlyPrice}
-                        onChange={(e) => onUpdateAddon(a.code, { yearlyPrice: Number(e.target.value) })}
-                        className="w-16 bg-slate-50 border border-slate-200 rounded p-1 font-bold font-mono text-slate-800 text-center"
-                      />
-                    </div>
-                  </div>
-                </div>
+                 <div className="pt-4 border-t border-slate-100 mt-4 flex items-center justify-between text-xs gap-3">
+                   <div className="flex gap-3">
+                     <div>
+                       <span className="text-[9px] text-slate-400 font-bold uppercase block">Monthly Fees (₹)</span>
+                       <input 
+                         type="number"
+                         value={a.monthlyPrice}
+                         onChange={(e) => onUpdateAddon(a.code, { monthlyPrice: Number(e.target.value) })}
+                         className="w-16 bg-slate-50 border border-slate-200 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs"
+                       />
+                     </div>
+                     <div>
+                       <span className="text-[9px] text-slate-400 font-bold uppercase block">Yearly Fees (₹)</span>
+                       <input 
+                         type="number"
+                         value={a.yearlyPrice}
+                         onChange={(e) => onUpdateAddon(a.code, { yearlyPrice: Number(e.target.value) })}
+                         className="w-16 bg-slate-50 border border-slate-200 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs"
+                       />
+                     </div>
+                   </div>
+
+                   <button
+                     onClick={() => onUpdateAddon(a.code, {})} // Trigger save
+                     className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg px-2.5 py-1.5 text-[10px] font-sans flex items-center gap-1 shadow-xs transition-all cursor-pointer whitespace-nowrap"
+                   >
+                     <Check className="w-3 h-3" />
+                     Save Add-on
+                   </button>
+                 </div>
               </div>
             ))}
           </div>
@@ -276,7 +308,7 @@ export default function AddonsBillingTab({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-1">Monthly Cost ($)</label>
+                  <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-1">Monthly Cost (₹)</label>
                   <input 
                     type="number" 
                     required
@@ -287,7 +319,7 @@ export default function AddonsBillingTab({
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-1">Yearly Cost ($)</label>
+                  <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-1">Yearly Cost (₹)</label>
                   <input 
                     type="number" 
                     required
@@ -356,7 +388,7 @@ export default function AddonsBillingTab({
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-1">Monthly Cost ($)</label>
+                  <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-1">Monthly Cost (₹)</label>
                   <input 
                     type="number" 
                     required
@@ -367,7 +399,7 @@ export default function AddonsBillingTab({
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-1">Yearly Cost ($)</label>
+                  <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-1">Yearly Cost (₹)</label>
                   <input 
                     type="number" 
                     required
