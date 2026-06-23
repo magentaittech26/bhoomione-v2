@@ -385,6 +385,14 @@ router.get("/admin/tenants/:id/subscription", requireAuth, async (req: Authentic
       [sub.id]
     );
 
+    // 6. Load billing overrides
+    const billingOverridesRes = await pool.query(
+      `SELECT custom_monthly_fee, custom_annual_fee, custom_discount_percentage, special_contract_notes
+       FROM tenant_billing_overrides
+       WHERE tenant_subscription_id = $1 LIMIT 1`,
+      [sub.id]
+    );
+
     // Construct profile matching Laravel service structure
     res.json({
       has_subscription: true,
@@ -429,7 +437,13 @@ router.get("/admin/tenants/:id/subscription", requireAuth, async (req: Authentic
         id: lo.id,
         limit_key: lo.limit_key,
         override_value: lo.override_value
-      }))
+      })),
+      billing_override: billingOverridesRes.rows[0] ? {
+        custom_monthly_fee: Number(billingOverridesRes.rows[0].custom_monthly_fee),
+        custom_annual_fee: Number(billingOverridesRes.rows[0].custom_annual_fee),
+        custom_discount_percentage: Number(billingOverridesRes.rows[0].custom_discount_percentage),
+        special_contract_notes: billingOverridesRes.rows[0].special_contract_notes
+      } : null
     });
   } catch (err: any) {
     console.error("GET /admin/tenants/:id/subscription Error:", err);
@@ -621,6 +635,23 @@ router.post("/api/v1/admin/tenants/:id/subscription/overrides", requireAuth, asy
           [subId, addonId]
         );
       }
+    }
+
+    // Apply billing overrides
+    const { billing_override } = req.body;
+    if (billing_override) {
+      await pool.query(`DELETE FROM tenant_billing_overrides WHERE tenant_subscription_id = $1`, [subId]);
+      await pool.query(
+        `INSERT INTO tenant_billing_overrides (tenant_subscription_id, custom_monthly_fee, custom_annual_fee, custom_discount_percentage, special_contract_notes)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          subId,
+          billing_override.custom_monthly_fee !== null && billing_override.custom_monthly_fee !== undefined && billing_override.custom_monthly_fee !== "" ? Number(billing_override.custom_monthly_fee) : null,
+          billing_override.custom_annual_fee !== null && billing_override.custom_annual_fee !== undefined && billing_override.custom_annual_fee !== "" ? Number(billing_override.custom_annual_fee) : null,
+          billing_override.custom_discount_percentage !== null && billing_override.custom_discount_percentage !== undefined ? Number(billing_override.custom_discount_percentage) : 0,
+          billing_override.special_contract_notes || null
+        ]
+      );
     }
 
     await pool.query("COMMIT");

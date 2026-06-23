@@ -207,6 +207,7 @@ class SaasController extends Controller
             'limit_overrides' => 'nullable|array',
             'feature_overrides' => 'nullable|array',
             'addons' => 'nullable|array',
+            'billing_override' => 'nullable|array'
         ]);
 
         $context = $this->getContextAndUser($request);

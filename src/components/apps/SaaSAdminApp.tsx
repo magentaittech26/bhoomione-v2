@@ -16,6 +16,7 @@ import PlanFeatureMatrixTab from "../saas/PlanFeatureMatrixTab.tsx";
 import AddonsBillingTab from "../saas/AddonsBillingTab.tsx";
 import MrrDashboardTab from "../saas/MrrDashboardTab.tsx";
 import TenantManagementTab from "../saas/TenantManagementTab";
+import TenantOverridesTab from "../saas/TenantOverridesTab.tsx";
 
 export default function SaaSAdminApp() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -1231,6 +1232,10 @@ export default function SaaSAdminApp() {
         
         {activeTab === "tenant-registry" && (
           <TenantManagementTab showToast={showToast} />
+        )}
+
+        {activeTab === "tenant-overrides" && (
+          <TenantOverridesTab showToast={showToast} />
         )}
 
         {/* Phase 1E Plan Master */}

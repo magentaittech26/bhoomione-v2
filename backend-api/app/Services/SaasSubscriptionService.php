@@ -248,7 +248,8 @@ class SaasSubscriptionService
             'plan.planFeatures.feature',
             'addons.addon',
             'featureOverrides.feature',
-            'limitOverrides'
+            'limitOverrides',
+            'billingOverride'
         ])->where('tenant_id', $tenantId)->first();
 
         // If no active subscription exists, construct a default dynamic trial tier response
@@ -261,7 +262,8 @@ class SaasSubscriptionService
                 'plan' => $defaultPlan,
                 'addons' => [],
                 'feature_overrides' => [],
-                'limit_overrides' => []
+                'limit_overrides' => [],
+                'billing_override' => null
             ];
         }
 
@@ -279,6 +281,7 @@ class SaasSubscriptionService
             'addons' => $sub->addons,
             'feature_overrides' => $sub->featureOverrides,
             'limit_overrides' => $sub->limitOverrides,
+            'billing_override' => $sub->billingOverride,
         ];
     }
 
@@ -397,6 +400,21 @@ class SaasSubscriptionService
                         'assigned_at' => now(),
                     ]);
                 }
+            }
+
+            // 4. Process billing overrides
+            if (isset($data['billing_override'])) {
+                $bo = $data['billing_override'];
+                \App\Models\TenantBillingOverride::updateOrCreate(
+                    ['tenant_subscription_id' => $sub->id],
+                    [
+                        'id' => \App\Models\TenantBillingOverride::where('tenant_subscription_id', $sub->id)->value('id') ?? (string) Str::uuid(),
+                        'custom_monthly_fee' => isset($bo['custom_monthly_fee']) ? (float) $bo['custom_monthly_fee'] : null,
+                        'custom_annual_fee' => isset($bo['custom_annual_fee']) ? (float) $bo['custom_annual_fee'] : null,
+                        'custom_discount_percentage' => isset($bo['custom_discount_percentage']) ? (float) $bo['custom_discount_percentage'] : 0.00,
+                        'special_contract_notes' => $bo['special_contract_notes'] ?? null,
+                    ]
+                );
             }
 
             AuditLogService::log([
