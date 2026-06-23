@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { 
-  Plus, Check, Trash2, Edit3, Shield, Layers, Layout, Map, Sliders, DollarSign, X, AlertTriangle, Play 
+  Plus, Check, Trash2, Edit3, Shield, Layers, Layout, Map, Sliders, 
+  DollarSign, X, AlertTriangle, Play, ChevronUp, ChevronDown 
 } from "lucide-react";
 import { PlotBillingSlab, AddonCatalogItem } from "./SaasTypes.ts";
 
@@ -10,6 +11,7 @@ interface AddonsBillingTabProps {
   onAddSlab: (slab: PlotBillingSlab) => void;
   onUpdateSlab: (id: string, updates: Partial<PlotBillingSlab>) => void;
   onDeleteSlab: (id: string) => void;
+  onReorderSlabs?: (ids: string[]) => void;
   onAddAddon: (addon: AddonCatalogItem) => void;
   onUpdateAddon: (code: string, updates: Partial<AddonCatalogItem>) => void;
   defaultTab?: "slabs" | "addons";
@@ -21,6 +23,7 @@ export default function AddonsBillingTab({
   onAddSlab,
   onUpdateSlab,
   onDeleteSlab,
+  onReorderSlabs,
   onAddAddon,
   onUpdateAddon,
   defaultTab
@@ -32,13 +35,20 @@ export default function AddonsBillingTab({
       setActiveTab(defaultTab);
     }
   }, [defaultTab]);
+
   const [showAddSlab, setShowAddSlab] = useState(false);
   const [showAddAddon, setShowAddAddon] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   // Forms state
   const [newSlab, setNewSlab] = useState({
-    minPlots: 1, maxPlots: 50, monthlyPrice: 20, yearlyPrice: 200
+    minPlots: 1, 
+    maxPlots: 50, 
+    monthlyPrice: 5000, 
+    yearlyPrice: 50000,
+    oneTimeLicensePrice: 100000,
+    amcPrice: 15000,
+    sortOrder: 0
   });
 
   const [newAddon, setNewAddon] = useState({
@@ -57,16 +67,26 @@ export default function AddonsBillingTab({
     }
 
     onAddSlab({
-      id: `slab_${Date.now()}`,
       minPlots: min,
       maxPlots: max,
       monthlyPrice: Number(newSlab.monthlyPrice),
       yearlyPrice: Number(newSlab.yearlyPrice),
+      oneTimeLicensePrice: Number(newSlab.oneTimeLicensePrice),
+      amcPrice: Number(newSlab.amcPrice),
+      sortOrder: Number(newSlab.sortOrder || slabs.length),
       status: "ACTIVE"
     });
 
     setShowAddSlab(false);
-    setNewSlab({ minPlots: 1, maxPlots: 50, monthlyPrice: 20, yearlyPrice: 200 });
+    setNewSlab({ 
+      minPlots: 1, 
+      maxPlots: 50, 
+      monthlyPrice: 5000, 
+      yearlyPrice: 50000,
+      oneTimeLicensePrice: 100000,
+      amcPrice: 15000,
+      sortOrder: slabs.length + 1
+    });
   };
 
   const handleCreateAddonSubmit = (e: React.FormEvent) => {
@@ -93,6 +113,20 @@ export default function AddonsBillingTab({
     setNewAddon({ name: "", code: "", monthlyPrice: 40, yearlyPrice: 400, description: "" });
   };
 
+  const moveSlab = (index: number, direction: "up" | "down") => {
+    const nextIndex = direction === "up" ? index - 1 : index + 1;
+    if (nextIndex < 0 || nextIndex >= slabs.length) return;
+    
+    const reordered = [...slabs];
+    const temp = reordered[index];
+    reordered[index] = reordered[nextIndex];
+    reordered[nextIndex] = temp;
+    
+    if (onReorderSlabs) {
+      onReorderSlabs(reordered.map(s => s.id!).filter(Boolean));
+    }
+  };
+
   return (
     <div className="space-y-6" id="addons-billing-tab-container">
       
@@ -105,7 +139,7 @@ export default function AddonsBillingTab({
             </div>
             <button
               onClick={() => { setFormError(null); setShowAddSlab(true); }}
-              className="bg-indigo-650 hover:bg-indigo-750 text-white rounded-lg px-3 py-1.5 text-xs font-bold flex items-center gap-1"
+              className="bg-indigo-650 hover:bg-indigo-750 text-white rounded-lg px-3 py-1.5 text-xs font-bold flex items-center gap-1 cursor-pointer transition-all shadow-sm"
             >
               <Plus className="w-3.5 h-3.5" />
               Add Slab Template
@@ -115,68 +149,117 @@ export default function AddonsBillingTab({
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
             <div className="overflow-x-auto">
               <table className="w-full text-xs text-left text-slate-650">
-                <thead className="bg-slate-50 text-[10px] text-slate-400 uppercase font-bold text-center">
+                <thead className="bg-slate-50 text-[10px] text-slate-450 uppercase font-extrabold text-center">
                   <tr>
-                    <th className="px-5 py-3 text-left">Plot capacity scale range</th>
-                    <th className="px-5 py-3">Monthly addition premium</th>
-                    <th className="px-5 py-3">Yearly addition premium</th>
-                    <th className="px-5 py-3">Status</th>
-                    <th className="px-5 py-3 text-right">Operational Actions</th>
+                    <th className="px-4 py-3.5 text-left w-12">Order</th>
+                    <th className="px-4 py-3.5 text-left">Plot scale range</th>
+                    <th className="px-4 py-3.5">Monthly Fee (₹)</th>
+                    <th className="px-4 py-3.5">Yearly Fee (₹)</th>
+                    <th className="px-4 py-3.5">One-Time License (₹)</th>
+                    <th className="px-4 py-3.5">AMC / Annual Maint. (₹)</th>
+                    <th className="px-4 py-3.5">Status</th>
+                    <th className="px-4 py-3.5 text-right">Operational Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-mono text-center">
-                  {slabs.map(s => (
-                    <tr key={s.id} className="hover:bg-slate-55/40 text-slate-800">
-                      <td className="px-5 py-4 text-left font-sans font-bold text-slate-900">
-                        ⚡ {s.minPlots} &mdash; {s.maxPlots === 99999 ? "500+ (Unlimited)" : `${s.maxPlots}`} plots
+                  {slabs.map((s, index) => (
+                    <tr key={s.id} className="hover:bg-slate-50/50 text-slate-800">
+                      {/* Reorder Controls */}
+                      <td className="px-4 py-4 text-left font-sans">
+                        <div className="flex items-center gap-1">
+                          <button
+                            disabled={index === 0}
+                            onClick={() => moveSlab(index, "up")}
+                            className="p-1 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded disabled:opacity-30 disabled:hover:bg-transparent"
+                            title="Move Up"
+                          >
+                            <ChevronUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            disabled={index === slabs.length - 1}
+                            onClick={() => moveSlab(index, "down")}
+                            className="p-1 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded disabled:opacity-30 disabled:hover:bg-transparent"
+                            title="Move Down"
+                          >
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
-                      <td className="px-5 py-4 text-center">
+                      {/* Plot scale range */}
+                      <td className="px-4 py-4 text-left font-sans font-bold text-slate-900">
+                        ⚡ {s.minPlots} &mdash; {s.maxPlots === 999999 ? "Unlimited" : `${s.maxPlots}`} plots
+                      </td>
+                      {/* Monthly Price */}
+                      <td className="px-4 py-4 text-center">
                         <div className="flex justify-center items-center gap-1">
                           <span className="text-slate-400 font-sans">₹</span>
                           <input 
                             type="number"
                             value={s.monthlyPrice}
-                            onChange={(e) => onUpdateSlab(s.id, { monthlyPrice: Number(e.target.value) })}
+                            onChange={(e) => onUpdateSlab(s.id!, { monthlyPrice: Number(e.target.value) })}
                             className="w-20 bg-slate-50 border border-slate-200 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs focus:bg-white focus:outline-none"
                           />
                         </div>
                       </td>
-                      <td className="px-5 py-4 text-center">
+                      {/* Yearly Price */}
+                      <td className="px-4 py-4 text-center">
                         <div className="flex justify-center items-center gap-1">
                           <span className="text-slate-400 font-sans">₹</span>
                           <input 
                             type="number"
                             value={s.yearlyPrice}
-                            onChange={(e) => onUpdateSlab(s.id, { yearlyPrice: Number(e.target.value) })}
+                            onChange={(e) => onUpdateSlab(s.id!, { yearlyPrice: Number(e.target.value) })}
                             className="w-20 bg-slate-50 border border-slate-200 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs focus:bg-white focus:outline-none"
                           />
                         </div>
                       </td>
-                      <td className="px-5 py-4">
+                      {/* One-Time License Price */}
+                      <td className="px-4 py-4 text-center">
+                        <div className="flex justify-center items-center gap-1">
+                          <span className="text-slate-400 font-sans">₹</span>
+                          <input 
+                            type="number"
+                            value={s.oneTimeLicensePrice || 0}
+                            onChange={(e) => onUpdateSlab(s.id!, { oneTimeLicensePrice: Number(e.target.value) })}
+                            className="w-24 bg-slate-50 border border-slate-200 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs focus:bg-white focus:outline-none"
+                          />
+                        </div>
+                      </td>
+                      {/* AMC Price */}
+                      <td className="px-4 py-4 text-center">
+                        <div className="flex justify-center items-center gap-1">
+                          <span className="text-slate-400 font-sans">₹</span>
+                          <input 
+                            type="number"
+                            value={s.amcPrice || 0}
+                            onChange={(e) => onUpdateSlab(s.id!, { amcPrice: Number(e.target.value) })}
+                            className="w-20 bg-slate-50 border border-slate-200 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs focus:bg-white focus:outline-none"
+                          />
+                        </div>
+                      </td>
+                      {/* Status */}
+                      <td className="px-4 py-4">
                         <button
-                          onClick={() => onUpdateSlab(s.id, { status: s.status === "ACTIVE" ? "DISABLED" : "ACTIVE" })}
-                          className={`inline-block text-[9.5px] px-2 py-0.5 rounded-full font-bold font-sans ${
-                            s.status === "ACTIVE" ? "bg-emerald-50 text-emerald-800 border border-emerald-100" : "bg-red-50 text-red-800 border"
+                          onClick={() => onUpdateSlab(s.id!, { status: s.status === "ACTIVE" ? "DISABLED" : "ACTIVE" })}
+                          className={`inline-block text-[9.5px] px-2 py-0.5 rounded-full font-bold font-sans cursor-pointer ${
+                            s.status === "ACTIVE" ? "bg-emerald-50 text-emerald-800 border border-emerald-100" : "bg-red-50 text-red-800 border border-red-100"
                           }`}
                         >
                           {s.status}
                         </button>
                       </td>
-                      <td className="px-5 py-4 text-right font-sans">
+                      {/* Actions */}
+                      <td className="px-4 py-4 text-right font-sans">
                         <div className="flex justify-end gap-1.5">
                           <button
-                            onClick={() => onUpdateSlab(s.id, {})}
-                            className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-250 text-emerald-805 rounded px-2 py-1 text-[10px] font-bold"
+                            onClick={() => onUpdateSlab(s.id!, {})}
+                            className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-250 text-emerald-805 rounded px-2.5 py-1 text-[10px] font-bold cursor-pointer transition-all"
                           >
                             Save
                           </button>
                           <button
-                            onClick={() => {
-                              if (window.confirm("Confirm deletion of this dynamic capacity tier slab?")) {
-                                onDeleteSlab(s.id);
-                              }
-                            }}
-                            className="text-red-650 hover:text-red-850 hover:underline text-[10px] font-bold border border-slate-200 rounded px-2 py-1"
+                            onClick={() => onDeleteSlab(s.id!)}
+                            className="text-red-650 hover:text-red-855 hover:bg-red-50 border border-slate-200 rounded px-2.5 py-1 text-[10px] font-bold cursor-pointer transition-all"
                           >
                             Delete
                           </button>
@@ -198,7 +281,7 @@ export default function AddonsBillingTab({
             </div>
             <button
               onClick={() => { setFormError(null); setShowAddAddon(true); }}
-              className="bg-indigo-650 hover:bg-indigo-750 text-white rounded-lg px-3 py-1.5 text-xs font-bold flex items-center gap-1"
+              className="bg-indigo-650 hover:bg-indigo-750 text-white rounded-lg px-3 py-1.5 text-xs font-bold flex items-center gap-1 cursor-pointer transition-all"
             >
               <Plus className="w-3.5 h-3.5" />
               Register Add-on Feature
@@ -216,7 +299,7 @@ export default function AddonsBillingTab({
                     </div>
                     <button
                       onClick={() => onUpdateAddon(a.code, { status: a.status === "ACTIVE" ? "DISABLED" : "ACTIVE" })}
-                      className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                      className={`px-2 py-0.5 rounded-full text-[9px] font-bold cursor-pointer ${
                         a.status === "ACTIVE" ? "bg-emerald-50 text-emerald-805" : "bg-red-50 text-red-805"
                       }`}
                     >
@@ -229,21 +312,21 @@ export default function AddonsBillingTab({
                  <div className="pt-4 border-t border-slate-100 mt-4 flex items-center justify-between text-xs gap-3">
                    <div className="flex gap-3">
                      <div>
-                       <span className="text-[9px] text-slate-400 font-bold uppercase block">Monthly Fees (₹)</span>
+                       <span className="text-[9px] text-slate-400 font-bold uppercase block mb-1">Monthly (₹)</span>
                        <input 
                          type="number"
                          value={a.monthlyPrice}
                          onChange={(e) => onUpdateAddon(a.code, { monthlyPrice: Number(e.target.value) })}
-                         className="w-16 bg-slate-50 border border-slate-200 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs"
+                         className="w-20 bg-slate-50 border border-slate-200 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs focus:bg-white focus:outline-none"
                        />
                      </div>
                      <div>
-                       <span className="text-[9px] text-slate-400 font-bold uppercase block">Yearly Fees (₹)</span>
+                       <span className="text-[9px] text-slate-400 font-bold uppercase block mb-1">Yearly (₹)</span>
                        <input 
                          type="number"
                          value={a.yearlyPrice}
                          onChange={(e) => onUpdateAddon(a.code, { yearlyPrice: Number(e.target.value) })}
-                         className="w-16 bg-slate-50 border border-slate-200 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs"
+                         className="w-20 bg-slate-50 border border-slate-200 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs focus:bg-white focus:outline-none"
                        />
                      </div>
                    </div>
@@ -264,17 +347,20 @@ export default function AddonsBillingTab({
 
       {/* Add Slab Dialog */}
       {showAddSlab && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3 font-sans">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1">Add Billing Slab Capacity</h3>
-              <button onClick={() => setShowAddSlab(false)} className="text-slate-400 hover:text-slate-950">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5 uppercase tracking-wide">
+                <Layers className="w-4 h-4 text-indigo-600" />
+                Add Billing Slab Capacity
+              </h3>
+              <button onClick={() => setShowAddSlab(false)} className="text-slate-400 hover:text-slate-950 cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {formError && (
-              <div className="p-3 bg-red-50 border border-red-155 text-red-650 rounded-lg text-xs flex items-center gap-1.5 font-sans">
+              <div className="p-3 bg-red-50 border border-red-155 text-red-650 rounded-lg text-xs flex items-center gap-1.5 font-sans font-bold">
                 <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
                 <span>{formError}</span>
               </div>
@@ -283,59 +369,84 @@ export default function AddonsBillingTab({
             <form onSubmit={handleCreateSlabSubmit} className="space-y-4 text-xs font-sans">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-1">Minimum Plots</label>
+                  <label className="block text-[10px] font-bold uppercase text-slate-450 tracking-wider mb-1">Minimum Plots</label>
                   <input 
                     type="number" 
                     required
                     min="1"
                     value={newSlab.minPlots}
                     onChange={(e) => setNewSlab({ ...newSlab, minPlots: Number(e.target.value) })}
-                    className="w-full bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:bg-white focus:ring-1 focus:ring-indigo-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-1">Maximum Plots</label>
+                  <label className="block text-[10px] font-bold uppercase text-slate-450 tracking-wider mb-1">Maximum Plots</label>
                   <input 
                     type="number" 
                     required
                     min="1"
                     value={newSlab.maxPlots}
                     onChange={(e) => setNewSlab({ ...newSlab, maxPlots: Number(e.target.value) })}
-                    className="w-full bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:bg-white focus:ring-1 focus:ring-indigo-500"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-1">Monthly Cost (₹)</label>
+                  <label className="block text-[10px] font-bold uppercase text-slate-450 tracking-wider mb-1">Monthly Cost (₹)</label>
                   <input 
                     type="number" 
                     required
                     min="0"
                     value={newSlab.monthlyPrice}
                     onChange={(e) => setNewSlab({ ...newSlab, monthlyPrice: Number(e.target.value) })}
-                    className="w-full bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:bg-white focus:ring-1 focus:ring-indigo-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-1">Yearly Cost (₹)</label>
+                  <label className="block text-[10px] font-bold uppercase text-slate-450 tracking-wider mb-1">Yearly Cost (₹)</label>
                   <input 
                     type="number" 
                     required
                     min="0"
                     value={newSlab.yearlyPrice}
                     onChange={(e) => setNewSlab({ ...newSlab, yearlyPrice: Number(e.target.value) })}
-                    className="w-full bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:bg-white focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-slate-450 tracking-wider mb-1">One-Time Project License (₹)</label>
+                  <input 
+                    type="number" 
+                    required
+                    min="0"
+                    value={newSlab.oneTimeLicensePrice}
+                    onChange={(e) => setNewSlab({ ...newSlab, oneTimeLicensePrice: Number(e.target.value) })}
+                    className="w-full bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:bg-white focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-slate-450 tracking-wider mb-1">AMC / Annual Maint. (₹)</label>
+                  <input 
+                    type="number" 
+                    required
+                    min="0"
+                    value={newSlab.amcPrice}
+                    onChange={(e) => setNewSlab({ ...newSlab, amcPrice: Number(e.target.value) })}
+                    className="w-full bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:bg-white focus:ring-1 focus:ring-indigo-500"
                   />
                 </div>
               </div>
 
               <div className="flex gap-2.5 pt-2">
-                <button type="button" onClick={() => setShowAddSlab(false)} className="flex-1 bg-slate-100 text-slate-700 py-2.5 rounded-xl font-bold">
+                <button type="button" onClick={() => setShowAddSlab(false)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl font-bold cursor-pointer transition-all">
                   Close
                 </button>
-                <button type="submit" className="flex-1 bg-indigo-650 hover:bg-indigo-750 text-white py-2.5 rounded-xl font-bold shadow-sm">
+                <button type="submit" className="flex-1 bg-indigo-650 hover:bg-indigo-750 text-white py-2.5 rounded-xl font-bold shadow-sm cursor-pointer transition-all">
                   Catalog Slab Range
                 </button>
               </div>
@@ -346,17 +457,20 @@ export default function AddonsBillingTab({
 
       {/* Add Addon Dialog */}
       {showAddAddon && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3 font-sans">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1">Register Custom Add-on Feature</h3>
-              <button onClick={() => setShowAddAddon(false)} className="text-slate-400 hover:text-slate-950">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5 uppercase tracking-wide">
+                <Shield className="w-4 h-4 text-indigo-600" />
+                Register Custom Add-on Feature
+              </h3>
+              <button onClick={() => setShowAddAddon(false)} className="text-slate-400 hover:text-slate-950 cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {formError && (
-              <div className="p-3 bg-red-50 border border-red-155 text-red-650 rounded-lg text-xs flex items-center gap-1.5 font-sans">
+              <div className="p-3 bg-red-50 border border-red-155 text-red-650 rounded-lg text-xs flex items-center gap-1.5 font-sans font-bold">
                 <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
                 <span>{formError}</span>
               </div>
@@ -364,69 +478,69 @@ export default function AddonsBillingTab({
 
             <form onSubmit={handleCreateAddonSubmit} className="space-y-4 text-xs font-sans">
               <div>
-                <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-1">Addon Name</label>
+                <label className="block text-[10px] font-bold uppercase text-slate-450 tracking-wider mb-1">Addon Name</label>
                 <input 
                   type="text" 
                   required
                   placeholder="e.g. Automated Twilio Telephony notifications"
                   value={newAddon.name}
                   onChange={(e) => setNewAddon({ ...newAddon, name: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-xs focus:ring-1 focus:ring-slate-900 focus:outline-none"
+                  className="w-full bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-xs focus:ring-1 focus:ring-slate-900 focus:outline-none focus:bg-white focus:ring-1 focus:ring-indigo-500"
                 />
               </div>
 
               <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-1">Addon Code (unique)</label>
+                <div className="col-span-1">
+                  <label className="block text-[10px] font-bold uppercase text-slate-450 tracking-wider mb-1">Addon Code</label>
                   <input 
                     type="text" 
                     required
                     placeholder="e.g. TWILIO_NOTIFY"
                     value={newAddon.code}
                     onChange={(e) => setNewAddon({ ...newAddon, code: e.target.value.toUpperCase().replace(/\s+/g, "_") })}
-                    className="col-span-2 w-full bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-xs font-mono focus:outline-none"
+                    className="w-full bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-xs font-mono focus:outline-none focus:bg-white focus:ring-1 focus:ring-indigo-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-1">Monthly Cost (₹)</label>
+                  <label className="block text-[10px] font-bold uppercase text-slate-450 tracking-wider mb-1">Monthly Cost (₹)</label>
                   <input 
                     type="number" 
                     required
                     min="0"
                     value={newAddon.monthlyPrice}
                     onChange={(e) => setNewAddon({ ...newAddon, monthlyPrice: Number(e.target.value) })}
-                    className="w-full bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-xs focus:outline-none font-mono font-bold"
+                    className="w-full bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-xs focus:outline-none font-mono font-bold focus:bg-white focus:ring-1 focus:ring-indigo-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-1">Yearly Cost (₹)</label>
+                  <label className="block text-[10px] font-bold uppercase text-slate-450 tracking-wider mb-1">Yearly Cost (₹)</label>
                   <input 
                     type="number" 
                     required
                     min="0"
                     value={newAddon.yearlyPrice}
                     onChange={(e) => setNewAddon({ ...newAddon, yearlyPrice: Number(e.target.value) })}
-                    className="w-full bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-xs focus:outline-none font-mono font-bold"
+                    className="w-full bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-xs focus:outline-none font-mono font-bold focus:bg-white focus:ring-1 focus:ring-indigo-500"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-1">Add-on Description</label>
+                <label className="block text-[10px] font-bold uppercase text-slate-450 tracking-wider mb-1">Add-on Description</label>
                 <textarea 
                   required
                   placeholder="Explain specialized resources, integrations, or quota limits expanded by this add-on package..."
                   value={newAddon.description}
                   onChange={(e) => setNewAddon({ ...newAddon, description: e.target.value })}
-                  className="w-full h-16 bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-xs focus:outline-none"
+                  className="w-full h-16 bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-xs focus:outline-none focus:bg-white focus:ring-1 focus:ring-indigo-500"
                 />
               </div>
 
               <div className="flex gap-2.5 pt-2">
-                <button type="button" onClick={() => setShowAddAddon(false)} className="flex-1 bg-slate-100 text-slate-700 py-2.5 rounded-xl font-bold">
+                <button type="button" onClick={() => setShowAddAddon(false)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl font-bold cursor-pointer transition-all">
                   Close
                 </button>
-                <button type="submit" className="flex-1 bg-indigo-650 hover:bg-indigo-750 text-white py-2.5 rounded-xl font-bold shadow-sm">
+                <button type="submit" className="flex-1 bg-indigo-650 hover:bg-indigo-750 text-white py-2.5 rounded-xl font-bold shadow-sm cursor-pointer transition-all">
                   Register Add-on
                 </button>
               </div>

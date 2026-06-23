@@ -17,6 +17,7 @@ import AddonsBillingTab from "../saas/AddonsBillingTab.tsx";
 import MrrDashboardTab from "../saas/MrrDashboardTab.tsx";
 import TenantManagementTab from "../saas/TenantManagementTab";
 import TenantOverridesTab from "../saas/TenantOverridesTab.tsx";
+import { SaasSettingsTab } from "../saas/SaasSettingsTab.tsx";
 
 export default function SaaSAdminApp() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -565,6 +566,9 @@ export default function SaaSAdminApp() {
         max_plots: s.maxPlots,
         monthly_price: s.monthlyPrice,
         yearly_price: s.yearlyPrice,
+        one_time_license_price: s.oneTimeLicensePrice || 0,
+        amc_price: s.amcPrice || 0,
+        sort_order: s.sortOrder || 0,
         status: s.status || "ACTIVE"
       });
       showToast(`Plot threshold slab [${s.minPlots}-${s.maxPlots}] created!`, "success");
@@ -593,6 +597,9 @@ export default function SaaSAdminApp() {
         max_plots: sObj.maxPlots,
         monthly_price: sObj.monthlyPrice,
         yearly_price: sObj.yearlyPrice,
+        one_time_license_price: sObj.oneTimeLicensePrice || 0,
+        amc_price: sObj.amcPrice || 0,
+        sort_order: sObj.sortOrder || 0,
         status: sObj.status
       });
       showToast("Plot capacity slab status updated!", "success");
@@ -600,6 +607,35 @@ export default function SaaSAdminApp() {
     } catch (err) {
       console.error("Failed to update plot billing slab:", err);
       showToast("Failed to update dynamic capacity slab.", "error");
+    }
+  };
+
+  const handleDeleteSlab = async (id: string) => {
+    if (id.startsWith("slab_")) {
+      setSlabs(prev => prev.filter(s => s.id !== id));
+      return;
+    }
+    if (!window.confirm("Confirm deletion of this dynamic capacity tier slab?")) {
+      return;
+    }
+    try {
+      await api.deleteSaasSlab(id);
+      showToast("Plot capacity slab deleted successfully!", "success");
+      await loadSaasConfig();
+    } catch (err: any) {
+      console.error("Failed to delete slab:", err);
+      showToast(err.message || "Failed to delete capacity slab.", "error");
+    }
+  };
+
+  const handleReorderSlabs = async (ids: string[]) => {
+    try {
+      await api.reorderSaasSlabs(ids);
+      showToast("Plot billing slabs sequence updated!", "success");
+      await loadSaasConfig();
+    } catch (err) {
+      console.error("Failed to reorder slabs:", err);
+      showToast("Failed to save slabs reordering.", "error");
     }
   };
 
@@ -1337,7 +1373,8 @@ export default function SaaSAdminApp() {
               addons={addons}
               onAddSlab={handleAddSlab}
               onUpdateSlab={handleUpdateSlab}
-              onDeleteSlab={(id) => setSlabs(slabs.filter(s => s.id !== id))}
+              onDeleteSlab={handleDeleteSlab}
+              onReorderSlabs={handleReorderSlabs}
               onAddAddon={handleAddAddon}
               onUpdateAddon={handleUpdateAddon}
             />
@@ -1353,7 +1390,8 @@ export default function SaaSAdminApp() {
               addons={addons}
               onAddSlab={handleAddSlab}
               onUpdateSlab={handleUpdateSlab}
-              onDeleteSlab={(id) => setSlabs(slabs.filter(s => s.id !== id))}
+              onDeleteSlab={handleDeleteSlab}
+              onReorderSlabs={handleReorderSlabs}
               onAddAddon={handleAddAddon}
               onUpdateAddon={handleUpdateAddon}
             />
@@ -1438,60 +1476,7 @@ export default function SaaSAdminApp() {
 
         {/* Global configuration params */}
         {activeTab === "global-parameters" && (
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6 shadow-xs" id="saas-tab-settings font-sans">
-            <div>
-              <h2 className="text-xs font-bold text-slate-900 uppercase">Global DNS Parameters</h2>
-              <p className="text-xs text-slate-500 mt-1">Configure global hostname resolution policies and API gateway ports.</p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs text-slate-750 font-sans">
-              <div className="space-y-4">
-                <div>
-                  <h4 className="font-bold text-slate-800 mb-2">Workspace Routing Protocol</h4>
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span>Strict cluster domain names mapping</span>
-                      <span className="text-emerald-700 font-bold uppercase text-[9px] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">Active Enforced</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>Dynamic automated Nginx DNS schemas</span>
-                      <span className="text-emerald-700 font-bold uppercase text-[9px] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">Active Enforced</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="font-bold text-slate-800 mb-2">Base Cluster Quotas</h4>
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 font-mono text-[11px]">
-                    <div className="flex justify-between">
-                      <span className="font-sans text-slate-500">Multi-tenant limits policy</span>
-                      <span className="font-bold text-slate-850">Subscription Enforced</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="font-sans text-slate-500">Plot list table sizes boundary</span>
-                      <span className="font-bold text-slate-850">Dynamic Overridable</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h4 className="font-bold text-slate-800 mb-2">Gateway Ingress Port Nodes</h4>
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
-                  <div className="space-y-1">
-                    <p className="font-bold text-slate-900 text-xs">Sandbox Networking Connection</p>
-                    <p className="text-slate-500 leading-normal text-xs text-slate-650">
-                      The supervisor container matches ingress bindings to IP address <strong className="font-mono text-slate-705">0.0.0.0</strong> corresponding to port <strong className="font-mono text-slate-750">3000</strong>. This secures single-source proxies perfectly.
-                    </p>
-                  </div>
-                  <div className="pt-3 border-t border-slate-200 flex items-center gap-1.5 text-slate-400 font-mono text-[10px]">
-                    <Server className="w-4 h-4 text-slate-550" />
-                    <span>BhoomiOne Proxy Core Node 3.5.21V</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <SaasSettingsTab onShowToast={showToast} />
         )}
 
 

@@ -197,6 +197,12 @@ Route::prefix('v1')->group(function () {
     Route::post('/admin/addons', [SaasController::class, 'saveAddon'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
     Route::get('/admin/slabs', [SaasController::class, 'getPlotSlabs'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
     Route::post('/admin/slabs', [SaasController::class, 'savePlotSlab'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::delete('/admin/slabs/{id}', [SaasController::class, 'deletePlotSlab'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/slabs/reorder', [SaasController::class, 'reorderPlotSlabs'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+
+    // SAAS PLATFORM GLOBAL SETTINGS (Phase 1F.4)
+    Route::get('/admin/settings', [SaasController::class, 'getPlatformSettings'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::post('/admin/settings', [SaasController::class, 'savePlatformSettings'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
 
     // TENANT OPERATIONS & PROVISIONING LIFECYCLE ROUTE MAPS (Phase 1F.2)
     Route::get('/admin/tenants', [TenantProvisioningController::class, 'getTenants'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);

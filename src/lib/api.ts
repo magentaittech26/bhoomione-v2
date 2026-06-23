@@ -257,6 +257,32 @@ class ApiClient {
     });
   }
 
+  async deleteSaasSlab(id: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/admin/slabs/${id}`, {
+      method: "DELETE"
+    });
+  }
+
+  async reorderSaasSlabs(ids: string[]): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>("/admin/slabs/reorder", {
+      method: "POST",
+      body: JSON.stringify({ ids })
+    });
+  }
+
+  async fetchSaasSettings(): Promise<any[]> {
+    return this.request<any[]>("/admin/settings", {
+      method: "GET"
+    });
+  }
+
+  async saveSaasSettings(settings: any[]): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>("/admin/settings", {
+      method: "POST",
+      body: JSON.stringify({ settings })
+    });
+  }
+
   async fetchTenantSubscription(id: string): Promise<any> {
     return this.request<any>(`/admin/tenants/${id}/subscription`, {
       method: "GET"

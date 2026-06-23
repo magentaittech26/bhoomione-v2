@@ -150,12 +150,71 @@ class SaasController extends Controller
             'max_plots' => 'required|integer|min:1',
             'monthly_price' => 'required|numeric|min:0',
             'yearly_price' => 'required|numeric|min:0',
+            'one_time_license_price' => 'nullable|numeric|min:0',
+            'amc_price' => 'nullable|numeric|min:0',
+            'sort_order' => 'nullable|integer',
             'status' => 'nullable|string|in:ACTIVE,DISABLED',
         ]);
 
         $context = $this->getContextAndUser($request);
         $slab = SaasSubscriptionService::savePlotSlab($validated, $context);
         return response()->json($slab);
+    }
+
+    /**
+     * DELETE /api/v1/admin/slabs/{id}
+     */
+    public function deletePlotSlab(Request $request, $id)
+    {
+        $context = $this->getContextAndUser($request);
+        try {
+            SaasSubscriptionService::deletePlotSlab($id, $context);
+            return response()->json(['success' => true, 'message' => 'Plot slab deleted successfully.']);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'error' => $e->getMessage()], 400);
+        }
+    }
+
+    /**
+     * POST /api/v1/admin/slabs/reorder
+     */
+    public function reorderPlotSlabs(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array',
+            'ids.*' => 'required|uuid'
+        ]);
+
+        $context = $this->getContextAndUser($request);
+        SaasSubscriptionService::reorderPlotSlabs($validated['ids'], $context);
+        return response()->json(['success' => true, 'message' => 'Plot slabs reordered successfully.']);
+    }
+
+    /**
+     * GET /api/v1/admin/settings
+     */
+    public function getPlatformSettings()
+    {
+        return response()->json(SaasSubscriptionService::getPlatformSettings());
+    }
+
+    /**
+     * POST /api/v1/admin/settings
+     */
+    public function savePlatformSettings(Request $request)
+    {
+        $validated = $request->validate([
+            'settings' => 'required|array',
+            'settings.*.setting_group' => 'required|string|max:100',
+            'settings.*.setting_key' => 'required|string|max:100',
+            'settings.*.setting_value' => 'nullable|string',
+            'settings.*.setting_type' => 'nullable|string|max:50',
+            'settings.*.is_public' => 'nullable|boolean'
+        ]);
+
+        $context = $this->getContextAndUser($request);
+        $saved = SaasSubscriptionService::savePlatformSettings($validated['settings'], $context);
+        return response()->json(['success' => true, 'settings' => $saved]);
     }
 
     /**

@@ -205,7 +205,7 @@ class SaasSubscriptionService
      */
     public static function getPlotSlabs()
     {
-        return SubscriptionPlotSlab::orderBy('min_plots')->get();
+        return SubscriptionPlotSlab::orderBy('sort_order')->orderBy('min_plots')->get();
     }
 
     /**
@@ -221,6 +221,9 @@ class SaasSubscriptionService
                 'max_plots' => $data['max_plots'],
                 'monthly_price' => $data['monthly_price'],
                 'yearly_price' => $data['yearly_price'],
+                'one_time_license_price' => $data['one_time_license_price'] ?? 0.00,
+                'amc_price' => $data['amc_price'] ?? 0.00,
+                'sort_order' => $data['sort_order'] ?? 0,
                 'status' => $data['status'] ?? 'ACTIVE',
             ]
         );
@@ -236,6 +239,74 @@ class SaasSubscriptionService
         ]);
 
         return $slab;
+    }
+
+    /**
+     * Delete Plot Slab if not in use by any tenant's plot density
+     */
+    public static function deletePlotSlab(string $id, array $context): bool
+    {
+        $slab = SubscriptionPlotSlab::findOrFail($id);
+
+        // Check if there are active tenant nodes that fall into this slab's plot range
+        $tenants = \App\Models\Tenant::all();
+        foreach ($tenants as $t) {
+            $plotsCount = 0;
+            try {
+                $plotsCount = \Illuminate\Support\Facades\DB::table('plots')
+                    ->join('layouts', 'plots.layout_id', '=', 'layouts.id')
+                    ->join('projects', 'layouts.project_id', '=', 'projects.id')
+                    ->where('projects.tenant_id', $t->id)
+                    ->count();
+            } catch (\Throwable $e) {
+                // Ignore
+            }
+
+            if ($plotsCount >= $slab->min_plots && $plotsCount <= $slab->max_plots) {
+                throw new \Exception("Cannot delete this slab: Tenant {$t->company_name} ({$t->tenant_code}) has {$plotsCount} plots, which falls within this slab range.");
+            }
+        }
+
+        $oldValues = $slab->toArray();
+        $slab->delete();
+
+        AuditLogService::log([
+            'userId' => $context['userId'] ?? null,
+            'entityName' => 'SubscriptionPlotSlab',
+            'entityId' => $id,
+            'action' => 'PLOT_SLAB_DELETE_SUCCESS',
+            'oldValues' => $oldValues,
+            'ipAddress' => $context['ip'] ?? null,
+            'userAgent' => $context['userAgent'] ?? null,
+        ]);
+
+        return true;
+    }
+
+    /**
+     * Reorder Slabs sort orders
+     */
+    public static function reorderPlotSlabs(array $ids, array $context): bool
+    {
+        foreach ($ids as $index => $id) {
+            $slab = SubscriptionPlotSlab::find($id);
+            if ($slab) {
+                $slab->sort_order = $index;
+                $slab->save();
+            }
+        }
+
+        AuditLogService::log([
+            'userId' => $context['userId'] ?? null,
+            'entityName' => 'SubscriptionPlotSlab',
+            'entityId' => '00000000-0000-0000-0000-000000000000',
+            'action' => 'PLOT_SLABS_REORDER_SUCCESS',
+            'newValues' => ['ids' => $ids],
+            'ipAddress' => $context['ip'] ?? null,
+            'userAgent' => $context['userAgent'] ?? null,
+        ]);
+
+        return true;
     }
 
     /**
@@ -431,4 +502,51 @@ class SaasSubscriptionService
             return $sub;
         });
     }
+
+    /**
+     * Retrieve all platform settings rows
+     */
+    public static function getPlatformSettings()
+    {
+        return \App\Models\SaasPlatformSetting::all();
+    }
+
+    /**
+     * Save/update batch of platform settings
+     */
+    public static function savePlatformSettings(array $settings, array $context): array
+    {
+        return DB::transaction(function () use ($settings, $context) {
+            $saved = [];
+            foreach ($settings as $setting) {
+                if (!isset($setting['setting_key']) || !isset($setting['setting_group'])) {
+                    continue;
+                }
+                $s = \App\Models\SaasPlatformSetting::updateOrCreate(
+                    ['setting_key' => $setting['setting_key']],
+                    [
+                        'id' => \App\Models\SaasPlatformSetting::where('setting_key', $setting['setting_key'])->value('id') ?? (string) Str::uuid(),
+                        'setting_group' => $setting['setting_group'],
+                        'setting_value' => $setting['setting_value'] !== null ? (string)$setting['setting_value'] : null,
+                        'setting_type' => $setting['setting_type'] ?? 'string',
+                        'is_public' => isset($setting['is_public']) ? (bool)$setting['is_public'] : false,
+                    ]
+                );
+                $saved[] = $s;
+            }
+
+            AuditLogService::log([
+                'userId' => $context['userId'] ?? null,
+                'entityName' => 'SaasPlatformSetting',
+                'entityId' => '00000000-0000-0000-0000-000000000000',
+                'action' => 'PLATFORM_SETTINGS_SAVE_SUCCESS',
+                'newValues' => $settings,
+                'ipAddress' => $context['ip'] ?? null,
+                'userAgent' => $context['userAgent'] ?? null,
+            ]);
+
+            return $saved;
+        });
+    }
 }
+

@@ -14,7 +14,7 @@ class SubscriptionPlotSlab extends Model
     public $incrementing = false;
 
     protected $fillable = [
-        'id', 'min_plots', 'max_plots', 'monthly_price', 'yearly_price', 'status'
+        'id', 'min_plots', 'max_plots', 'monthly_price', 'yearly_price', 'status', 'one_time_license_price', 'amc_price', 'sort_order'
     ];
 
     protected $casts = [
@@ -22,5 +22,8 @@ class SubscriptionPlotSlab extends Model
         'max_plots' => 'integer',
         'monthly_price' => 'decimal:2',
         'yearly_price' => 'decimal:2',
+        'one_time_license_price' => 'decimal:2',
+        'amc_price' => 'decimal:2',
+        'sort_order' => 'integer',
     ];
 }

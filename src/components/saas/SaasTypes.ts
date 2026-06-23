@@ -56,6 +56,9 @@ export interface PlotBillingSlab {
   maxPlots: number;
   monthlyPrice: number;
   yearlyPrice: number;
+  oneTimeLicensePrice?: number;
+  amcPrice?: number;
+  sortOrder?: number;
   status: "ACTIVE" | "DISABLED";
 }
 
