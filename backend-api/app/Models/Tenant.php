@@ -33,6 +33,30 @@ class Tenant extends Model
     }
 
     /**
+     * Tenant active subscription model.
+     */
+    public function subscription()
+    {
+        return $this->hasOne(TenantSubscription::class, 'tenant_id');
+    }
+
+    /**
+     * Tenant provisioning jobs ledger.
+     */
+    public function provisioningJobs(): HasMany
+    {
+        return $this->hasMany(TenantProvisioningJob::class, 'tenant_id');
+    }
+
+    /**
+     * Tenant lifecycle status transition ledger records.
+     */
+    public function lifecycleEvents(): HasMany
+    {
+        return $this->hasMany(TenantLifecycleEvent::class, 'tenant_id');
+    }
+
+    /**
      * Associated users in this workspace cluster.
      */
     public function users(): BelongsToMany

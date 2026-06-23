@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\v1\LayoutController;
 use App\Http\Controllers\Api\v1\PlotController;
 use App\Http\Controllers\Api\v1\DxfController;
 use App\Http\Controllers\Api\v1\SaasController;
+use App\Http\Controllers\Api\v1\TenantProvisioningController;
 use App\Http\Middleware\TenantResolverMiddleware;
 use App\Http\Middleware\PermissionRequirementMiddleware;
 
@@ -196,6 +197,21 @@ Route::prefix('v1')->group(function () {
     Route::post('/admin/addons', [SaasController::class, 'saveAddon'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
     Route::get('/admin/slabs', [SaasController::class, 'getPlotSlabs'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
     Route::post('/admin/slabs', [SaasController::class, 'savePlotSlab'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+
+    // TENANT OPERATIONS & PROVISIONING LIFECYCLE ROUTE MAPS (Phase 1F.2)
+    Route::get('/admin/tenants', [TenantProvisioningController::class, 'getTenants'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::get('/admin/tenants/logs', [TenantProvisioningController::class, 'getLogs'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::get('/admin/tenants/{id}/lifecycle-events', [TenantProvisioningController::class, 'getLifecycleEvents'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::post('/admin/tenants/provision', [TenantProvisioningController::class, 'provision'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/tenants/{id}/activate', [TenantProvisioningController::class, 'activate'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/tenants/{id}/suspend', [TenantProvisioningController::class, 'suspend'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/tenants/{id}/resume', [TenantProvisioningController::class, 'resume'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/tenants/{id}/cancel', [TenantProvisioningController::class, 'cancel'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/tenants/{id}/change-plan', [TenantProvisioningController::class, 'changePlan'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/tenants/{id}/assign-addon', [TenantProvisioningController::class, 'assignAddon'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/tenants/{id}/remove-addon', [TenantProvisioningController::class, 'removeAddon'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/tenants/{id}/domains', [TenantProvisioningController::class, 'attachDomain'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::get('/admin/tenants/{id}/domains', [TenantProvisioningController::class, 'getDomains'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
 
     Route::get('/admin/tenants/{id}/subscription', [SaasController::class, 'getTenantSubscriptionProfile'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
     Route::get('/admin/tenants/{id}/subscription-summary', [SaasController::class, 'getTenantSubscriptionSummary'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);

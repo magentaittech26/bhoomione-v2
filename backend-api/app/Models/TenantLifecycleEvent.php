@@ -5,32 +5,32 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class TenantDomain extends Model
+class TenantLifecycleEvent extends Model
 {
-    protected $table = 'tenant_domains';
+    protected $table = 'tenant_lifecycle_events';
 
     protected $keyType = 'string';
     public $incrementing = false;
+    
+    // Created_at only, no updated_at since it is a read-only ledger
+    const UPDATED_AT = null;
 
     protected $fillable = [
         'id',
         'tenant_id',
-        'domain_name',
-        'domain',
-        'type',
-        'is_primary',
-        'ssl_status',
-        'dns_status',
-        'verified_at',
+        'old_status',
+        'new_status',
+        'reason',
+        'changed_by',
+        'created_at',
     ];
 
     protected $casts = [
-        'is_primary' => 'boolean',
-        'verified_at' => 'datetime',
+        'created_at' => 'datetime',
     ];
 
     /**
-     * Parent tenant organization relations.
+     * Associated tenant.
      */
     public function tenant(): BelongsTo
     {

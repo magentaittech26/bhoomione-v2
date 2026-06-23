@@ -284,6 +284,95 @@ class ApiClient {
     });
   }
 
+  // ==========================================
+  // PHASE 1F.2 TENANT OPERATIONS SYSTEM API
+  // ==========================================
+
+  async fetchTenants(): Promise<any[]> {
+    return this.request<any[]>("/admin/tenants", {
+      method: "GET"
+    });
+  }
+
+  async fetchProvisioningLogs(): Promise<any[]> {
+    return this.request<any[]>("/admin/tenants/logs", {
+      method: "GET"
+    });
+  }
+
+  async fetchLifecycleEvents(id: string): Promise<any[]> {
+    return this.request<any[]>(`/admin/tenants/${id}/lifecycle-events`, {
+      method: "GET"
+    });
+  }
+
+  async provisionTenant(payload: any): Promise<any> {
+    return this.request<any>("/admin/tenants/provision", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async activateTenant(id: string): Promise<any> {
+    return this.request<any>(`/admin/tenants/${id}/activate`, {
+      method: "POST"
+    });
+  }
+
+  async suspendTenant(id: string, reason: string): Promise<any> {
+    return this.request<any>(`/admin/tenants/${id}/suspend`, {
+      method: "POST",
+      body: JSON.stringify({ reason })
+    });
+  }
+
+  async resumeTenant(id: string): Promise<any> {
+    return this.request<any>(`/admin/tenants/${id}/resume`, {
+      method: "POST"
+    });
+  }
+
+  async cancelTenant(id: string, reason: string): Promise<any> {
+    return this.request<any>(`/admin/tenants/${id}/cancel`, {
+      method: "POST",
+      body: JSON.stringify({ reason })
+    });
+  }
+
+  async changeTenantPlan(id: string, planId: string): Promise<any> {
+    return this.request<any>(`/admin/tenants/${id}/change-plan`, {
+      method: "POST",
+      body: JSON.stringify({ plan_id: planId })
+    });
+  }
+
+  async assignTenantAddon(id: string, addonId: string): Promise<any> {
+    return this.request<any>(`/admin/tenants/${id}/assign-addon`, {
+      method: "POST",
+      body: JSON.stringify({ addon_id: addonId })
+    });
+  }
+
+  async removeTenantAddon(id: string, addonId: string): Promise<any> {
+    return this.request<any>(`/admin/tenants/${id}/remove-addon`, {
+      method: "POST",
+      body: JSON.stringify({ addon_id: addonId })
+    });
+  }
+
+  async attachTenantDomain(id: string, domain: string, type: string): Promise<any> {
+    return this.request<any>(`/admin/tenants/${id}/domains`, {
+      method: "POST",
+      body: JSON.stringify({ domain, type })
+    });
+  }
+
+  async fetchTenantDomains(id: string): Promise<any[]> {
+    return this.request<any[]>(`/admin/tenants/${id}/domains`, {
+      method: "GET"
+    });
+  }
+
   async fetchTenantSubscriptionSummary(id: string): Promise<any> {
     return this.request<any>(`/admin/tenants/${id}/subscription-summary`, {
       method: "GET"

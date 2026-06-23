@@ -5,9 +5,9 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class TenantDomain extends Model
+class TenantProvisioningJob extends Model
 {
-    protected $table = 'tenant_domains';
+    protected $table = 'tenant_provisioning_jobs';
 
     protected $keyType = 'string';
     public $incrementing = false;
@@ -15,22 +15,21 @@ class TenantDomain extends Model
     protected $fillable = [
         'id',
         'tenant_id',
-        'domain_name',
-        'domain',
-        'type',
-        'is_primary',
-        'ssl_status',
-        'dns_status',
-        'verified_at',
+        'job_type',
+        'status',
+        'started_at',
+        'completed_at',
+        'error_message',
+        'created_by',
     ];
 
     protected $casts = [
-        'is_primary' => 'boolean',
-        'verified_at' => 'datetime',
+        'started_at' => 'datetime',
+        'completed_at' => 'datetime',
     ];
 
     /**
-     * Parent tenant organization relations.
+     * Associated tenant relation.
      */
     public function tenant(): BelongsTo
     {
