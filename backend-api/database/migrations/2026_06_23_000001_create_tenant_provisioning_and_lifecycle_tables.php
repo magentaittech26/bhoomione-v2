@@ -28,23 +28,33 @@ return new class extends Migration {
 
         // 2. tenant_domains modifications / fallback creation
         if (Schema::hasTable('tenant_domains')) {
-            Schema::table('tenant_domains', function (Blueprint $table) {
-                if (!Schema::hasColumn('tenant_domains', 'domain')) {
-                    $table->string('domain', 255)->nullable();
-                }
-                if (!Schema::hasColumn('tenant_domains', 'type')) {
-                    $table->string('type', 50)->default('SUBDOMAIN'); // SUBDOMAIN, CUSTOM
-                }
-                if (!Schema::hasColumn('tenant_domains', 'ssl_status')) {
-                    $table->string('ssl_status', 50)->nullable();
-                }
-                if (!Schema::hasColumn('tenant_domains', 'dns_status')) {
-                    $table->string('dns_status', 50)->nullable();
-                }
-                if (!Schema::hasColumn('tenant_domains', 'verified_at')) {
-                    $table->timestamp('verified_at')->nullable();
-                }
-            });
+            // Compute existing columns BEFORE we initiate our Schema::table closure to prevent nested Schema facade evaluation issues.
+            $hasDomain = Schema::hasColumn('tenant_domains', 'domain');
+            $hasType = Schema::hasColumn('tenant_domains', 'type');
+            $hasSslStatus = Schema::hasColumn('tenant_domains', 'ssl_status');
+            $hasDnsStatus = Schema::hasColumn('tenant_domains', 'dns_status');
+            $hasVerifiedAt = Schema::hasColumn('tenant_domains', 'verified_at');
+
+            // Only modify structural columns if they are missing
+            if (!$hasDomain || !$hasType || !$hasSslStatus || !$hasDnsStatus || !$hasVerifiedAt) {
+                Schema::table('tenant_domains', function (Blueprint $table) use ($hasDomain, $hasType, $hasSslStatus, $hasDnsStatus, $hasVerifiedAt) {
+                    if (!$hasDomain) {
+                        $table->string('domain', 255)->nullable();
+                    }
+                    if (!$hasType) {
+                        $table->string('type', 50)->default('SUBDOMAIN'); // SUBDOMAIN, CUSTOM
+                    }
+                    if (!$hasSslStatus) {
+                        $table->string('ssl_status', 50)->nullable();
+                    }
+                    if (!$hasDnsStatus) {
+                        $table->string('dns_status', 50)->nullable();
+                    }
+                    if (!$hasVerifiedAt) {
+                        $table->timestamp('verified_at')->nullable();
+                    }
+                });
+            }
         } else {
             Schema::create('tenant_domains', function (Blueprint $table) {
                 $table->uuid('id')->primary()->default(DB::raw('gen_random_uuid()'));
@@ -85,24 +95,8 @@ return new class extends Migration {
         Schema::dropIfExists('tenant_lifecycle_events');
         Schema::dropIfExists('tenant_provisioning_jobs');
         
-        if (Schema::hasTable('tenant_domains')) {
-            Schema::table('tenant_domains', function (Blueprint $table) {
-                if (Schema::hasColumn('tenant_domains', 'domain')) {
-                    $table->dropColumn('domain');
-                }
-                if (Schema::hasColumn('tenant_domains', 'type')) {
-                    $table->dropColumn('type');
-                }
-                if (Schema::hasColumn('tenant_domains', 'ssl_status')) {
-                    $table->dropColumn('ssl_status');
-                }
-                if (Schema::hasColumn('tenant_domains', 'dns_status')) {
-                    $table->dropColumn('dns_status');
-                }
-                if (Schema::hasColumn('tenant_domains', 'verified_at')) {
-                    $table->dropColumn('verified_at');
-                }
-            });
-        }
+        // Since safe rollback state tracking of pre-existing columns inside 'tenant_domains' is stateless 
+        // across independent sessions, we omit dropping tenant_domains columns on rollback to prevent 
+        // accidental data loss on custom database entries in staging or live environments.
     }
 };
