@@ -65,20 +65,106 @@ Route::prefix('v1')->group(function () {
     // -------------------------------------------------------------------------
 
     // Platform-level route checking for platform-level permission
-    Route::get('/admin/audit-logs', function () {
-        $logs = \App\Models\AuditLog::with(['user', 'tenant'])->latest()->take(50)->get();
+    Route::get('/admin/audit-logs', function (\Illuminate\Http\Request $request) {
+        $query = \App\Models\AuditLog::with(['user', 'tenant'])->latest();
+
+        // Filter: action
+        if ($request->filled('action')) {
+            $query->where('action', $request->input('action'));
+        }
+
+        // Filter: operator (user email search)
+        if ($request->filled('operator')) {
+            $operator = $request->input('operator');
+            if (strtolower($operator) === 'system-token') {
+                $query->whereNull('user_id');
+            } else {
+                $query->whereHas('user', function($q) use ($operator) {
+                    $q->where('email', 'like', '%' . $operator . '%');
+                });
+            }
+        }
+
+        // Filter: target (tenant_code search)
+        if ($request->filled('target')) {
+            $target = $request->input('target');
+            if (strtoupper($target) === 'SYSTEM') {
+                $query->whereNull('tenant_id');
+            } else {
+                $query->whereHas('tenant', function($q) use ($target) {
+                    $q->where('tenant_code', 'like', '%' . $target . '%');
+                });
+            }
+        }
+
+        // Filter: date range
+        if ($request->filled('date_from')) {
+            $query->where('created_at', '>=', $request->input('date_from') . ' 00:00:00');
+        }
+        if ($request->filled('date_to')) {
+            $query->where('created_at', '<=', $request->input('date_to') . ' 23:59:59');
+        }
+
+        // Filter: hide system noise (default to exclude TOKEN_REFRESH logs)
+        $hideNoise = $request->input('hide_noise', 'true');
+        if ($hideNoise === 'true' || $hideNoise === '1' || $hideNoise === true) {
+            $query->whereNotIn('action', ['TOKEN_REFRESH']);
+        }
+
+        // Limit & Pagination
+        $limit = (int) $request->input('limit', 25);
+        if ($limit <= 0 || $limit > 100) {
+            $limit = 25;
+        }
+
+        // Support paginated or simple take structure
+        if ($request->has('page')) {
+            $paginator = $query->paginate($limit);
+            $items = collect($paginator->items())->map(function($l) {
+                return [
+                    'id' => $l->id,
+                    'action' => $l->action,
+                    'target' => $l->tenant ? $l->tenant->tenant_code : 'SYSTEM',
+                    'operator' => $l->user ? $l->user->email : 'system-token',
+                    'details' => "Action: {$l->action} executed on {$l->entity_name} ({$l->entity_id}).",
+                    'entity_name' => $l->entity_name,
+                    'entity_id' => $l->entity_id,
+                    'old_values' => $l->old_values,
+                    'new_values' => $l->new_values,
+                    'ip_address' => $l->ip_address,
+                    'user_agent' => $l->user_agent,
+                    'timestamp' => $l->created_at ? $l->created_at->toIso8601String() : now()->toIso8601String()
+                ];
+            });
+            return response()->json([
+                'data' => $items,
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+            ]);
+        }
+
+        $logs = $query->take($limit)->get();
         if ($logs->isEmpty()) {
             return response()->json([
                 [
                     'id' => '1',
                     'action' => 'DATABASE_READY',
-                    'target' => 'bhoomione_v2_prod',
+                    'target' => 'SYSTEM',
                     'operator' => 'system',
                     'details' => 'Database environment is online and initialized with seed records.',
+                    'entity_name' => 'system',
+                    'entity_id' => '00000000-0000-0000-0000-000000000000',
+                    'old_values' => null,
+                    'new_values' => null,
+                    'ip_address' => '127.0.0.1',
+                    'user_agent' => 'system-agent',
                     'timestamp' => now()->subHours(2)->toIso8601String()
                 ]
             ]);
         }
+
         return response()->json($logs->map(function($l) {
             return [
                 'id' => $l->id,
@@ -86,6 +172,12 @@ Route::prefix('v1')->group(function () {
                 'target' => $l->tenant ? $l->tenant->tenant_code : 'SYSTEM',
                 'operator' => $l->user ? $l->user->email : 'system-token',
                 'details' => "Action: {$l->action} executed on {$l->entity_name} ({$l->entity_id}).",
+                'entity_name' => $l->entity_name,
+                'entity_id' => $l->entity_id,
+                'old_values' => $l->old_values,
+                'new_values' => $l->new_values,
+                'ip_address' => $l->ip_address,
+                'user_agent' => $l->user_agent,
                 'timestamp' => $l->created_at ? $l->created_at->toIso8601String() : now()->toIso8601String()
             ];
         }));

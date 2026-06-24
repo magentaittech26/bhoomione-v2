@@ -1,6 +1,6 @@
 import React from "react";
 import { 
-  TrendingUp, Users, Shield, Server, CreditCard, Activity, DollarSign, Cloud, BarChart, ArrowUpRight 
+  TrendingUp, Users, Shield, Server, CreditCard, Activity, IndianRupee, Cloud, BarChart, ArrowUpRight 
 } from "lucide-react";
 import { TenantSubscription, SubscriptionPlan, AddonCatalogItem } from "./SaasTypes.ts";
 import { formatCurrency } from "../../lib/currency.ts";
@@ -19,10 +19,11 @@ export default function MrrDashboardTab({
   addons
 }: MrrDashboardTabProps) {
   
-  // Calculate aggregate metrics dynamically
+  // Calculate aggregate metrics dynamically from live arrays
   const totalClustersCount = tenants.length;
-  const activeSubs = subscriptions.filter(s => s.status === "ACTIVE");
-  const activeCount = activeSubs.length;
+  
+  // Calculate status counts directly from current tenant subscriptions
+  const activeCount = subscriptions.filter(s => s.status === "ACTIVE").length;
   const trialCount = subscriptions.filter(s => s.status === "TRIAL").length;
   const expiredCount = subscriptions.filter(s => s.status === "EXPIRED").length;
   const suspendedCount = subscriptions.filter(s => s.status === "SUSPENDED" || s.status === "ARCHIVED").length;
@@ -38,35 +39,45 @@ export default function MrrDashboardTab({
       subscriptionMRR += plan.monthlyPrice;
     }
     // Addon contribution
-    sub.addOnCodes.forEach(addonCode => {
-      const addon = addons.find(a => a.code === addonCode);
-      if (addon && (sub.status === "ACTIVE" || sub.status === "TRIAL")) {
-        addonsMRR += addon.monthlyPrice;
-      }
-    });
+    if (sub.addOnCodes && Array.isArray(sub.addOnCodes)) {
+      sub.addOnCodes.forEach(addonCode => {
+        const addon = addons.find(a => a.code === addonCode);
+        if (addon && (sub.status === "ACTIVE" || sub.status === "TRIAL")) {
+          addonsMRR += addon.monthlyPrice;
+        }
+      });
+    }
   });
 
   const totalMRR = subscriptionMRR + addonsMRR;
   const estimatedARR = totalMRR * 12;
 
-  // Calculate Plan Distribution
-  const planDistribution = plans.map(p => {
-    const count = subscriptions.filter(s => s.currentPlanCode === p.code && (s.status === "ACTIVE" || s.status === "TRIAL")).length;
-    const percentage = totalClustersCount > 0 ? Math.round((count / totalClustersCount) * 100) : 0;
+  // Calculate Revenue by Plan
+  const revenueByPlan = plans.map(p => {
+    const activeSubsInPlan = subscriptions.filter(s => s.currentPlanCode === p.code && (s.status === "ACTIVE" || s.status === "TRIAL"));
+    const count = activeSubsInPlan.length;
+    const revenue = count * p.monthlyPrice;
+    const percentage = totalMRR > 0 ? Math.round((revenue / totalMRR) * 100) : 0;
     return {
       ...p,
       count,
+      revenue,
       percentage
     };
-  }).sort((a, b) => b.count - a.count);
+  }).sort((a, b) => b.revenue - a.revenue);
 
   // Storage calculation helpers
   const totalAssignedStorageGb = subscriptions.reduce((sum, s) => {
-    // Default or custom limit
-    return sum + (s.limitOverrides.storageLimitGb || 10);
+    return sum + (s.limitOverrides?.storageLimitGb || 10);
   }, 0);
-  const estimatedStorageConsumptionGb = totalClustersCount * 4.3; // mock accurate based on active CAD storage density rules
-  const storagePercentage = Math.round((estimatedStorageConsumptionGb / (totalAssignedStorageGb || 100)) * 100);
+
+  // Tenant Status Distribution helper
+  const statuses = [
+    { name: "Active Licenses", count: activeCount, color: "bg-emerald-500", textColor: "text-emerald-700" },
+    { name: "Trial Periods", count: trialCount, color: "bg-indigo-500", textColor: "text-indigo-700" },
+    { name: "Suspended / Archived", count: suspendedCount, color: "bg-amber-500", textColor: "text-amber-700" },
+    { name: "Expired / Cancelled", count: expiredCount, color: "bg-slate-400", textColor: "text-slate-500" }
+  ];
 
   return (
     <div className="space-y-6" id="mrr-dashboard-tab">
@@ -74,10 +85,11 @@ export default function MrrDashboardTab({
       {/* Top 4 high fidelity cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
-        <div className="bg-slate-900 border border-slate-950 p-5 rounded-2xl text-white space-y-2 relative overflow-hidden shadow-sm">
+        {/* Card 1: MRR */}
+        <div className="bg-slate-900 border border-slate-950 p-5 rounded-2xl text-white space-y-2 relative overflow-hidden shadow-sm" id="card-mrr">
           <div className="flex justify-between items-center text-slate-400">
-            <span className="text-[10px] font-bold uppercase tracking-wider">Dynamic Platform MRR</span>
-            <DollarSign className="w-4 h-4 text-emerald-400" />
+            <span className="text-[10px] font-bold uppercase tracking-wider">Platform MRR (INR)</span>
+            <IndianRupee className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="space-y-1">
             <h3 className="text-2xl font-extrabold text-slate-50 font-mono tracking-tight">
@@ -85,7 +97,7 @@ export default function MrrDashboardTab({
             </h3>
             <p className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
               <TrendingUp className="w-3 h-3" />
-              +14.2% Growth from last month
+              Dynamic live license and addon ledger
             </p>
           </div>
           <div className="text-[10px] text-slate-500 font-mono pt-3 border-t border-slate-800">
@@ -93,26 +105,8 @@ export default function MrrDashboardTab({
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200 p-5 rounded-2xl space-y-2 shadow-xs">
-          <div className="flex justify-between items-center text-slate-400">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Live Active Clusters</span>
-            <Users className="w-4 h-4 text-indigo-650" />
-          </div>
-          <div className="space-y-1">
-            <h3 className="text-2xl font-extrabold text-slate-900 font-mono tracking-tight">
-              {activeCount} <span className="text-xs font-bold text-slate-400">/ {totalClustersCount} tenants</span>
-            </h3>
-            <div className="flex gap-2 text-[10px] font-bold font-sans">
-              <span className="text-indigo-650 bg-indigo-50 px-1 py-0.5 rounded">TRIAL: {trialCount}</span>
-              <span className="text-red-650 bg-red-50 px-1 py-0.5 rounded">SUSP: {suspendedCount}</span>
-            </div>
-          </div>
-          <div className="text-[10px] text-slate-400 pt-3 border-t border-slate-100">
-            Total provisioned subdomains: {totalClustersCount} accounts.
-          </div>
-        </div>
-
-        <div className="bg-white border border-slate-200 p-5 rounded-2xl space-y-2 shadow-xs">
+        {/* Card 2: ARR */}
+        <div className="bg-white border border-slate-200 p-5 rounded-2xl space-y-2 shadow-xs" id="card-arr">
           <div className="flex justify-between items-center text-slate-400">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Projected ARR Contribution</span>
             <TrendingUp className="w-4 h-4 text-indigo-650" />
@@ -128,25 +122,40 @@ export default function MrrDashboardTab({
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200 p-5 rounded-2xl space-y-2 shadow-xs">
+        {/* Card 3: Active Tenants */}
+        <div className="bg-white border border-slate-200 p-5 rounded-2xl space-y-2 shadow-xs" id="card-tenants">
+          <div className="flex justify-between items-center text-slate-400">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Tenant Clusters</span>
+            <Users className="w-4 h-4 text-indigo-650" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-2xl font-extrabold text-slate-900 font-mono tracking-tight">
+              {activeCount} <span className="text-xs font-bold text-slate-400">/ {totalClustersCount} Active</span>
+            </h3>
+            <div className="flex gap-2 text-[10px] font-bold font-sans">
+              <span className="text-indigo-650 bg-indigo-50 px-1.5 py-0.5 rounded">TRIAL: {trialCount}</span>
+              <span className="text-amber-650 bg-amber-50 px-1.5 py-0.5 rounded">SUSP: {suspendedCount}</span>
+            </div>
+          </div>
+          <div className="text-[10px] text-slate-400 pt-3 border-t border-slate-100">
+            Total provisioned tenant subdomains: {totalClustersCount} accounts.
+          </div>
+        </div>
+
+        {/* Card 4: Global Storage */}
+        <div className="bg-white border border-slate-200 p-5 rounded-2xl space-y-2 shadow-xs" id="card-storage">
           <div className="flex justify-between items-center text-slate-400">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Global Cloud Storage</span>
             <Cloud className="w-4 h-4 text-indigo-650" />
           </div>
           <div className="space-y-1">
-            <h3 className="text-2xl font-extrabold text-slate-900 font-mono tracking-tight">
-              {estimatedStorageConsumptionGb.toFixed(1)} GB
+            <h3 className="text-sm font-extrabold text-slate-400 tracking-tight h-8 flex items-center">
+              Not configured
             </h3>
-            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-              <div 
-                className="bg-indigo-600 h-1.5 rounded-full" 
-                style={{ width: `${Math.min(storagePercentage, 100)}%` }}
-              />
-            </div>
+            <p className="text-[10px] text-slate-450 leading-none">Aggregate telemetry storage monitor</p>
           </div>
-          <div className="text-[10px] text-slate-400 pt-1.5 border-t border-slate-100 flex justify-between">
-            <span>Quota Used: {storagePercentage}%</span>
-            <span>Limit: {totalAssignedStorageGb} GB</span>
+          <div className="text-[10px] text-slate-400 pt-3 border-t border-slate-100 flex justify-between">
+            <span>Limit Assigned: {totalAssignedStorageGb} GB</span>
           </div>
         </div>
 
@@ -154,23 +163,27 @@ export default function MrrDashboardTab({
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* Plan Tiers metrics distribution block */}
-        <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-xs space-y-4 lg:col-span-2">
+        {/* Revenue by Plan Distribution Block */}
+        <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-xs space-y-4 lg:col-span-2" id="block-revenue-plan">
           <div className="border-b border-slate-100 pb-3">
-            <h3 className="text-xs font-bold text-slate-900 uppercase">Subscription Plans Distribution</h3>
-            <p className="text-[11px] text-slate-500">Percentage distribution of current workspaces across available active price tiers.</p>
+            <h3 className="text-xs font-bold text-slate-900 uppercase">Revenue & Plan Contribution</h3>
+            <p className="text-[11px] text-slate-500">Monthly revenue breakdown and percentage contribution of active price tiers.</p>
           </div>
 
-          <div className="space-y-3.5">
-            {planDistribution.map(item => (
+          <div className="space-y-4">
+            {revenueByPlan.map(item => (
               <div key={item.code} className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="font-bold text-slate-800">{item.name} ({item.code})</span>
-                  <span className="font-mono text-slate-400">{item.count} active accounts ({item.percentage}%)</span>
+                <div className="flex justify-between text-xs font-sans">
+                  <span className="font-bold text-slate-800">
+                    {item.name} ({item.code}) • <span className="text-slate-450 font-normal">{formatCurrency(item.monthlyPrice)}/mo</span>
+                  </span>
+                  <span className="font-mono text-slate-600 font-bold">
+                    {item.count} active ({formatCurrency(item.revenue)}/mo • {item.percentage}%)
+                  </span>
                 </div>
                 <div className="w-full bg-slate-50 h-3 rounded-full overflow-hidden border border-slate-100 flex">
                   <div 
-                    className="bg-indigo-650 h-3" 
+                    className="bg-indigo-600 h-3 transition-all duration-500" 
                     style={{ width: `${item.percentage}%` }}
                   />
                 </div>
@@ -179,29 +192,33 @@ export default function MrrDashboardTab({
           </div>
         </div>
 
-        {/* Storage expansion metrics */}
-        <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-xs space-y-4">
+        {/* Tenant Status Distribution Panel */}
+        <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-xs space-y-4" id="block-status-distribution">
           <div className="border-b border-slate-100 pb-3">
-            <h3 className="text-xs font-bold text-slate-900 uppercase">Interactive Storage Trends</h3>
-            <p className="text-[11px] text-slate-500">Estimated cumulative document uploads growth trend.</p>
+            <h3 className="text-xs font-bold text-slate-900 uppercase">Tenant Status Distribution</h3>
+            <p className="text-[11px] text-slate-500">Live operational distribution of all workspace deployments.</p>
           </div>
 
-          <div className="space-y-3">
-            {[
-              { month: "Jan 2026", storage: 21.4, uploads: 120 },
-              { month: "Feb 2026", storage: 28.5, uploads: 180 },
-              { month: "Mar 2026", storage: 32.7, uploads: 210 },
-              { month: "Apr 2026", storage: 41.2, uploads: 290 },
-              { month: "May 2026", storage: 45.9, uploads: 340 }
-            ].map((item, idx) => (
-              <div key={idx} className="flex justify-between items-center text-xs">
-                <span className="font-semibold text-slate-800">{item.month}</span>
-                <div className="flex items-center gap-2 font-mono">
-                  <span className="text-slate-500">{item.storage} GB</span>
-                  <span className="bg-indigo-50/50 border text-indigo-740 text-[9px] px-1 rounded font-bold">+{item.uploads} CAD files</span>
+          <div className="space-y-3.5 pt-1">
+            {statuses.map((st, idx) => {
+              const percentage = totalClustersCount > 0 ? Math.round((st.count / totalClustersCount) * 100) : 0;
+              return (
+                <div key={idx} className="flex justify-between items-center text-xs">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-2 h-2 rounded-full ${st.color}`} />
+                    <span className="font-semibold text-slate-800">{st.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2 font-mono">
+                    <span className="text-slate-600 font-bold">{st.count}</span>
+                    <span className="text-slate-400 text-[10px]">({percentage}%)</span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
+          </div>
+          
+          <div className="pt-4 border-t border-slate-100 text-[10px] text-slate-450 text-center leading-relaxed font-sans">
+            Operational status vectors synchronize automatically upon subscription lifecycle state transitions.
           </div>
         </div>
 

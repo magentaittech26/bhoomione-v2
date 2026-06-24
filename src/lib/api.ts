@@ -192,8 +192,27 @@ class ApiClient {
     });
   }
 
-  async fetchAdminAuditLogs(): Promise<any[]> {
-    return this.request<any[]>("/admin/audit-logs", {
+  async fetchAdminAuditLogs(params?: {
+    action?: string;
+    operator?: string;
+    target?: string;
+    date_from?: string;
+    date_to?: string;
+    hide_noise?: boolean;
+    limit?: number;
+    page?: number;
+  }): Promise<any> {
+    const query = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, val]) => {
+        if (val !== undefined && val !== null && val !== "") {
+          query.append(key, String(val));
+        }
+      });
+    }
+    const queryString = query.toString();
+    const url = `/admin/audit-logs${queryString ? `?${queryString}` : ""}`;
+    return this.request<any>(url, {
       method: "GET"
     });
   }

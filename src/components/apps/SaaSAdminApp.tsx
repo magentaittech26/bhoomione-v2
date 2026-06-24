@@ -18,6 +18,7 @@ import MrrDashboardTab from "../saas/MrrDashboardTab.tsx";
 import TenantManagementTab from "../saas/TenantManagementTab";
 import TenantOverridesTab from "../saas/TenantOverridesTab.tsx";
 import { SaasSettingsTab } from "../saas/SaasSettingsTab.tsx";
+import AuditLogsTab from "../saas/AuditLogsTab.tsx";
 
 export default function SaaSAdminApp() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -117,10 +118,10 @@ export default function SaaSAdminApp() {
 
   // Subscription Plans
   const [plans, setPlans] = useState<SubscriptionPlan[]>([
-    { name: "Starter Package", code: "STARTER", monthlyPrice: 99, yearlyPrice: 990, trialDays: 14, status: "ACTIVE", sortOrder: 1 },
-    { name: "Growth Engine", code: "GROWTH", monthlyPrice: 249, yearlyPrice: 2490, trialDays: 14, status: "ACTIVE", sortOrder: 2 },
-    { name: "Professional Plus", code: "PROFESSIONAL", monthlyPrice: 499, yearlyPrice: 4990, trialDays: 30, status: "ACTIVE", sortOrder: 3 },
-    { name: "Enterprise Custom", code: "ENTERPRISE", monthlyPrice: 999, yearlyPrice: 9990, trialDays: 30, status: "ACTIVE", sortOrder: 4 }
+    { name: "Starter Package", code: "STARTER", monthlyPrice: 15000, yearlyPrice: 150000, trialDays: 14, status: "ACTIVE", sortOrder: 1 },
+    { name: "Growth Engine", code: "GROWTH", monthlyPrice: 25000, yearlyPrice: 250000, trialDays: 14, status: "ACTIVE", sortOrder: 2 },
+    { name: "Professional Plus", code: "PROFESSIONAL", monthlyPrice: 50000, yearlyPrice: 500000, trialDays: 30, status: "ACTIVE", sortOrder: 3 },
+    { name: "Enterprise Custom", code: "ENTERPRISE", monthlyPrice: 100000, yearlyPrice: 1000000, trialDays: 30, status: "ACTIVE", sortOrder: 4 }
   ]);
 
   // Plan general Baseline Limits
@@ -133,18 +134,18 @@ export default function SaaSAdminApp() {
 
   // Plot Slabs
   const [slabs, setSlabs] = useState<PlotBillingSlab[]>([
-    { id: "slab_1", minPlots: 1, maxPlots: 50, monthlyPrice: 15, yearlyPrice: 150, status: "ACTIVE" },
-    { id: "slab_2", minPlots: 51, maxPlots: 200, monthlyPrice: 40, yearlyPrice: 400, status: "ACTIVE" },
-    { id: "slab_3", minPlots: 201, maxPlots: 500, monthlyPrice: 75, yearlyPrice: 750, status: "ACTIVE" },
-    { id: "slab_4", minPlots: 501, maxPlots: 99999, monthlyPrice: 150, yearlyPrice: 1500, status: "ACTIVE" }
+    { id: "slab_1", minPlots: 1, maxPlots: 50, monthlyPrice: 1500, yearlyPrice: 15000, status: "ACTIVE" },
+    { id: "slab_2", minPlots: 51, maxPlots: 200, monthlyPrice: 4000, yearlyPrice: 40000, status: "ACTIVE" },
+    { id: "slab_3", minPlots: 201, maxPlots: 500, monthlyPrice: 7500, yearlyPrice: 75000, status: "ACTIVE" },
+    { id: "slab_4", minPlots: 501, maxPlots: 99999, monthlyPrice: 15000, yearlyPrice: 150000, status: "ACTIVE" }
   ]);
 
   // Add-ons
   const [addons, setAddons] = useState<AddonCatalogItem[]>([
-    { name: "Interactive Township Map", code: "INTERACTIVE_MAP_ADDON", monthlyPrice: 35, yearlyPrice: 350, status: "ACTIVE", description: "Enables customers to pick and book township plot positions on customized canvas overlays." },
-    { name: "Heavy DXF Upload Parser", code: "DXF_ENGINE_ADDON", monthlyPrice: 50, yearlyPrice: 500, status: "ACTIVE", description: "Batch load AutoCAD .dxf configurations dynamically straight to individual tables." },
-    { name: "WhatsApp checkout triggers", code: "WHATSAPP_ADDON", monthlyPrice: 20, yearlyPrice: 200, status: "ACTIVE", description: "Configure custom template alerts notifying buyers about broker updates." },
-    { name: "Custom Domain Mapping SSL", code: "CUSTOM_DOMAIN_ADDON", monthlyPrice: 15, yearlyPrice: 150, status: "ACTIVE", description: "Proxy workspace containers onto localized web addresses securely." }
+    { name: "Interactive Township Map", code: "INTERACTIVE_MAP_ADDON", monthlyPrice: 4500, yearlyPrice: 45000, status: "ACTIVE", description: "Enables customers to pick and book township plot positions on customized canvas overlays." },
+    { name: "Heavy DXF Upload Parser", code: "DXF_ENGINE_ADDON", monthlyPrice: 3500, yearlyPrice: 35000, status: "ACTIVE", description: "Batch load AutoCAD .dxf configurations dynamically straight to individual tables." },
+    { name: "WhatsApp checkout triggers", code: "WHATSAPP_ADDON", monthlyPrice: 1500, yearlyPrice: 15000, status: "ACTIVE", description: "Configure custom template alerts notifying buyers about broker updates." },
+    { name: "Custom Domain Mapping SSL", code: "CUSTOM_DOMAIN_ADDON", monthlyPrice: 1000, yearlyPrice: 10000, status: "ACTIVE", description: "Proxy workspace containers onto localized web addresses securely." }
   ]);
 
   // Plan Feature Matrix Cells
@@ -1417,61 +1418,7 @@ export default function SaaSAdminApp() {
 
         {/* Original Ingress Trail Stream Telemetry */}
         {activeTab === "audit-logs" && (
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-xs" id="saas-tab-logs">
-            <div className="flex justify-between items-center pb-3 border-b border-slate-150">
-              <div>
-                <h2 className="text-xs font-bold text-slate-900 uppercase">Telemetry Audit Log Streams</h2>
-                <p className="text-xs text-slate-500 mt-0.5">Raw telemetry records from system gateways.</p>
-              </div>
-              <button 
-                onClick={loadAuditLogs}
-                disabled={loadingLogs}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${loadingLogs ? 'animate-spin' : ''}`} />
-                Refresh Logs
-              </button>
-            </div>
-
-            {logsError && (
-              <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-red-700 text-xs shadow-sm font-sans">
-                <p className="font-semibold">Telemetry extraction neglected</p>
-                <p className="text-red-655 mt-0.5">{logsError}</p>
-              </div>
-            )}
-
-            {loadingLogs && (
-              <div className="space-y-3 py-4 animate-pulse">
-                <div className="h-10 bg-slate-105 rounded-lg w-full" />
-                <div className="h-10 bg-slate-105 rounded-lg w-full" />
-              </div>
-            )}
-
-            {!loadingLogs && !logsError && auditLogs.length === 0 && (
-              <div className="py-12 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl">
-                <Terminal className="w-5 h-5 text-slate-400 mx-auto mb-2" />
-                <p className="text-xs font-semibold text-slate-800">No stream logs cached.</p>
-              </div>
-            )}
-
-            {!loadingLogs && !logsError && auditLogs.length > 0 && (
-              <div className="space-y-3 font-mono text-[11px]">
-                {auditLogs.map(l => (
-                  <div key={l.id} className="p-4 bg-slate-905 bg-slate-900 text-slate-200 border border-slate-950 rounded-xl space-y-2">
-                    <div className="flex justify-between text-slate-400 border-b border-slate-800 pb-1">
-                      <span className="font-bold text-indigo-400">{l.action}</span>
-                      <span className="flex items-center gap-1 text-[10px]">
-                        <Clock className="w-3 h-3 text-slate-500" />
-                        {new Date(l.timestamp).toLocaleTimeString()}
-                      </span>
-                    </div>
-                    <p className="text-slate-100 font-sans text-xs">{l.details || `Triggered action: ${l.action}`}</p>
-                    <p className="text-[10px] text-slate-500">operator: {l.operator} • target: {l.target}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <AuditLogsTab onShowToast={showToast} />
         )}
 
         {/* Global configuration params */}
