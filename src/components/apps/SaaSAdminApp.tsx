@@ -38,7 +38,6 @@ export default function SaaSAdminApp() {
     | "usage-limits"
     | "plot-billing"
     | "addons"
-    | "global-parameters"
     | "feature-catalog"
   >("mrr-dashboard");
 
@@ -1105,7 +1104,7 @@ export default function SaaSAdminApp() {
             { id: "module-registry", label: "Module Registry", icon: Box },
             { id: "tenant-overrides", label: "Tenant Overrides", icon: Sliders },
             { id: "audit-logs", label: "Audit Logs", icon: Terminal },
-            { id: "global-parameters", label: "Settings", icon: Settings },
+            { id: "settings", label: "Settings", icon: Settings },
           ].map(t => {
             const Icon = t.icon;
             // Map active state properly to handle both top-level and inner-tabs
@@ -1184,7 +1183,8 @@ export default function SaaSAdminApp() {
                ["plan-master", "plan-feature-matrix", "usage-limits", "plot-billing", "addons"].includes(activeTab) ? "Global Subscription Center / Pricing Packages" :
                ["module-registry", "feature-catalog"].includes(activeTab) ? "Platform Module Registry & Features Catalog" :
                activeTab === "tenant-overrides" ? "Dynamic Tenant Overrides Plan Manager" :
-               activeTab === "audit-logs" ? "Telemetry Ingress Audit Logs Streams" : "DNS & Network Settings"}
+               activeTab === "audit-logs" ? "Telemetry Ingress Audit Logs Streams" : 
+               activeTab === "settings" ? "SaaS Platform Configuration & Settings" : "System Settings"}
             </h2>
           </div>
 
@@ -1475,7 +1475,7 @@ export default function SaaSAdminApp() {
         )}
 
         {/* Global configuration params */}
-        {activeTab === "global-parameters" && (
+        {activeTab === "settings" && (
           <SaasSettingsTab onShowToast={showToast} />
         )}
 

@@ -6,6 +6,7 @@ import {
   Activity, Key, CheckCircle, Info, ExternalLink, RefreshCw as RotateCcw, AlertOctagon
 } from "lucide-react";
 import api from "../../lib/api.ts";
+import { formatCurrency } from "../../lib/currency.ts";
 
 interface TenantManagementTabProps {
   initialSubTab?: "directory" | "profiles" | "domains" | "logs";
@@ -1032,7 +1033,7 @@ export default function TenantManagementTab({
                       className="w-full bg-slate-50 border border-slate-205 rounded-xl px-3 py-2 focus:bg-white focus:outline-none"
                     >
                       {plans.map(p => (
-                        <option key={p.id} value={p.id}>{p.name} (${p.monthly_price}/mo)</option>
+                        <option key={p.id} value={p.id}>{p.name} ({formatCurrency(Number(p.monthly_price))}/mo)</option>
                       ))}
                     </select>
                   </div>
@@ -1151,7 +1152,7 @@ export default function TenantManagementTab({
                     className="w-full bg-slate-50 border border-slate-205 rounded-xl px-3 py-2 text-xs focus:bg-white focus:outline-none"
                   >
                     {plans.map(p => (
-                      <option key={p.id} value={p.id}>{p.name} (${p.monthly_price}/month)</option>
+                      <option key={p.id} value={p.id}>{p.name} ({formatCurrency(Number(p.monthly_price))}/month)</option>
                     ))}
                   </select>
                 </div>
@@ -1212,7 +1213,7 @@ export default function TenantManagementTab({
                     className="w-full bg-slate-50 border border-slate-205 rounded-xl px-3 py-2 text-xs focus:bg-white focus:outline-none"
                   >
                     {addons.map(ad => (
-                      <option key={ad.id} value={ad.id}>{ad.name} (+${ad.monthly_price}/month)</option>
+                      <option key={ad.id} value={ad.id}>{ad.name} (+{formatCurrency(Number(ad.monthly_price))}/month)</option>
                     ))}
                   </select>
                 </div>

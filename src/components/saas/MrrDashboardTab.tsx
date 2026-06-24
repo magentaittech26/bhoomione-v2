@@ -3,6 +3,7 @@ import {
   TrendingUp, Users, Shield, Server, CreditCard, Activity, DollarSign, Cloud, BarChart, ArrowUpRight 
 } from "lucide-react";
 import { TenantSubscription, SubscriptionPlan, AddonCatalogItem } from "./SaasTypes.ts";
+import { formatCurrency } from "../../lib/currency.ts";
 
 interface MrrDashboardTabProps {
   tenants: any[];
@@ -80,7 +81,7 @@ export default function MrrDashboardTab({
           </div>
           <div className="space-y-1">
             <h3 className="text-2xl font-extrabold text-slate-50 font-mono tracking-tight">
-              ${totalMRR.toLocaleString()}/mo
+              {formatCurrency(totalMRR)}/mo
             </h3>
             <p className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
               <TrendingUp className="w-3 h-3" />
@@ -88,7 +89,7 @@ export default function MrrDashboardTab({
             </p>
           </div>
           <div className="text-[10px] text-slate-500 font-mono pt-3 border-t border-slate-800">
-            License MRR: ${subscriptionMRR.toLocaleString()} • Addon MRR: ${addonsMRR.toLocaleString()}
+            License MRR: {formatCurrency(subscriptionMRR)} • Addon MRR: {formatCurrency(addonsMRR)}
           </div>
         </div>
 
@@ -118,7 +119,7 @@ export default function MrrDashboardTab({
           </div>
           <div className="space-y-1">
             <h3 className="text-2xl font-extrabold text-slate-900 font-mono tracking-tight">
-              ${estimatedARR.toLocaleString()}/yr
+              {formatCurrency(estimatedARR)}/yr
             </h3>
             <p className="text-[11px] text-slate-500 leading-none">Estimated annual gateway contract values.</p>
           </div>

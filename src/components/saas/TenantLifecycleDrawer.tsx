@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import api from "../../lib/api.ts";
+import { formatCurrency } from "../../lib/currency.ts";
 import { 
   X, Shield, CreditCard, Sliders, Calendar, AlertTriangle, Check, Play, Ban, Trash2, HelpCircle 
 } from "lucide-react";
@@ -189,7 +190,7 @@ export default function TenantLifecycleDrawer({
                       <span className="text-slate-400">Effective Plan:</span> <strong className="text-slate-100 font-bold">{liveSummary.active_plan_name}</strong>
                     </div>
                     <div>
-                      <span className="text-slate-400">Current Cost:</span> <strong className="text-emerald-400 font-mono">${liveSummary.plot_billing_slab?.monthly_price}/mo</strong>
+                      <span className="text-slate-400">Current Cost:</span> <strong className="text-emerald-400 font-mono">{formatCurrency(Number(liveSummary.plot_billing_slab?.monthly_price))}/mo</strong>
                     </div>
                   </div>
 
@@ -237,7 +238,7 @@ export default function TenantLifecycleDrawer({
                       }`}
                     >
                       <span className="font-bold text-slate-900">{p.name} ({p.code})</span>
-                      <span className="text-[10px] text-slate-500 mt-1">${p.monthlyPrice}/mo</span>
+                      <span className="text-[10px] text-slate-500 mt-1">{formatCurrency(p.monthlyPrice)}/mo</span>
                     </button>
                   ))}
                 </div>
@@ -302,7 +303,7 @@ export default function TenantLifecycleDrawer({
                       <div className="space-y-0.5 max-w-[70%]">
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-xs text-slate-900">{a.name}</span>
-                          <span className="text-[9px] bg-slate-100 text-slate-600 px-1 py-0.5 rounded font-mono font-bold">${a.monthlyPrice}/mo</span>
+                          <span className="text-[9px] bg-slate-100 text-slate-600 px-1 py-0.5 rounded font-mono font-bold">{formatCurrency(a.monthlyPrice)}/mo</span>
                         </div>
                         <p className="text-[11px] text-slate-400 line-clamp-1">{a.description}</p>
                       </div>
@@ -495,13 +496,13 @@ export default function TenantLifecycleDrawer({
           <div className="flex flex-col">
             <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Dynamic MRR contribution</span>
             <span className="text-sm font-extrabold text-emerald-700 font-mono">
-              ${(() => {
+              {formatCurrency((() => {
                 let planPrice = plans.find(p => p.code === subscription.currentPlanCode)?.monthlyPrice || 0;
                 let addOnPrice = subscription.addOnCodes.reduce((sum, code) => {
                   return sum + (addons.find(a => a.code === code)?.monthlyPrice || 0);
                 }, 0);
                 return planPrice + addOnPrice;
-              })()}/mo
+              })())}/mo
             </span>
           </div>
           <button

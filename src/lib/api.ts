@@ -289,8 +289,8 @@ class ApiClient {
     });
   }
 
-  async assignTenantPlan(id: string, payload: any): Promise<{ success: boolean; message: string }> {
-    return this.request<{ success: boolean; message: string }>(`/admin/tenants/${id}/subscription`, {
+  async assignTenantPlan(id: string, payload: any): Promise<any> {
+    return this.request<any>(`/admin/tenants/${id}/subscription`, {
       method: "POST",
       body: JSON.stringify(payload)
     });

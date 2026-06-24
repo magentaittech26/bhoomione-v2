@@ -150,7 +150,7 @@ export default function TenantOverridesTab({ showToast }: TenantOverridesTabProp
         billing_period: "MONTHLY",
         trial_days: 14
       });
-      if (res.success) {
+      if (res && (res.id || res.tenant_id || res.success)) {
         showToast("Standard 14-day starter trial successfully allocated.", "success");
         // Reload profile
         await handleSelectTenant(selectedTenant);
@@ -178,7 +178,7 @@ export default function TenantOverridesTab({ showToast }: TenantOverridesTabProp
         billing_period: assignBillingPeriod,
         trial_days: assignTrialDays > 0 ? assignTrialDays : null
       });
-      if (res.success) {
+      if (res && (res.id || res.tenant_id || res.success)) {
         showToast("Tenant licensing profile updated successfully.", "success");
         // Reset local input states
         setAssignPlanId("");
