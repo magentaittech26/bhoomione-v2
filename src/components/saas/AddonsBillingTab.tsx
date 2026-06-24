@@ -52,7 +52,16 @@ export default function AddonsBillingTab({
   });
 
   const [newAddon, setNewAddon] = useState({
-    name: "", code: "", monthlyPrice: 40, yearlyPrice: 400, description: ""
+    name: "",
+    code: "",
+    monthlyPrice: 40,
+    yearlyPrice: 400,
+    oneTimePrice: 0,
+    description: "",
+    addon_type: "FEATURE" as "FEATURE" | "CAPACITY" | "SERVICE",
+    feature_code: "",
+    limit_key: "",
+    limit_increment: 0
   });
 
   const handleCreateSlabSubmit = (e: React.FormEvent) => {
@@ -105,12 +114,28 @@ export default function AddonsBillingTab({
       code: codeUpper,
       monthlyPrice: Number(newAddon.monthlyPrice),
       yearlyPrice: Number(newAddon.yearlyPrice),
+      oneTimePrice: Number(newAddon.oneTimePrice || 0),
       status: "ACTIVE",
-      description: newAddon.description
+      description: newAddon.description,
+      addon_type: newAddon.addon_type,
+      feature_code: newAddon.addon_type === "FEATURE" ? newAddon.feature_code.toUpperCase().trim() : undefined,
+      limit_key: newAddon.addon_type === "CAPACITY" ? newAddon.limit_key.trim() : undefined,
+      limit_increment: newAddon.addon_type === "CAPACITY" ? Number(newAddon.limit_increment) : undefined
     });
 
     setShowAddAddon(false);
-    setNewAddon({ name: "", code: "", monthlyPrice: 40, yearlyPrice: 400, description: "" });
+    setNewAddon({
+      name: "",
+      code: "",
+      monthlyPrice: 40,
+      yearlyPrice: 400,
+      oneTimePrice: 0,
+      description: "",
+      addon_type: "FEATURE",
+      feature_code: "",
+      limit_key: "",
+      limit_increment: 0
+    });
   };
 
   const moveSlab = (index: number, direction: "up" | "down") => {
@@ -306,18 +331,41 @@ export default function AddonsBillingTab({
                       {a.status}
                     </button>
                   </div>
+                  
+                  {/* Type and Capabilities badges */}
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    <span className="bg-indigo-50 text-indigo-700 text-[9px] font-extrabold px-2 py-0.5 rounded uppercase">
+                      Type: {a.addon_type || "FEATURE"}
+                    </span>
+                    {a.addon_type === "FEATURE" && a.feature_code && (
+                      <span className="bg-amber-50 text-amber-850 border border-amber-100 text-[9px] font-mono px-2 py-0.5 rounded">
+                        Grants: {a.feature_code}
+                      </span>
+                    )}
+                    {a.addon_type === "CAPACITY" && a.limit_key && (
+                      <span className="bg-emerald-50 text-emerald-850 border border-emerald-100 text-[9px] font-mono px-2 py-0.5 rounded">
+                        +{a.limit_increment} {a.limit_key}
+                      </span>
+                    )}
+                    {(a.oneTimePrice || 0) > 0 && (
+                      <span className="bg-sky-50 text-sky-850 border border-sky-100 text-[9px] font-extrabold px-2 py-0.5 rounded">
+                        One-Time: ₹{a.oneTimePrice}
+                      </span>
+                    )}
+                  </div>
+
                   <p className="text-[11px] text-slate-400 leading-normal">{a.description}</p>
                 </div>
 
                  <div className="pt-4 border-t border-slate-100 mt-4 flex items-center justify-between text-xs gap-3">
-                   <div className="flex gap-3">
+                   <div className="flex flex-wrap gap-2.5">
                      <div>
                        <span className="text-[9px] text-slate-400 font-bold uppercase block mb-1">Monthly (₹)</span>
                        <input 
                          type="number"
                          value={a.monthlyPrice}
                          onChange={(e) => onUpdateAddon(a.code, { monthlyPrice: Number(e.target.value) })}
-                         className="w-20 bg-slate-50 border border-slate-200 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs focus:bg-white focus:outline-none"
+                         className="w-16 bg-slate-50 border border-slate-200 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs focus:bg-white focus:outline-none"
                        />
                      </div>
                      <div>
@@ -326,14 +374,23 @@ export default function AddonsBillingTab({
                          type="number"
                          value={a.yearlyPrice}
                          onChange={(e) => onUpdateAddon(a.code, { yearlyPrice: Number(e.target.value) })}
-                         className="w-20 bg-slate-50 border border-slate-200 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs focus:bg-white focus:outline-none"
+                         className="w-16 bg-slate-50 border border-slate-200 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs focus:bg-white focus:outline-none"
+                       />
+                     </div>
+                     <div>
+                       <span className="text-[9px] text-slate-400 font-bold uppercase block mb-1">One-Time (₹)</span>
+                       <input 
+                         type="number"
+                         value={a.oneTimePrice || 0}
+                         onChange={(e) => onUpdateAddon(a.code, { oneTimePrice: Number(e.target.value) })}
+                         className="w-16 bg-slate-50 border border-slate-200 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs focus:bg-white focus:outline-none"
                        />
                      </div>
                    </div>
 
                    <button
                      onClick={() => onUpdateAddon(a.code, {})} // Trigger save
-                     className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg px-2.5 py-1.5 text-[10px] font-sans flex items-center gap-1 shadow-xs transition-all cursor-pointer whitespace-nowrap"
+                     className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg px-2.5 py-1.5 text-[10px] font-sans flex items-center gap-1 shadow-xs transition-all cursor-pointer whitespace-nowrap align-self-end mt-auto"
                    >
                      <Check className="w-3 h-3" />
                      Save Add-on
@@ -489,7 +546,7 @@ export default function AddonsBillingTab({
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-4 gap-3">
                 <div className="col-span-1">
                   <label className="block text-[10px] font-bold uppercase text-slate-450 tracking-wider mb-1">Addon Code</label>
                   <input 
@@ -502,7 +559,7 @@ export default function AddonsBillingTab({
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-450 tracking-wider mb-1">Monthly Cost (₹)</label>
+                  <label className="block text-[10px] font-bold uppercase text-slate-450 tracking-wider mb-1">Monthly (₹)</label>
                   <input 
                     type="number" 
                     required
@@ -513,7 +570,7 @@ export default function AddonsBillingTab({
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-450 tracking-wider mb-1">Yearly Cost (₹)</label>
+                  <label className="block text-[10px] font-bold uppercase text-slate-450 tracking-wider mb-1">Yearly (₹)</label>
                   <input 
                     type="number" 
                     required
@@ -523,6 +580,89 @@ export default function AddonsBillingTab({
                     className="w-full bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-xs focus:outline-none font-mono font-bold focus:bg-white focus:ring-1 focus:ring-indigo-500"
                   />
                 </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-slate-450 tracking-wider mb-1">One-Time (₹)</label>
+                  <input 
+                    type="number" 
+                    min="0"
+                    value={newAddon.oneTimePrice}
+                    onChange={(e) => setNewAddon({ ...newAddon, oneTimePrice: Number(e.target.value) })}
+                    className="w-full bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-xs focus:outline-none font-mono font-bold focus:bg-white focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-slate-450 tracking-wider mb-1">Add-on Type</label>
+                  <select
+                    value={newAddon.addon_type}
+                    onChange={(e) => setNewAddon({ ...newAddon, addon_type: e.target.value as any })}
+                    className="w-full bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-xs focus:outline-none focus:bg-white focus:ring-1 focus:ring-indigo-500 font-bold"
+                  >
+                    <option value="FEATURE">FEATURE (Grants specific UI feature)</option>
+                    <option value="CAPACITY">CAPACITY (Increases plans usage limit)</option>
+                    <option value="SERVICE">SERVICE (Bespoke/other service option)</option>
+                  </select>
+                </div>
+
+                {newAddon.addon_type === "FEATURE" && (
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-slate-450 tracking-wider mb-1">Grant Feature Code</label>
+                    <select
+                      value={newAddon.feature_code}
+                      onChange={(e) => setNewAddon({ ...newAddon, feature_code: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-xs focus:outline-none focus:bg-white focus:ring-1 focus:ring-indigo-500 font-mono font-bold"
+                    >
+                      <option value="">-- Choose registered feature --</option>
+                      <option value="PLOT_GRID_VIEW">PLOT_GRID_VIEW</option>
+                      <option value="LAYOUT_VIEWER">LAYOUT_VIEWER</option>
+                      <option value="DXF_IMPORT">DXF_IMPORT</option>
+                      <option value="DXF_ENGINE">DXF_ENGINE</option>
+                      <option value="GIS_MAPS">GIS_MAPS</option>
+                      <option value="GOOGLE_MAPS_LAYER">GOOGLE_MAPS_LAYER</option>
+                      <option value="SATELLITE_VIEW">SATELLITE_VIEW</option>
+                      <option value="MARKETPLACE_PUBLISH">MARKETPLACE_PUBLISH</option>
+                      <option value="AGENT_PORTAL">AGENT_PORTAL</option>
+                      <option value="CUSTOMER_PORTAL">CUSTOMER_PORTAL</option>
+                      <option value="ADVANCED_REPORTS">ADVANCED_REPORTS</option>
+                      <option value="API_ACCESS">API_ACCESS</option>
+                      <option value="CUSTOM_DOMAIN">CUSTOM_DOMAIN</option>
+                      <option value="WHITELABEL">WHITELABEL</option>
+                    </select>
+                  </div>
+                )}
+
+                {newAddon.addon_type === "CAPACITY" && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-slate-450 tracking-wider mb-1">Limit Key</label>
+                      <select
+                        value={newAddon.limit_key}
+                        onChange={(e) => setNewAddon({ ...newAddon, limit_key: e.target.value })}
+                        className="w-full bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-[10px] focus:outline-none focus:bg-white focus:ring-1 focus:ring-indigo-500 font-bold"
+                      >
+                        <option value="">-- Choose Key --</option>
+                        <option value="projectsLimit">projectsLimit</option>
+                        <option value="layoutsLimit">layoutsLimit</option>
+                        <option value="plotsLimit">plotsLimit</option>
+                        <option value="usersLimit">usersLimit</option>
+                        <option value="storageLimitGb">storageLimitGb</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-slate-450 tracking-wider mb-1">Increment</label>
+                      <input 
+                        type="number"
+                        required
+                        min="1"
+                        value={newAddon.limit_increment}
+                        onChange={(e) => setNewAddon({ ...newAddon, limit_increment: Number(e.target.value) })}
+                        className="w-full bg-slate-50 border border-slate-205 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:bg-white focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>

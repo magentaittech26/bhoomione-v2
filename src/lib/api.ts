@@ -430,6 +430,38 @@ class ApiClient {
     });
   }
 
+  async fetchMyPlansCatalog(): Promise<any[]> {
+    return this.request<any[]>("/tenant/commercial/plans", {
+      method: "GET"
+    });
+  }
+
+  async fetchMyAddonsCatalog(): Promise<any[]> {
+    return this.request<any[]>("/tenant/commercial/addons", {
+      method: "GET"
+    });
+  }
+
+  async upgradeMyPlan(planId: string): Promise<any> {
+    return this.request<any>("/tenant/subscription/upgrade", {
+      method: "POST",
+      body: JSON.stringify({ plan_id: planId })
+    });
+  }
+
+  async purchaseMyAddon(addonId: string): Promise<any> {
+    return this.request<any>("/tenant/addons", {
+      method: "POST",
+      body: JSON.stringify({ addon_id: addonId })
+    });
+  }
+
+  async removeMyAddon(addonId: string): Promise<any> {
+    return this.request<any>(`/tenant/addons/${addonId}`, {
+      method: "DELETE"
+    });
+  }
+
   async fetchAdminTenants(): Promise<any[]> {
     return this.request<any[]>("/admin/tenants", {
       method: "GET"

@@ -58,36 +58,34 @@ class SubscriptionEnforcementEngine
         $addonFeatureCodes = [];
         if ($sub) {
             // Find assigned addons
-            $addonIds = DB::table('tenant_addons')
-                ->where('tenant_subscription_id', $sub->id)
-                ->pluck('addon_id')
-                ->toArray();
+            $assignedAddons = DB::table('tenant_addons')
+                ->join('subscription_addons', 'tenant_addons.addon_id', '=', 'subscription_addons.id')
+                ->where('tenant_addons.tenant_subscription_id', $sub->id)
+                ->where('subscription_addons.status', 'ACTIVE')
+                ->select('subscription_addons.code', 'subscription_addons.feature_code', 'subscription_addons.addon_type')
+                ->get();
 
-            if (!empty($addonIds)) {
-                $addonCodes = DB::table('subscription_addons')
-                    ->whereIn('id', $addonIds)
-                    ->where('status', 'ACTIVE')
-                    ->pluck('code')
-                    ->map(fn($c) => strtoupper($c))
+            foreach ($assignedAddons as $assigned) {
+                // Modern feature_code mapping: if specific feature_code is set, grant it
+                if ($assigned->addon_type === 'FEATURE' && !empty($assigned->feature_code)) {
+                    $addonFeatureCodes[] = strtolower($assigned->feature_code);
+                }
+
+                // Fallback module-level mapping (for compatibility with legacy seeder codes like 'DXF', 'MAPS')
+                $addonCode = strtoupper($assigned->code);
+                $matchedFeatures = DB::table('saas_features')
+                    ->join('saas_modules', 'saas_features.module_id', '=', 'saas_modules.id')
+                    ->where(function($q) use ($addonCode) {
+                        $q->where('saas_modules.code', $addonCode)
+                          ->orWhere('saas_features.code', 'ILIKE', strtolower($addonCode) . '.%')
+                          ->orWhere('saas_modules.code', 'MAPS') // Support alternate naming
+                          ->orWhere('saas_modules.code', 'INTERACTIVE_MAP');
+                    })
+                    ->pluck('saas_features.code')
+                    ->map(fn($c) => strtolower($c))
                     ->toArray();
 
-                // If tenant has DXF addon, grant all dxf.* features. If has MAPS, grant interactive_map.*
-                foreach ($addonCodes as $addonCode) {
-                    // Match features that belong to the respective module or have similar code
-                    $matchedFeatures = DB::table('saas_features')
-                        ->join('saas_modules', 'saas_features.module_id', '=', 'saas_modules.id')
-                        ->where(function($q) use ($addonCode) {
-                            $q->where('saas_modules.code', $addonCode)
-                              ->orWhere('saas_features.code', 'ILIKE', strtolower($addonCode) . '.%')
-                              ->orWhere('saas_modules.code', 'MAPS') // Support alternate naming
-                              ->orWhere('saas_modules.code', 'INTERACTIVE_MAP');
-                        })
-                        ->pluck('saas_features.code')
-                        ->map(fn($c) => strtolower($c))
-                        ->toArray();
-
-                    $addonFeatureCodes = array_merge($addonFeatureCodes, $matchedFeatures);
-                }
+                $addonFeatureCodes = array_merge($addonFeatureCodes, $matchedFeatures);
             }
         }
 
@@ -166,7 +164,7 @@ class SubscriptionEnforcementEngine
     }
 
     /**
-     * Calculate effective limits: Plan limits + Limit Overrides. No mock data.
+     * Calculate effective limits: Plan limits + Purchased Capacity Add-on increment + Limit Overrides. No mock data.
      */
     public static function getEffectiveLimits(string $tenantId): array
     {
@@ -205,6 +203,34 @@ class SubscriptionEnforcementEngine
             'fileStorageGb' => (int) ($baselineLimits['fileStorageGb'] ?? 2),
             'apiRequestsLimit' => (int) ($baselineLimits['apiRequestsLimit'] ?? 1000)
         ];
+
+        // Apply purchased capacity add-ons (adds limit_increment)
+        if ($sub) {
+            $capacityAddons = DB::table('tenant_addons')
+                ->join('subscription_addons', 'tenant_addons.addon_id', '=', 'subscription_addons.id')
+                ->where('tenant_addons.tenant_subscription_id', $sub->id)
+                ->where('subscription_addons.status', 'ACTIVE')
+                ->where('subscription_addons.addon_type', 'CAPACITY')
+                ->whereNotNull('subscription_addons.limit_key')
+                ->whereNotNull('subscription_addons.limit_increment')
+                ->select('subscription_addons.limit_key', 'subscription_addons.limit_increment')
+                ->get();
+
+            foreach ($capacityAddons as $ca) {
+                $key = $ca->limit_key;
+                $inc = (int) $ca->limit_increment;
+
+                if (array_key_exists($key, $limits)) {
+                    $limits[$key] += $inc;
+                } else {
+                    foreach (array_keys($limits) as $lKey) {
+                        if (strtolower($lKey) === strtolower($key)) {
+                            $limits[$lKey] += $inc;
+                        }
+                    }
+                }
+            }
+        }
 
         // Apply custom limit overrides (from tenant_limit_overrides), which take absolute precedence
         if ($sub) {

@@ -14,11 +14,13 @@ class SubscriptionAddon extends Model
     public $incrementing = false;
 
     protected $fillable = [
-        'id', 'code', 'name', 'monthly_price', 'yearly_price', 'description', 'status'
+        'id', 'code', 'name', 'monthly_price', 'yearly_price', 'one_time_price', 'description', 'status', 'addon_type', 'feature_code', 'limit_key', 'limit_increment'
     ];
 
     protected $casts = [
         'monthly_price' => 'decimal:2',
         'yearly_price' => 'decimal:2',
+        'one_time_price' => 'decimal:2',
+        'limit_increment' => 'integer',
     ];
 }

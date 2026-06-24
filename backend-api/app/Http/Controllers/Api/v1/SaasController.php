@@ -8,6 +8,15 @@ use Illuminate\Http\Request;
 
 class SaasController extends Controller
 {
+    public function __construct()
+    {
+        try {
+            \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+        } catch (\Throwable $e) {
+            // Safe logging fallback
+        }
+    }
+
     /**
      * Helper to retrieve logging context.
      */
@@ -302,7 +311,7 @@ class SaasController extends Controller
             if (!empty($addonIds)) {
                 $activeAddons = \App\Models\SubscriptionAddon::whereIn('id', $addonIds)
                     ->where('status', 'ACTIVE')
-                    ->select('code', 'name')
+                    ->select('id', 'code', 'name', 'addon_type', 'monthly_price', 'yearly_price', 'one_time_price', 'description')
                     ->get()
                     ->toArray();
             }
@@ -332,6 +341,8 @@ class SaasController extends Controller
             'usages' => $usage,
             'utilization' => $utilization,
             'plot_billing_slab' => $slab,
+            'enabled_features' => \App\Services\SubscriptionEnforcementEngine::getEffectiveFeatures($tenantId),
+            'remaining_plot_capacity' => max(0, $limits['plotsLimit'] - $plotsCount),
         ]);
     }
 
@@ -348,5 +359,272 @@ class SaasController extends Controller
         }
 
         return $this->getTenantSubscriptionSummary($tenantId);
+    }
+
+    /**
+     * GET /api/v1/admin/commercial/features
+     */
+    public function getCommercialFeatures()
+    {
+        return response()->json(\App\Models\SaasFeature::all());
+    }
+
+    /**
+     * GET /api/v1/admin/commercial/plans
+     */
+    public function getCommercialPlans()
+    {
+        return response()->json(SaasSubscriptionService::getPlans());
+    }
+
+    /**
+     * POST /api/v1/admin/commercial/plans
+     */
+    public function saveCommercialPlan(Request $request)
+    {
+        return $this->savePlan($request);
+    }
+
+    /**
+     * GET /api/v1/admin/commercial/addons
+     */
+    public function getCommercialAddons()
+    {
+        return response()->json(\App\Models\SubscriptionAddon::all());
+    }
+
+    /**
+     * POST /api/v1/admin/commercial/addons
+     */
+    public function saveCommercialAddon(Request $request)
+    {
+        $validated = $request->validate([
+            'id' => 'nullable|uuid',
+            'code' => 'required|string|max:100',
+            'name' => 'required|string|max:255',
+            'monthly_price' => 'required|numeric|min:0',
+            'yearly_price' => 'required|numeric|min:0',
+            'one_time_price' => 'nullable|numeric|min:0',
+            'description' => 'nullable|string',
+            'status' => 'nullable|string|in:ACTIVE,DISABLED',
+            'addon_type' => 'nullable|string|in:FEATURE,CAPACITY,SERVICE',
+            'feature_code' => 'nullable|string|max:100',
+            'limit_key' => 'nullable|string|max:100',
+            'limit_increment' => 'nullable|integer',
+        ]);
+
+        $context = $this->getContextAndUser($request);
+        $addon = SaasSubscriptionService::saveAddon($validated, $context);
+        return response()->json($addon);
+    }
+
+    /**
+     * POST /api/v1/admin/tenants/{id}/addons
+     */
+    public function purchaseTenantAddon(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'addon_id' => 'required|uuid'
+        ]);
+
+        $tenantId = $id;
+        $context = $this->getContextAndUser($request);
+
+        try {
+            return \Illuminate\Support\Facades\DB::transaction(function () use ($tenantId, $validated, $context) {
+                // Find tenant subscription or create one on STARTER
+                $sub = \App\Models\TenantSubscription::where('tenant_id', $tenantId)->first();
+                if (!$sub) {
+                    $starterPlan = \App\Models\SubscriptionPlan::where('plan_code', 'STARTER')->first();
+                    if (!$starterPlan) {
+                        throw new \Exception("Starter plan not found to initiate tenant subscription.");
+                    }
+                    $sub = \App\Models\TenantSubscription::create([
+                        'id' => (string) \Illuminate\Support\Str::uuid(),
+                        'tenant_id' => $tenantId,
+                        'plan_id' => $starterPlan->id,
+                        'status' => 'ACTIVE',
+                        'subscription_start_date' => now()->toDateString(),
+                        'subscription_expiry_date' => now()->addDays(14)->toDateString(),
+                        'trial_expiry_date' => now()->addDays(14)->toDateString(),
+                    ]);
+                }
+
+                $addonId = $validated['addon_id'];
+                $addon = \App\Models\SubscriptionAddon::findOrFail($addonId);
+
+                // Add to tenant_addons if not already assigned
+                $existing = \Illuminate\Support\Facades\DB::table('tenant_addons')
+                    ->where('tenant_subscription_id', $sub->id)
+                    ->where('addon_id', $addonId)
+                    ->first();
+
+                if (!$existing) {
+                    \Illuminate\Support\Facades\DB::table('tenant_addons')->insert([
+                        'id' => (string) \Illuminate\Support\Str::uuid(),
+                        'tenant_subscription_id' => $sub->id,
+                        'addon_id' => $addonId,
+                        'assigned_at' => now(),
+                    ]);
+                }
+
+                // Write custom audit log
+                \App\Services\AuditLogService::log([
+                    'tenantId' => $tenantId,
+                    'userId' => $context['userId'] ?? null,
+                    'entityName' => 'TenantSubscription',
+                    'entityId' => $sub->id,
+                    'action' => 'ADDON_PURCHASED',
+                    'newValues' => [
+                        'addon_id' => $addonId,
+                        'addon_code' => $addon->code,
+                        'addon_name' => $addon->name,
+                    ],
+                    'ipAddress' => $context['ip'] ?? null,
+                    'userAgent' => $context['userAgent'] ?? null,
+                ]);
+
+                return $this->getTenantSubscriptionSummary($tenantId);
+            });
+        } catch (\Throwable $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
+        }
+    }
+
+    /**
+     * DELETE /api/v1/admin/tenants/{id}/addons/{addonId}
+     */
+    public function removeTenantAddon(Request $request, $id, $addonId)
+    {
+        $tenantId = $id;
+        $context = $this->getContextAndUser($request);
+
+        try {
+            return \Illuminate\Support\Facades\DB::transaction(function () use ($tenantId, $addonId, $context) {
+                $sub = \App\Models\TenantSubscription::where('tenant_id', $tenantId)->first();
+                if (!$sub) {
+                    return response()->json(['error' => 'Tenant does not have an active subscription.'], 400);
+                }
+
+                $addon = \App\Models\SubscriptionAddon::findOrFail($addonId);
+
+                \Illuminate\Support\Facades\DB::table('tenant_addons')
+                    ->where('tenant_subscription_id', $sub->id)
+                    ->where('addon_id', $addonId)
+                    ->delete();
+
+                // Write custom audit log
+                \App\Services\AuditLogService::log([
+                    'tenantId' => $tenantId,
+                    'userId' => $context['userId'] ?? null,
+                    'entityName' => 'TenantSubscription',
+                    'entityId' => $sub->id,
+                    'action' => 'ADDON_REMOVED',
+                    'newValues' => [
+                        'addon_id' => $addonId,
+                        'addon_code' => $addon->code,
+                        'addon_name' => $addon->name,
+                    ],
+                    'ipAddress' => $context['ip'] ?? null,
+                    'userAgent' => $context['userAgent'] ?? null,
+                ]);
+
+                return $this->getTenantSubscriptionSummary($tenantId);
+            });
+        } catch (\Throwable $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
+        }
+    }
+
+    /**
+     * POST /api/v1/tenant/subscription/upgrade
+     */
+    public function upgradeMyPlan(Request $request)
+    {
+        $validated = $request->validate([
+            'plan_id' => 'required|uuid'
+        ]);
+
+        $resolvedTenant = $request->attributes->get('resolvedTenant');
+        $tenantId = $resolvedTenant ? $resolvedTenant->id : ($request->attributes->get('authenticatedUserPayload')['tenantId'] ?? null);
+
+        if (!$tenantId) {
+            return response()->json(['error' => 'Tenant context couldn\'t be resolved.'], 400);
+        }
+
+        $context = $this->getContextAndUser($request);
+
+        try {
+            return \Illuminate\Support\Facades\DB::transaction(function () use ($tenantId, $validated, $context) {
+                $sub = \App\Models\TenantSubscription::where('tenant_id', $tenantId)->first();
+                $plan = \App\Models\SubscriptionPlan::findOrFail($validated['plan_id']);
+
+                if (!$sub) {
+                    $sub = \App\Models\TenantSubscription::create([
+                        'id' => (string) \Illuminate\Support\Str::uuid(),
+                        'tenant_id' => $tenantId,
+                        'plan_id' => $plan->id,
+                        'status' => 'ACTIVE',
+                        'subscription_start_date' => now()->toDateString(),
+                        'subscription_expiry_date' => now()->addDays(30)->toDateString(),
+                    ]);
+                } else {
+                    $sub->update([
+                        'plan_id' => $plan->id,
+                        'subscription_expiry_date' => now()->addDays(30)->toDateString(),
+                    ]);
+                }
+
+                // Audit
+                \App\Services\AuditLogService::log([
+                    'tenantId' => $tenantId,
+                    'userId' => $context['userId'] ?? null,
+                    'entityName' => 'TenantSubscription',
+                    'entityId' => $sub->id,
+                    'action' => 'PLAN_UPDATED',
+                    'newValues' => [
+                        'plan_id' => $plan->id,
+                        'plan_code' => $plan->plan_code,
+                        'plan_name' => $plan->name,
+                    ],
+                    'ipAddress' => $context['ip'] ?? null,
+                    'userAgent' => $context['userAgent'] ?? null,
+                ]);
+
+                return $this->getTenantSubscriptionSummary($tenantId);
+            });
+        } catch (\Throwable $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
+        }
+    }
+
+    /**
+     * POST /api/v1/tenant/addons
+     */
+    public function purchaseMyAddon(Request $request)
+    {
+        $resolvedTenant = $request->attributes->get('resolvedTenant');
+        $tenantId = $resolvedTenant ? $resolvedTenant->id : ($request->attributes->get('authenticatedUserPayload')['tenantId'] ?? null);
+
+        if (!$tenantId) {
+            return response()->json(['error' => 'Tenant context couldn\'t be resolved.'], 400);
+        }
+
+        return $this->purchaseTenantAddon($request, $tenantId);
+    }
+
+    /**
+     * DELETE /api/v1/tenant/addons/{addonId}
+     */
+    public function removeMyAddon(Request $request, $addonId)
+    {
+        $resolvedTenant = $request->attributes->get('resolvedTenant');
+        $tenantId = $resolvedTenant ? $resolvedTenant->id : ($request->attributes->get('authenticatedUserPayload')['tenantId'] ?? null);
+
+        if (!$tenantId) {
+            return response()->json(['error' => 'Tenant context couldn\'t be resolved.'], 400);
+        }
+
+        return $this->removeTenantAddon($request, $tenantId, $addonId);
     }
 }

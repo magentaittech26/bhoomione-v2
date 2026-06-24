@@ -219,11 +219,56 @@ class SaasSubscriptionSeeder extends Seeder
             }
         }
 
-        // 3. Addon Catalog Seed
+        // 3. Addon Catalog Seed with type classification and limit boosts
         $addonsData = [
-            ['code' => 'WHATSAPP_NET', 'name' => 'WhatsApp Broadcast Net', 'monthly' => 19.00, 'yearly' => 190.00, 'desc' => 'Instant WhatsApp notification alerts on successful bookings and collections'],
-            ['code' => 'HEAVY_CAD_PARSER', 'name' => 'Extended Heavy CAD Core', 'monthly' => 39.00, 'yearly' => 390.00, 'desc' => 'High speed geo mapping parser for massive complex layouts (>1000 parcels)'],
-            ['code' => 'INTERACTIVE_MAPPER', 'name' => 'Interactive Map Module', 'monthly' => 49.00, 'yearly' => 490.00, 'desc' => 'Interactive visual projection mapping engine overlay for plot vectors'],
+            [
+                'code' => 'ADDON_DXF',
+                'name' => 'Extended Heavy CAD Core',
+                'addon_type' => 'FEATURE',
+                'monthly' => 39.00,
+                'yearly' => 390.00,
+                'one_time' => 0.00,
+                'desc' => 'High speed geo mapping parser and high-precision DXF layers ingestion.',
+                'feature_code' => 'dxf.manage',
+                'limit_key' => null,
+                'limit_increment' => null
+            ],
+            [
+                'code' => 'ADDON_LIMIT_PROJECTS',
+                'name' => 'Project Capacity Boost (+5)',
+                'addon_type' => 'CAPACITY',
+                'monthly' => 29.00,
+                'yearly' => 290.00,
+                'one_time' => 0.00,
+                'desc' => 'Increases your workspace capacity by adding +5 additional active real estate projects.',
+                'feature_code' => null,
+                'limit_key' => 'projectsLimit',
+                'limit_increment' => 5
+            ],
+            [
+                'code' => 'ADDON_LIMIT_PLOTS',
+                'name' => 'Plot Parcel Boost (+1000)',
+                'addon_type' => 'CAPACITY',
+                'monthly' => 49.00,
+                'yearly' => 490.00,
+                'one_time' => 0.00,
+                'desc' => 'Increases your total plot capacity by adding +1000 plots across layouts.',
+                'feature_code' => null,
+                'limit_key' => 'plotsLimit',
+                'limit_increment' => 1000
+            ],
+            [
+                'code' => 'ADDON_SUPPORT_PREMIUM',
+                'name' => 'Premium Elite Dedicated Support',
+                'addon_type' => 'SERVICE',
+                'monthly' => 79.00,
+                'yearly' => 790.00,
+                'one_time' => 150.00,
+                'desc' => 'Access 24/7 priority developer engineering support and SLA guarantees.',
+                'feature_code' => null,
+                'limit_key' => null,
+                'limit_increment' => null
+            ],
         ];
 
         foreach ($addonsData as $add) {
@@ -232,9 +277,14 @@ class SaasSubscriptionSeeder extends Seeder
                 [
                     'id' => (string) Str::uuid(),
                     'name' => $add['name'],
+                    'addon_type' => $add['addon_type'],
                     'monthly_price' => $add['monthly'],
                     'yearly_price' => $add['yearly'],
+                    'one_time_price' => $add['one_time'],
                     'description' => $add['desc'],
+                    'feature_code' => $add['feature_code'],
+                    'limit_key' => $add['limit_key'],
+                    'limit_increment' => $add['limit_increment'],
                     'status' => 'ACTIVE'
                 ]
             );

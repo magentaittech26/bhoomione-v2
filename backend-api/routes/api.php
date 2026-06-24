@@ -292,6 +292,15 @@ Route::prefix('v1')->group(function () {
     Route::delete('/admin/slabs/{id}', [SaasController::class, 'deletePlotSlab'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
     Route::post('/admin/slabs/reorder', [SaasController::class, 'reorderPlotSlabs'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
 
+    // Modern Commercial licensing APIs (Phase 1F.8)
+    Route::get('/admin/commercial/features', [SaasController::class, 'getCommercialFeatures'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::get('/admin/commercial/plans', [SaasController::class, 'getCommercialPlans'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::post('/admin/commercial/plans', [SaasController::class, 'saveCommercialPlan'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::get('/admin/commercial/addons', [SaasController::class, 'getCommercialAddons'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::post('/admin/commercial/addons', [SaasController::class, 'saveCommercialAddon'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/tenants/{id}/addons', [SaasController::class, 'purchaseTenantAddon'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::delete('/admin/tenants/{id}/addons/{addonId}', [SaasController::class, 'removeTenantAddon'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+
     // SAAS PLATFORM GLOBAL SETTINGS (Phase 1F.4)
     Route::get('/admin/settings', [SaasController::class, 'getPlatformSettings'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
     Route::post('/admin/settings', [SaasController::class, 'savePlatformSettings'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
@@ -319,6 +328,11 @@ Route::prefix('v1')->group(function () {
 
     // Tenant-level route checking for tenant-level permission
     Route::get('/tenant/subscription-summary', [SaasController::class, 'getMySubscriptionSummary'])->middleware([TenantResolverMiddleware::class]);
+    Route::get('/tenant/commercial/plans', [SaasController::class, 'getCommercialPlans'])->middleware([TenantResolverMiddleware::class]);
+    Route::get('/tenant/commercial/addons', [SaasController::class, 'getCommercialAddons'])->middleware([TenantResolverMiddleware::class]);
+    Route::post('/tenant/subscription/upgrade', [SaasController::class, 'upgradeMyPlan'])->middleware([TenantResolverMiddleware::class]);
+    Route::post('/tenant/addons', [SaasController::class, 'purchaseMyAddon'])->middleware([TenantResolverMiddleware::class]);
+    Route::delete('/tenant/addons/{addonId}', [SaasController::class, 'removeMyAddon'])->middleware([TenantResolverMiddleware::class]);
     Route::get('/tenant/users', function () {
         return response()->json([
             'message' => 'Access authorized. Retrieved current workspace active member roster.',

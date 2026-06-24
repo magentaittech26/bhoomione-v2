@@ -120,6 +120,17 @@ class SaasSubscriptionService
                 ]
             );
 
+            // Audit
+            AuditLogService::log([
+                'userId' => $context['userId'] ?? null,
+                'entityName' => 'SubscriptionPlan',
+                'entityId' => $plan->id,
+                'action' => 'PLAN_UPDATED',
+                'newValues' => $plan->toArray(),
+                'ipAddress' => $context['ip'] ?? null,
+                'userAgent' => $context['userAgent'] ?? null,
+            ]);
+
             // Save limits mapping
             if (isset($data['limits'])) {
                 SubscriptionPlanLimit::where('plan_id', $plan->id)->delete();
@@ -131,6 +142,16 @@ class SaasSubscriptionService
                         'limit_value' => $val,
                     ]);
                 }
+
+                AuditLogService::log([
+                    'userId' => $context['userId'] ?? null,
+                    'entityName' => 'SubscriptionPlan',
+                    'entityId' => $plan->id,
+                    'action' => 'PLAN_LIMIT_UPDATED',
+                    'newValues' => ['limits' => $data['limits']],
+                    'ipAddress' => $context['ip'] ?? null,
+                    'userAgent' => $context['userAgent'] ?? null,
+                ]);
             }
 
             // Save features matrix
@@ -144,18 +165,17 @@ class SaasSubscriptionService
                         'access_level' => 'ENABLED',
                     ]);
                 }
-            }
 
-            // Audit
-            AuditLogService::log([
-                'userId' => $context['userId'] ?? null,
-                'entityName' => 'SubscriptionPlan',
-                'entityId' => $plan->id,
-                'action' => isset($data['id']) ? 'PLAN_UPDATE_SUCCESS' : 'PLAN_CREATE_SUCCESS',
-                'newValues' => $plan->toArray(),
-                'ipAddress' => $context['ip'] ?? null,
-                'userAgent' => $context['userAgent'] ?? null,
-            ]);
+                AuditLogService::log([
+                    'userId' => $context['userId'] ?? null,
+                    'entityName' => 'SubscriptionPlan',
+                    'entityId' => $plan->id,
+                    'action' => 'PLAN_FEATURE_UPDATED',
+                    'newValues' => ['features' => $data['features']],
+                    'ipAddress' => $context['ip'] ?? null,
+                    'userAgent' => $context['userAgent'] ?? null,
+                ]);
+            }
 
             return $plan;
         });
@@ -182,8 +202,13 @@ class SaasSubscriptionService
                 'name' => $data['name'],
                 'monthly_price' => $data['monthly_price'],
                 'yearly_price' => $data['yearly_price'],
+                'one_time_price' => $data['one_time_price'] ?? 0.00,
                 'description' => $data['description'] ?? null,
                 'status' => $data['status'] ?? 'ACTIVE',
+                'addon_type' => $data['addon_type'] ?? 'FEATURE',
+                'feature_code' => $data['feature_code'] ?? null,
+                'limit_key' => $data['limit_key'] ?? null,
+                'limit_increment' => $data['limit_increment'] ?? null,
             ]
         );
 
@@ -191,7 +216,7 @@ class SaasSubscriptionService
             'userId' => $context['userId'] ?? null,
             'entityName' => 'SubscriptionAddon',
             'entityId' => $addon->id,
-            'action' => isset($data['id']) ? 'ADDON_UPDATE_SUCCESS' : 'ADDON_CREATE_SUCCESS',
+            'action' => isset($data['id']) ? 'ADDON_UPDATED' : 'ADDON_CREATED',
             'newValues' => $addon->toArray(),
             'ipAddress' => $context['ip'] ?? null,
             'userAgent' => $context['userAgent'] ?? null,

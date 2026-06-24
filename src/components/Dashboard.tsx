@@ -3,6 +3,7 @@ import api from "../lib/api.ts";
 import { UserProfile, SystemHealth } from "../types/auth.ts";
 import InventoryManager from "./InventoryManager.tsx";
 import { InventoryManagerErrorBoundary } from "./InventoryManagerErrorBoundary.tsx";
+import TenantSubscriptionStore from "./saas/TenantSubscriptionStore.tsx";
 import {
   LogOut,
   Fingerprint,
@@ -15,6 +16,7 @@ import {
   Sliders,
   ShieldCheck,
   RefreshCw,
+  ShoppingCart,
 } from "lucide-react";
 
 interface DashboardProps {
@@ -515,51 +517,54 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         {/* Subscription Tiers specs */}
         <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4 shadow-sm" id="tiers-spec">
           <div className="flex items-center gap-2 pb-2">
-            <div className="p-1.5 bg-amber-50 text-amber-700 rounded-md">
-              <Award className="w-4 h-4" />
+            <div className="p-1.5 bg-indigo-50 text-indigo-700 rounded-md">
+              <ShieldCheck className="w-4 h-4" />
             </div>
-            <h3 className="text-sm font-semibold text-slate-900">Platform Subscription Matrix</h3>
+            <h3 className="text-sm font-semibold text-slate-900">Decoupled Licensing Architecture</h3>
           </div>
-          <p className="text-xs text-slate-500">
-            Tiers feature flags are dynamically query-driven from `subscription_plans` and validated dynamically in API middlewares.
+          <p className="text-xs text-slate-500 leading-relaxed">
+            BhoomiOne SaaS enforces limits dynamically on the API gateway using cached relational tables. No features or plans are hardcoded in the codebase.
           </p>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left text-slate-600">
-              <thead className="text-[11px] text-slate-400 uppercase bg-slate-50">
-                <tr>
-                  <th className="px-3 py-2">Plan Code</th>
-                  <th className="px-3 py-2">Monthly Rate</th>
-                  <th className="px-3 py-2">Users Limit</th>
-                  <th className="px-3 py-2">GIS Active</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                <tr>
-                  <td className="px-3 py-2 font-semibold text-slate-900">STARTER</td>
-                  <td className="px-3 py-2 font-mono">$99.00</td>
-                  <td className="px-3 py-2 font-mono">5</td>
-                  <td className="px-3 py-2 text-slate-400">Disabled</td>
-                </tr>
-                <tr className="bg-amber-50/40">
-                  <td className="px-3 py-2 font-semibold text-amber-950 flex items-center gap-1.5">
-                    GROWTH
-                    <span className="text-[9px] bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded font-sans font-medium">Selected</span>
-                  </td>
-                  <td className="px-3 py-2 font-mono font-medium text-slate-900">$249.00</td>
-                  <td className="px-3 py-2 font-mono text-slate-900">20</td>
-                  <td className="px-3 py-2 text-emerald-600 font-medium">Enabled</td>
-                </tr>
-                <tr>
-                  <td className="px-3 py-2 font-semibold text-slate-900">PROFESSIONAL</td>
-                  <td className="px-3 py-2 font-mono">$499.00</td>
-                  <td className="px-3 py-2 font-mono">100</td>
-                  <td className="px-3 py-2 text-emerald-600 font-medium">Enabled</td>
-                </tr>
-              </tbody>
-            </table>
+          <div className="grid grid-cols-2 gap-3 pt-1 text-xs">
+            <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg">
+              <span className="font-extrabold text-slate-900 block mb-0.5">Database Gating</span>
+              <p className="text-[10px] text-slate-500 leading-relaxed">Feature visibility and capabilities are fully derived from plan-feature relations.</p>
+            </div>
+            <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg">
+              <span className="font-extrabold text-slate-900 block mb-0.5">Quota Increments</span>
+              <p className="text-[10px] text-slate-500 leading-relaxed">Capacity add-ons directly increase base limits before active overrides are applied.</p>
+            </div>
+            <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg">
+              <span className="font-extrabold text-slate-900 block mb-0.5">Audit-Logged</span>
+              <p className="text-[10px] text-slate-500 leading-relaxed">Every plan transition, add-on purchase, or override modification logs detailed audit records.</p>
+            </div>
+            <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg">
+              <span className="font-extrabold text-slate-900 block mb-0.5">Slab Pricing</span>
+              <p className="text-[10px] text-slate-500 leading-relaxed">Plot capacity levels utilize tiered slabs internally for capacity and financial calculations.</p>
+            </div>
           </div>
         </div>
+      </div>
+
+      {/* 5. Real-Time Tenant Upgrades and Add-ons Store */}
+      <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-6 lg:p-8 space-y-6 shadow-xs" id="licensing-store-section">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200 pb-5">
+          <div className="space-y-1">
+            <h2 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
+              <ShoppingCart className="w-5 h-5 text-indigo-650" />
+              SaaS Marketplace: Baseline Plans & Add-on Upgrades
+            </h2>
+            <p className="text-xs text-slate-500">
+              Change baseline subscription models or activate a-la-carte capabilities with instant recalculations.
+            </p>
+          </div>
+          <div className="bg-indigo-50 text-indigo-700 font-mono text-[10px] px-3 py-1 rounded-full border border-indigo-100 font-bold uppercase">
+            Workspace: {user.tenantCode}
+          </div>
+        </div>
+
+        <TenantSubscriptionStore onRefreshTriggered={handleManualRefresh} />
       </div>
 
       {/* 5. Real-Time Secure Audit Events Logs Track */}

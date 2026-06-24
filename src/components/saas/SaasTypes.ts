@@ -68,8 +68,13 @@ export interface AddonCatalogItem {
   code: string;
   monthlyPrice: number;
   yearlyPrice: number;
+  oneTimePrice?: number;
   status: "ACTIVE" | "DISABLED";
   description: string;
+  addon_type?: "FEATURE" | "CAPACITY" | "SERVICE";
+  feature_code?: string;
+  limit_key?: string;
+  limit_increment?: number;
 }
 
 export interface TenantSubscription {
