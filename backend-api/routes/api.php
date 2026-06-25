@@ -309,7 +309,11 @@ Route::prefix('v1')->group(function () {
 
     // TENANT OPERATIONS & PROVISIONING LIFECYCLE ROUTE MAPS (Phase 1F.2)
     Route::get('/admin/tenants', [TenantProvisioningController::class, 'getTenants'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::get('/admin/tenants/templates', [TenantProvisioningController::class, 'getTemplates'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
     Route::get('/admin/tenants/logs', [TenantProvisioningController::class, 'getLogs'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::post('/admin/tenants/jobs/{id}/retry', [TenantProvisioningController::class, 'retryJob'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/tenants/jobs/{id}/cancel', [TenantProvisioningController::class, 'cancelJob'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/tenants/jobs/{id}/resume', [TenantProvisioningController::class, 'resumeJob'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
     Route::get('/admin/tenants/{id}/lifecycle-events', [TenantProvisioningController::class, 'getLifecycleEvents'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
     Route::post('/admin/tenants/provision', [TenantProvisioningController::class, 'provision'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
     Route::post('/admin/tenants/{id}/activate', [TenantProvisioningController::class, 'activate'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);

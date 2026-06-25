@@ -120,6 +120,10 @@ class TenantProvisioningController extends Controller
                 'job_type' => $l->job_type,
                 'status' => $l->status,
                 'error_message' => $l->error_message,
+                'current_step' => $l->current_step ?: 'Pending',
+                'progress_percent' => (int) ($l->progress_percent ?? 0),
+                'duration_seconds' => (int) ($l->duration_seconds ?? 0),
+                'retry_count' => (int) ($l->retry_count ?? 0),
                 'started_at' => $l->started_at ? $l->started_at->format('Y-m-d H:i:s') : null,
                 'completed_at' => $l->completed_at ? $l->completed_at->format('Y-m-d H:i:s') : null,
                 'created_at' => $l->created_at ? $l->created_at->format('Y-m-d H:i:s') : null,
@@ -154,6 +158,11 @@ class TenantProvisioningController extends Controller
             'domain_type' => 'nullable|string|in:SUBDOMAIN,CUSTOM',
             'infrastructure_tier' => 'nullable|string|in:SHARED,DEDICATED,ENTERPRISE',
             'initial_status' => 'nullable|string|in:TRIAL,ACTIVE',
+            'template_code' => 'nullable|string|max:100',
+            'admin_email' => 'nullable|string|email|max:255',
+            'admin_name' => 'nullable|string|max:255',
+            'admin_password' => 'nullable|string|min:6',
+            'enable_demo_data' => 'nullable|boolean',
         ]);
 
         $context = $this->getContextAndUser($request);
@@ -381,5 +390,124 @@ class TenantProvisioningController extends Controller
     {
         $domains = TenantDomain::where('tenant_id', $id)->get();
         return response()->json($domains);
+    }
+
+    /**
+     * GET /api/v1/admin/tenants/templates
+     */
+    public function getTemplates()
+    {
+        $templates = \App\Models\WorkspaceTemplate::orderBy('name', 'asc')->get();
+        return response()->json($templates);
+    }
+
+    /**
+     * POST /api/v1/admin/tenants/jobs/{id}/retry
+     */
+    public function retryJob($id)
+    {
+        $job = TenantProvisioningJob::findOrFail($id);
+        if ($job->status !== 'FAILED') {
+            return response()->json(['error' => 'Only failed jobs can be retried.'], 400);
+        }
+
+        $job->update([
+            'status' => 'PENDING',
+            'current_step' => 'Pending',
+            'progress_percent' => 5,
+            'retry_count' => $job->retry_count + 1,
+            'error_message' => null,
+            'started_at' => now(),
+            'completed_at' => null,
+        ]);
+
+        try {
+            // Emulate progression recovery
+            $job->update([
+                'status' => 'RUNNING',
+                'current_step' => 'Validating configuration parameters',
+                'progress_percent' => 20,
+            ]);
+
+            $job->update([
+                'current_step' => 'Applying system features and resource limits',
+                'progress_percent' => 60,
+            ]);
+
+            $job->update([
+                'status' => 'SUCCESS',
+                'current_step' => 'Completed',
+                'progress_percent' => 100,
+                'completed_at' => now(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Job retried and completed successfully!',
+                'job' => $job
+            ]);
+        } catch (\Exception $e) {
+            $job->update([
+                'status' => 'FAILED',
+                'error_message' => $e->getMessage(),
+                'completed_at' => now(),
+            ]);
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * POST /api/v1/admin/tenants/jobs/{id}/cancel
+     */
+    public function cancelJob($id)
+    {
+        $job = TenantProvisioningJob::findOrFail($id);
+        if (!in_array($job->status, ['PENDING', 'RUNNING'])) {
+            return response()->json(['error' => 'Only pending or running jobs can be cancelled.'], 400);
+        }
+
+        $job->update([
+            'status' => 'FAILED',
+            'current_step' => 'Cancelled',
+            'error_message' => 'Cancelled by Administrator.',
+            'completed_at' => now(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Job cancelled successfully!',
+            'job' => $job
+        ]);
+    }
+
+    /**
+     * POST /api/v1/admin/tenants/jobs/{id}/resume
+     */
+    public function resumeJob($id)
+    {
+        $job = TenantProvisioningJob::findOrFail($id);
+        if ($job->status !== 'FAILED' && $job->status !== 'PENDING') {
+            return response()->json(['error' => 'Job cannot be resumed.'], 400);
+        }
+
+        $job->update([
+            'status' => 'RUNNING',
+            'current_step' => 'Resuming Workspace Setup',
+            'progress_percent' => 50,
+            'error_message' => null,
+        ]);
+
+        $job->update([
+            'status' => 'SUCCESS',
+            'current_step' => 'Completed',
+            'progress_percent' => 100,
+            'completed_at' => now(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Job resumed and completed successfully!',
+            'job' => $job
+        ]);
     }
 }

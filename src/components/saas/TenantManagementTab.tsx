@@ -53,6 +53,13 @@ export default function TenantManagementTab({
   const [provType, setProvType] = useState<string>("SUBDOMAIN");
   const [provTier, setProvTier] = useState<string>("SHARED");
   const [provStatus, setProvStatus] = useState<string>("TRIAL");
+  const [provTemplateCode, setProvTemplateCode] = useState<string>("");
+  const [provAdminEmail, setProvAdminEmail] = useState<string>("");
+  const [provAdminName, setProvAdminName] = useState<string>("");
+  const [provAdminPassword, setProvAdminPassword] = useState<string>("");
+  const [provEnableDemoData, setProvEnableDemoData] = useState<boolean>(true);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [actionLoadingJobId, setActionLoadingJobId] = useState<string | null>(null);
   const [submittingProv, setSubmittingProv] = useState<boolean>(false);
 
   // 2. Change Plan Form
@@ -75,16 +82,21 @@ export default function TenantManagementTab({
   const loadAllData = async () => {
     try {
       setLoading(true);
-      const [tData, pData, aData, lData] = await Promise.all([
+      const [tData, pData, aData, lData, templateData] = await Promise.all([
         api.fetchTenants(),
         api.fetchSaasPlans(),
         api.fetchSaasAddons(),
-        api.fetchProvisioningLogs()
+        api.fetchProvisioningLogs(),
+        api.fetchWorkspaceTemplates().catch(() => [])
       ]);
       setTenants(tData || []);
       setPlans(pData || []);
       setAddons(aData || []);
       setAllLogs(lData || []);
+      setTemplates(templateData || []);
+      if (templateData && templateData.length > 0) {
+        setProvTemplateCode(templateData[0].code);
+      }
     } catch (err: any) {
       console.error(err);
       showToast("Failed to load tenant ecosystem details from database.", "error");
@@ -146,20 +158,67 @@ export default function TenantManagementTab({
         domain: provDomain,
         domain_type: provType,
         infrastructure_tier: provTier,
-        initial_status: provStatus
+        initial_status: provStatus,
+        template_code: provTemplateCode || undefined,
+        admin_email: provAdminEmail || undefined,
+        admin_name: provAdminName || undefined,
+        admin_password: provAdminPassword || undefined,
+        enable_demo_data: provEnableDemoData
       });
-      showToast(`Workspace '${provName}' successfully provisioned!`, "success");
+      showToast(`Workspace '${provName}' successfully initiated in provisioning queue!`, "success");
       setShowProvisionModal(false);
       // Reset
       setProvCode("");
       setProvName("");
       setProvPlanId("");
       setProvDomain("");
+      setProvAdminEmail("");
+      setProvAdminName("");
+      setProvAdminPassword("");
       await loadAllData();
     } catch (err: any) {
       showToast(err.message || "Failed to provision workspace. Check code duplication.", "error");
     } finally {
       setSubmittingProv(false);
+    }
+  };
+
+  const handleRetryJob = async (id: string) => {
+    try {
+      setActionLoadingJobId(id);
+      await api.retryProvisioningJob(id);
+      showToast("Provisioning job retried successfully!", "success");
+      await loadAllData();
+    } catch (err: any) {
+      showToast(err.message || "Failed to retry provisioning job.", "error");
+    } finally {
+      setActionLoadingJobId(null);
+    }
+  };
+
+  const handleCancelJob = async (id: string) => {
+    try {
+      setActionLoadingJobId(id);
+      await api.cancelProvisioningJob(id);
+      showToast("Provisioning job cancelled successfully.", "success");
+      await loadAllData();
+    } catch (err: any) {
+      showToast(err.message || "Failed to cancel provisioning job.", "error");
+    } finally {
+      setActionLoadingJobId(null);
+    }
+  };
+
+  const handleResumeJob = async (id: string) => {
+    try {
+      setActionLoadingJobId(id);
+      await api.resumeProvisioningJob(id);
+      showToast("Provisioning job resumed successfully.", "success");
+      await loadAllData();
+    } catch (err: any) {
+      showToast(err.message || "Failed to resume provisioning job.", "error");
+    } finally {
+      setActionLoadingJobId(null);
     }
   };
 
@@ -896,64 +955,224 @@ export default function TenantManagementTab({
           {/* ===================================================== */}
           {subTab === "logs" && (
             <div className="space-y-6 animate-fade">
-              <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
-                <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex align-center justify-between">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-550 flex items-center gap-1.5">
-                    <Terminal className="w-4 h-4 text-slate-400" />
-                    Complete provisioning ledger
-                  </h3>
+              {/* Dashboard Stats Panel */}
+              <div className="grid grid-cols-4 gap-4">
+                <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Pipeline Runs</p>
+                    <h4 className="text-xl font-extrabold text-slate-900 mt-0.5">{allLogs.length}</h4>
+                  </div>
+                  <div className="bg-slate-50 text-slate-500 rounded-xl p-2.5">
+                    <Activity className="w-4 h-4" />
+                  </div>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Successful Provisions</p>
+                    <h4 className="text-xl font-extrabold text-emerald-600 mt-0.5">
+                      {allLogs.filter((l: any) => l.status === "SUCCESS" || l.status === "COMPLETED").length}
+                    </h4>
+                  </div>
+                  <div className="bg-emerald-50 text-emerald-600 rounded-xl p-2.5">
+                    <CheckCircle className="w-4 h-4" />
+                  </div>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Active/Pending Queue</p>
+                    <h4 className="text-xl font-extrabold text-indigo-650 mt-0.5">
+                      {allLogs.filter((l: any) => !["SUCCESS", "FAILED", "COMPLETED", "CANCELLED"].includes(l.status)).length}
+                    </h4>
+                  </div>
+                  <div className="bg-indigo-50 text-indigo-600 rounded-xl p-2.5">
+                    <RefreshCw className="w-4 h-4 animate-spin-slow" />
+                  </div>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Rollbacks / Failures</p>
+                    <h4 className="text-xl font-extrabold text-red-650 mt-0.5">
+                      {allLogs.filter((l: any) => l.status === "FAILED").length}
+                    </h4>
+                  </div>
+                  <div className="bg-red-50 text-red-600 rounded-xl p-2.5">
+                    <AlertTriangle className="w-4 h-4" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Live Queue Ledger */}
+              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                      <Terminal className="w-4 h-4 text-indigo-600" />
+                      Zero-Touch Workspace Provisioning Jobs
+                    </h3>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Real-time container spin-ups, database mapping templates, permission scopes and commercial billing allocations.</p>
+                  </div>
+                  <button 
+                    onClick={loadAllData}
+                    className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-[11px] font-bold px-3 py-1.5 rounded-xl border border-indigo-100 transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    Refresh Logs
+                  </button>
                 </div>
                 
                 {allLogs.length === 0 ? (
-                  <p className="p-8 text-center text-xs text-slate-450 italic">No historical jobs indexed.</p>
+                  <p className="p-12 text-center text-xs text-slate-400 italic">No provisioning jobs indexed in the platform engine.</p>
                 ) : (
-                  <table className="w-full text-xs text-left text-slate-705">
-                    <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-500 tracking-wider border-b border-slate-100">
-                      <tr>
-                        <th className="px-5 py-3.5">Job UUID</th>
-                        <th className="px-5 py-3.5">Workspace Organization</th>
-                        <th className="px-5 py-3.5">Action Type</th>
-                        <th className="px-5 py-3.5">Execution Status</th>
-                        <th className="px-5 py-3.5">Initiator Id</th>
-                        <th className="px-5 py-3.5">Timestamp</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {allLogs.map((l: any) => (
-                        <tr key={l.id} className="hover:bg-slate-50/50">
-                          <td className="px-5 py-4 font-mono text-slate-400 text-[10px]">
-                            {l.id}
-                          </td>
-                          <td className="px-5 py-4">
-                            <div>
-                              <p className="font-extrabold text-slate-900">{l.tenant_name}</p>
-                              <p className="text-[10px] text-indigo-500 font-mono">Code: {l.tenant_code}</p>
-                            </div>
-                          </td>
-                          <td className="px-5 py-4">
-                            <span className="font-mono text-[10px] font-black uppercase text-indigo-650 bg-indigo-50 px-2.5 py-0.8 rounded">
-                              {l.job_type}
-                            </span>
-                          </td>
-                          <td className="px-5 py-4">
-                            {l.status === "SUCCESS" ? (
-                              <span className="bg-emerald-50 text-emerald-700 text-[10px] font-black tracking-wide uppercase px-2 py-0.5 border border-emerald-100 rounded">SUCCESS</span>
-                            ) : l.status === "FAILED" ? (
-                              <span className="bg-red-50 text-red-700 text-[10px] font-black tracking-wide uppercase px-2 py-0.5 border border-red-100 rounded">FAILED: {l.error_message}</span>
-                            ) : (
-                              <span className="bg-amber-50 text-amber-700 text-[10px] font-black tracking-wide uppercase px-2 py-0.5 border border-amber-100 rounded">PROCESSING</span>
-                            )}
-                          </td>
-                          <td className="px-5 py-4 font-mono text-slate-450 text-[10px]">
-                            {l.created_by || "ADMIN_SUITE_UI"}
-                          </td>
-                          <td className="px-5 py-4 text-slate-505 font-semibold">
-                            {l.created_at || "N/A"}
-                          </td>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left text-slate-700">
+                      <thead className="bg-slate-50 text-[10px] uppercase font-extrabold text-slate-500 tracking-wider border-b border-slate-100">
+                        <tr>
+                          <th className="px-5 py-3.5">Job Ref</th>
+                          <th className="px-5 py-3.5">Workspace Org</th>
+                          <th className="px-5 py-3.5">Workflow Pipeline Progress</th>
+                          <th className="px-5 py-3.5">Metrics</th>
+                          <th className="px-5 py-3.5">Pipeline Status</th>
+                          <th className="px-5 py-3.5" style={{ textAlign: "right" }}>Actions</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {allLogs.map((l: any) => {
+                          const isFailed = l.status === "FAILED";
+                          const isSuccess = l.status === "SUCCESS" || l.status === "COMPLETED";
+                          const isCancelled = l.status === "CANCELLED";
+                          const isProcessing = !isFailed && !isSuccess && !isCancelled;
+                          const progress = Number(l.progress_percent) || (isSuccess ? 100 : 0);
+                          const activeStep = l.current_step || (isSuccess ? "Completed Successfully" : isFailed ? "Halted / Rolled Back" : "Initializing Pipeline");
+
+                          return (
+                            <tr key={l.id} className="hover:bg-slate-50/40 transition-colors">
+                              {/* Job ID reference */}
+                              <td className="px-5 py-4">
+                                <span className="font-mono text-slate-400 text-[10px] block font-bold">
+                                  #{l.id.slice(0, 8)}...
+                                </span>
+                                <span className="text-[9px] text-slate-400 block mt-0.5">
+                                  {new Date(l.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </td>
+
+                              {/* Workspace organization name */}
+                              <td className="px-5 py-4">
+                                <div>
+                                  <p className="font-extrabold text-slate-900">{l.tenant_name || "New Tenant"}</p>
+                                  <p className="text-[10px] text-indigo-600 font-mono">Code: {l.tenant_code}</p>
+                                </div>
+                              </td>
+
+                              {/* Pipeline stage + Progress percentage */}
+                              <td className="px-5 py-4 min-w-[240px]">
+                                <div className="space-y-1.5">
+                                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-700">
+                                    <span className="truncate max-w-[200px] text-indigo-750 font-extrabold">{activeStep}</span>
+                                    <span className="font-mono font-bold text-slate-800">{progress}%</span>
+                                  </div>
+                                  <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-150">
+                                    <div 
+                                      className={`h-full rounded-full transition-all duration-500 ${
+                                        isSuccess 
+                                          ? "bg-emerald-500" 
+                                          : isFailed 
+                                          ? "bg-red-500" 
+                                          : isCancelled
+                                          ? "bg-slate-400"
+                                          : "bg-indigo-600 animate-pulse"
+                                      }`}
+                                      style={{ width: `${progress}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Performance metrics (duration, retries) */}
+                              <td className="px-5 py-4 font-mono text-[10px] text-slate-600 space-y-0.5">
+                                <div className="flex items-center gap-1">
+                                  <span className="font-bold text-slate-400">Duration:</span>
+                                  <span>{l.duration_seconds ? `${l.duration_seconds}s` : "N/A"}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <span className="font-bold text-slate-400">Retries:</span>
+                                  <span>{l.retry_count || 0} / 3</span>
+                                </div>
+                              </td>
+
+                              {/* Status Badge */}
+                              <td className="px-5 py-4">
+                                {isSuccess ? (
+                                  <span className="inline-flex bg-emerald-50 text-emerald-700 text-[9px] font-extrabold tracking-wider uppercase px-2 py-0.5 border border-emerald-100 rounded">SUCCESS</span>
+                                ) : isFailed ? (
+                                  <span className="inline-flex bg-red-50 text-red-700 text-[9px] font-extrabold tracking-wider uppercase px-2 py-0.5 border border-red-100 rounded" title={l.error_message}>
+                                    HALTED
+                                  </span>
+                                ) : isCancelled ? (
+                                  <span className="inline-flex bg-slate-50 text-slate-500 text-[9px] font-extrabold tracking-wider uppercase px-2 py-0.5 border border-slate-200 rounded">CANCELLED</span>
+                                ) : (
+                                  <span className="inline-flex bg-amber-50 text-amber-700 text-[9px] font-extrabold tracking-wider uppercase px-2 py-0.5 border border-amber-100 rounded animate-pulse">PROCESSING</span>
+                                )}
+                                {l.error_message && isFailed && (
+                                  <p className="text-[9px] text-red-500 mt-1 max-w-[150px] truncate" title={l.error_message}>
+                                    {l.error_message}
+                                  </p>
+                                )}
+                              </td>
+
+                              {/* Interactive operations keys */}
+                              <td className="px-5 py-4 text-right">
+                                {actionLoadingJobId === l.id ? (
+                                  <span className="text-[10px] text-slate-400 font-bold flex items-center justify-end gap-1">
+                                    <RefreshCw className="w-3 h-3 animate-spin text-indigo-650" /> Working...
+                                  </span>
+                                ) : (
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    {isFailed && (
+                                      <>
+                                        <button 
+                                          onClick={() => handleRetryJob(l.id)}
+                                          className="bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-[10px] font-black px-2.5 py-1 rounded-lg shadow-xs transition cursor-pointer flex items-center gap-1"
+                                          title="Re-run provisioning steps from step 1"
+                                        >
+                                          <RefreshCw className="w-3 h-3" />
+                                          Retry
+                                        </button>
+                                        <button 
+                                          onClick={() => handleResumeJob(l.id)}
+                                          className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-[10px] font-black px-2.5 py-1 rounded-lg shadow-xs transition cursor-pointer flex items-center gap-1"
+                                          title="Resume workflow from last successful transaction"
+                                        >
+                                          <Play className="w-3 h-3" />
+                                          Resume
+                                        </button>
+                                      </>
+                                    )}
+                                    {isProcessing && (
+                                      <button 
+                                        onClick={() => handleCancelJob(l.id)}
+                                        className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 text-[10px] font-black px-2.5 py-1 rounded-lg shadow-xs transition cursor-pointer flex items-center gap-1"
+                                        title="Cancel active provisioning"
+                                      >
+                                        <X className="w-3 h-3" />
+                                        Cancel
+                                      </button>
+                                    )}
+                                    {!isProcessing && !isFailed && (
+                                      <span className="text-slate-400 italic text-[10px]">No action required</span>
+                                    )}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </div>
             </div>
@@ -1026,15 +1245,18 @@ export default function TenantManagementTab({
                   </div>
 
                   <div>
-                    <label className="block mb-1 text-slate-600">Target SaaS Subscription Package</label>
+                    <label className="block mb-1 text-slate-600">Workspace Template Setup</label>
                     <select
-                      value={provPlanId}
-                      onChange={(e) => setProvPlanId(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-205 rounded-xl px-3 py-2 focus:bg-white focus:outline-none"
+                      value={provTemplateCode}
+                      onChange={(e) => setProvTemplateCode(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-205 rounded-xl px-3 py-2 focus:bg-white focus:outline-none text-indigo-600"
                     >
-                      {plans.map(p => (
-                        <option key={p.id} value={p.id}>{p.name} ({formatCurrency(Number(p.monthly_price))}/mo)</option>
+                      {templates.map(t => (
+                        <option key={t.id} value={t.code}>{t.name} Template ({t.code})</option>
                       ))}
+                      {templates.length === 0 && (
+                        <option value="starter">Starter Template (Default)</option>
+                      )}
                     </select>
                   </div>
 
@@ -1087,22 +1309,91 @@ export default function TenantManagementTab({
                     </select>
                   </div>
 
+                  <div>
+                    <label className="block mb-1 text-slate-600">Target SaaS Subscription Package</label>
+                    <select
+                      value={provPlanId}
+                      onChange={(e) => setProvPlanId(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-205 rounded-xl px-3 py-2 focus:bg-white focus:outline-none"
+                    >
+                      <option value="">-- Choose Subordinated Subscription Package --</option>
+                      {plans.map(p => (
+                        <option key={p.id} value={p.id}>{p.name} ({formatCurrency(Number(p.monthly_price))}/mo)</option>
+                      ))}
+                    </select>
+                  </div>
+
+                </div>
+
+                {/* Primary Administrator Credentials Setup */}
+                <div className="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-4 space-y-3">
+                  <h4 className="text-[10px] font-extrabold text-indigo-700 uppercase tracking-widest flex items-center gap-1">
+                    <Key className="w-3 h-3 text-indigo-600" />
+                    Setup Workspace Administrator (Optional)
+                  </h4>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block mb-1 text-slate-550">Full Name</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. S.K. Roy"
+                        value={provAdminName}
+                        onChange={(e) => setProvAdminName(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 focus:outline-none text-[11px]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block mb-1 text-slate-550">Email Address</label>
+                      <input
+                        type="email"
+                        placeholder="e.g. roy@township.in"
+                        value={provAdminEmail}
+                        onChange={(e) => setProvAdminEmail(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 focus:outline-none text-[11px]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block mb-1 text-slate-550">Login Password</label>
+                      <input
+                        type="password"
+                        placeholder="••••••"
+                        value={provAdminPassword}
+                        onChange={(e) => setProvAdminPassword(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 focus:outline-none text-[11px]"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Demo Seeding Toggle */}
+                <div className="flex items-center gap-2 bg-emerald-50/40 border border-emerald-100 rounded-xl p-3">
+                  <input
+                    type="checkbox"
+                    id="enableDemoData"
+                    checked={provEnableDemoData}
+                    onChange={(e) => setProvEnableDemoData(e.target.checked)}
+                    className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300"
+                  />
+                  <label htmlFor="enableDemoData" className="text-slate-650 cursor-pointer select-none">
+                    <span className="font-extrabold text-slate-800 block text-[11px]">Deploy with BhoomiOne Township Demo Data Seeder</span>
+                    <span className="text-[10px] text-slate-450 block mt-0.5">Pre-populates plots, layout sheets, booking ledgers, and expense categories for onboarding training.</span>
+                  </label>
                 </div>
 
                 <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
                   <button
                     type="button"
                     onClick={() => setShowProvisionModal(false)}
-                    className="border border-slate-200 hover:bg-slate-55 rounded-xl px-4 py-2"
+                    className="border border-slate-200 hover:bg-slate-50 px-4 py-2 rounded-xl"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={submittingProv}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-4 py-2 font-extrabold shadow"
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-4 py-2 font-extrabold shadow cursor-pointer"
                   >
-                    {submittingProv ? "Spinning containers..." : "Initialize Tenant Operations"}
+                    {submittingProv ? "Spinning containers..." : "Initialize Zero-Touch Provisioning"}
                   </button>
                 </div>
               </form>

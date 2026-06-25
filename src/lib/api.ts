@@ -351,6 +351,30 @@ class ApiClient {
     });
   }
 
+  async fetchWorkspaceTemplates(): Promise<any[]> {
+    return this.request<any[]>("/admin/tenants/templates", {
+      method: "GET"
+    });
+  }
+
+  async retryProvisioningJob(id: string): Promise<any> {
+    return this.request<any>(`/admin/tenants/jobs/${id}/retry`, {
+      method: "POST"
+    });
+  }
+
+  async cancelProvisioningJob(id: string): Promise<any> {
+    return this.request<any>(`/admin/tenants/jobs/${id}/cancel`, {
+      method: "POST"
+    });
+  }
+
+  async resumeProvisioningJob(id: string): Promise<any> {
+    return this.request<any>(`/admin/tenants/jobs/${id}/resume`, {
+      method: "POST"
+    });
+  }
+
   async fetchLifecycleEvents(id: string): Promise<any[]> {
     return this.request<any[]>(`/admin/tenants/${id}/lifecycle-events`, {
       method: "GET"

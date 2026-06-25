@@ -21,6 +21,10 @@ class TenantProvisioningJob extends Model
         'completed_at',
         'error_message',
         'created_by',
+        'current_step',
+        'progress_percent',
+        'duration_seconds',
+        'retry_count',
     ];
 
     protected $casts = [
