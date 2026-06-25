@@ -485,14 +485,14 @@ export default function TenantSubscriptionStore({ onRefreshTriggered }: TenantSu
                 <div className="flex justify-between text-xs">
                   <span className="font-semibold text-slate-700">CAD Document Storage</span>
                   <span className="font-mono text-[11px] text-slate-500">
-                    {summary?.usages?.storage_gb} GB / {summary?.limits?.storageLimitGb} GB
+                    {summary?.usages?.storage_used_gb ?? 0} GB / {summary?.limits?.fileStorageGb ?? 0} GB
                   </span>
                 </div>
                 <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
                   <div 
                     className="bg-indigo-600 h-1.5 rounded-full transition-all duration-500"
                     style={{ 
-                      width: `${Math.min(100, (summary?.usages?.storage_gb / summary?.limits?.storageLimitGb) * 100)}%` 
+                      width: `${Math.min(100, ((summary?.usages?.storage_used_gb ?? 0) / (summary?.limits?.fileStorageGb || 1)) * 100)}%` 
                     }}
                   />
                 </div>

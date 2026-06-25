@@ -14,9 +14,81 @@ use App\Models\SubscriptionAddon;
 use App\Models\SubscriptionPlotSlab;
 use App\Models\SaasModule;
 use App\Models\SaasFeature;
+use App\Services\AuditLogService;
 
 class SubscriptionEnforcementEngine
 {
+    /**
+     * Determine active feature access using the official BhoomiOne resolution order:
+     * Tenant Feature Override -> Purchased Feature Add-on -> Plan Feature -> Platform Default.
+     */
+    public static function canAccessFeature(string $tenantId, string $featureCode): bool
+    {
+        return self::hasFeature($tenantId, $featureCode);
+    }
+
+    /**
+     * Get a comprehensive, consolidated subscription state summary.
+     */
+    public static function getSubscriptionSummary(string $tenantId): array
+    {
+        $sub = self::getTenantSubscription($tenantId);
+
+        $activePlanName = "Starter (Trial)";
+        $activePlanCode = "STARTER";
+        $activeAddons = [];
+
+        if ($sub) {
+            $plan = SubscriptionPlan::find($sub->plan_id);
+            if ($plan) {
+                $activePlanName = $plan->name;
+                $activePlanCode = $plan->plan_code;
+            }
+
+            // Find assigned addons
+            $addonIds = DB::table('tenant_addons')
+                ->where('tenant_subscription_id', $sub->id)
+                ->pluck('addon_id')
+                ->toArray();
+
+            if (!empty($addonIds)) {
+                $activeAddons = SubscriptionAddon::whereIn('id', $addonIds)
+                    ->where('status', 'ACTIVE')
+                    ->select('id', 'code', 'name', 'addon_type', 'monthly_price', 'yearly_price', 'one_time_price', 'description')
+                    ->get()
+                    ->toArray();
+            }
+        }
+
+        $limits = self::getEffectiveLimits($tenantId);
+        $usage = self::getUsage($tenantId);
+        
+        $plotsCount = $usage['plots_count'];
+        $slab = self::getPlotBillingSlab($plotsCount);
+
+        // Utilization rates
+        $utilization = [
+            'projects' => $limits['projectsLimit'] > 0 ? round(($usage['projects_count'] / $limits['projectsLimit']) * 100, 1) : 0,
+            'layouts' => $limits['layoutsLimit'] > 0 ? round(($usage['layouts_count'] / $limits['layoutsLimit']) * 100, 1) : 0,
+            'plots' => $limits['plotsLimit'] > 0 ? round(($usage['plots_count'] / $limits['plotsLimit']) * 100, 1) : 0,
+            'users' => $limits['usersLimit'] > 0 ? round(($usage['users_count'] / $limits['usersLimit']) * 100, 1) : 0,
+            'storage' => $limits['fileStorageGb'] > 0 ? round(($usage['storage_used_gb'] / $limits['fileStorageGb']) * 100, 1) : 0,
+        ];
+
+        return [
+            'tenant_id' => $tenantId,
+            'active_plan_code' => $activePlanCode,
+            'active_plan_name' => $activePlanName,
+            'active_addons' => $activeAddons,
+            'limits' => $limits,
+            'usages' => $usage,
+            'utilization' => $utilization,
+            'plot_billing_slab' => $slab,
+            'enabled_features' => self::getEffectiveFeatures($tenantId),
+            'remaining_plot_capacity' => max(0, $limits['plotsLimit'] - $plotsCount),
+        ];
+    }
+
     /**
      * Determine whether the tenant has a subscription or falls back to TRIAL/STARTER.
      */
@@ -386,12 +458,36 @@ class SubscriptionEnforcementEngine
             // Convert to GB:
             $additionalQtyGb = $additionalQty / (1024 * 1024 * 1024);
             if (($currentUsage + $additionalQtyGb) > $limitVal) {
+                AuditLogService::log([
+                    'tenantId' => $tenantId,
+                    'entityName' => 'StorageCapacity',
+                    'entityId' => 'fileStorageGb',
+                    'action' => 'LIMIT_EXCEEDED',
+                    'newValues' => [
+                        'limit_key' => 'fileStorageGb',
+                        'limit_value' => $limitVal,
+                        'current_usage' => $currentUsage,
+                        'additional_qty' => $additionalQtyGb
+                    ]
+                ]);
                 throw new \Exception("LIMIT_EXCEEDED");
             }
             return;
         }
 
         if (($currentUsage + $additionalQty) > $limitVal) {
+            AuditLogService::log([
+                'tenantId' => $tenantId,
+                'entityName' => 'CapacityLimit',
+                'entityId' => $limitKey,
+                'action' => 'LIMIT_EXCEEDED',
+                'newValues' => [
+                    'limit_key' => $limitKey,
+                    'limit_value' => $limitVal,
+                    'current_usage' => $currentUsage,
+                    'additional_qty' => $additionalQty
+                ]
+            ]);
             throw new \Exception("LIMIT_EXCEEDED");
         }
     }

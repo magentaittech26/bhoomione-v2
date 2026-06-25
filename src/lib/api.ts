@@ -424,10 +424,10 @@ class ApiClient {
     });
   }
 
-  async fetchMySubscriptionSummary(): Promise<any> {
+  async fetchMySubscriptionSummary(tenantId?: string | null): Promise<any> {
     return this.request<any>("/tenant/subscription-summary", {
       method: "GET"
-    });
+    }, tenantId);
   }
 
   async fetchMyPlansCatalog(): Promise<any[]> {
@@ -681,6 +681,29 @@ class ApiClient {
 
   async fetchStyleProfiles(): Promise<any> {
     return this.request<any>("/dxf/style-profiles", {
+      method: "GET",
+    });
+  }
+
+  // ==========================================
+  // PHASE 2A.2 GEOREFERENCE ENDPOINTS
+  // ==========================================
+
+  async fetchLayoutGeoStatus(layoutId: string): Promise<any> {
+    return this.request<any>(`/layouts/${layoutId}/geo-status`, {
+      method: "GET",
+    });
+  }
+
+  async saveLayoutGeoReference(layoutId: string, data: any): Promise<any> {
+    return this.request<any>(`/layouts/${layoutId}/geo-reference`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async fetchLayoutGeoJson(layoutId: string): Promise<any> {
+    return this.request<any>(`/layouts/${layoutId}/geojson`, {
       method: "GET",
     });
   }

@@ -79,9 +79,13 @@ class LayoutController extends Controller
             return response()->json($layout, 201);
         } catch (\Exception $e) {
             if ($e->getMessage() === 'LIMIT_EXCEEDED') {
+                $limits = \App\Services\SubscriptionEnforcementEngine::getEffectiveLimits($tenantId);
+                $usage = \App\Services\SubscriptionEnforcementEngine::getUsage($tenantId);
                 return response()->json([
                     'error' => 'LIMIT_EXCEEDED',
-                    'message' => 'Your subscription layout limit has been exceeded. Please upgrade your plan.'
+                    'message' => 'Your subscription layout limit has been exceeded. Please upgrade your plan.',
+                    'limit' => $limits['layoutsLimit'] ?? 0,
+                    'current_usage' => $usage['layouts_count'] ?? 0
                 ], 403);
             }
             return response()->json(['error' => $e->getMessage() ?: 'Could not create layout.'], 400);

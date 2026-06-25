@@ -79,9 +79,13 @@ class ProjectController extends Controller
             return response()->json($project, 201);
         } catch (\Exception $e) {
             if ($e->getMessage() === 'LIMIT_EXCEEDED') {
+                $limits = \App\Services\SubscriptionEnforcementEngine::getEffectiveLimits($tenantId);
+                $usage = \App\Services\SubscriptionEnforcementEngine::getUsage($tenantId);
                 return response()->json([
                     'error' => 'LIMIT_EXCEEDED',
-                    'message' => 'Your subscription project limit has been exceeded. Please upgrade your plan.'
+                    'message' => 'Your subscription project limit has been exceeded. Please upgrade your plan.',
+                    'limit' => $limits['projectsLimit'] ?? 0,
+                    'current_usage' => $usage['projects_count'] ?? 0
                 ], 403);
             }
             return response()->json(['error' => $e->getMessage() ?: 'Could not create project.'], 400);

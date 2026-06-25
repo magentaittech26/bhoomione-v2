@@ -30,7 +30,10 @@ import {
   Grid,
   Settings2,
   SlidersHorizontal,
-  Activity
+  Activity,
+  LayoutGrid,
+  Download,
+  List
 } from "lucide-react";
 
 interface InventoryManagerProps {
@@ -58,6 +61,8 @@ const tryParseJSON = (val: any, fallback: any = {}) => {
 
 export default function InventoryManager({ user, onAuditLogged }: InventoryManagerProps) {
   const [activeTab, setActiveTab] = useState<"projects" | "layouts" | "plots" | "cad" | "viewer">("projects");
+  const [plotDisplayMode, setPlotDisplayMode] = useState<"spreadsheet" | "card">("spreadsheet");
+  const hasSetInitialTab = React.useRef(false);
   
   // Dynamic Datasets
   const [projects, setProjects] = useState<any[]>([]);
@@ -173,6 +178,8 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
     area_value: "", facing: "", road_width: ""
   });
 
+  const [enabledFeatures, setEnabledFeatures] = useState<string[]>([]);
+
   // Permissions validation
   const hasProjView = user.permissions?.includes("projects.view") || false;
   const hasProjManage = user.permissions?.includes("projects.manage") || false;
@@ -193,6 +200,47 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
 
   const loadLookups = async () => {
     try {
+      // Load active features list first
+      try {
+        const summary = await api.fetchMySubscriptionSummary();
+        if (summary && summary.enabled_features) {
+          const rawFeats = summary.enabled_features.map((f: string) => f.toLowerCase());
+          const expandedFeats = [...rawFeats];
+          
+          if (rawFeats.includes("plots.view") || rawFeats.includes("plots.manage")) {
+            expandedFeats.push("plot_grid_view");
+          }
+          if (rawFeats.includes("interactive_map.view") || rawFeats.includes("interactive_map.manage") || rawFeats.includes("maps.view")) {
+            expandedFeats.push("gis_maps");
+            expandedFeats.push("satellite_view");
+          }
+          if (rawFeats.includes("dxf.view") || rawFeats.includes("dxf.manage") || rawFeats.includes("dxf_upload") || rawFeats.includes("layouts.view")) {
+            expandedFeats.push("dxf_import");
+            expandedFeats.push("layout_viewer");
+            expandedFeats.push("dxf_rendering");
+          }
+          
+          setEnabledFeatures(expandedFeats);
+
+          // Menu adapts automatically based on resolved commercial feature engine:
+          if (!hasSetInitialTab.current) {
+            const hasMaps = expandedFeats.includes("gis_maps") || expandedFeats.includes("interactive_map.view");
+            const hasDxf = expandedFeats.includes("dxf_import") || expandedFeats.includes("layout_viewer");
+            
+            if (hasMaps) {
+              setActiveTab("viewer"); // Professional / Enterprise (Map-focused)
+            } else if (hasDxf) {
+              setActiveTab("layouts"); // Growth (Layout-focused)
+            } else {
+              setActiveTab("plots"); // Starter (Grid-focused)
+            }
+            hasSetInitialTab.current = true;
+          }
+        }
+      } catch (sumErr) {
+        console.warn("Failed to retrieve subscription summary in InventoryManager:", sumErr);
+      }
+
       const unitsData = await api.fetchMeasurementUnits();
       setUnits(unitsData);
 
@@ -224,6 +272,54 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
       console.error(err);
       setErrorMess(err.message || "Relational state fetch failure. Verify access level.");
     }
+  };
+
+  const handleExportPlotsToCsv = () => {
+    if (plots.length === 0) {
+      setErrorMess("No plots available to export.");
+      return;
+    }
+
+    const headers = ["ID", "Plot Number", "Layout", "Area Value", "Unit", "Facing", "Road Width", "Corner Plot", "Status"];
+    const rows = plots.map(p => [
+      p.id,
+      p.plot_number,
+      p.layout_name || p.layout?.name || "N/A",
+      p.area_value,
+      getUnitCode(p.measurement_unit_id),
+      p.facing || "N/A",
+      p.road_width || "0",
+      p.corner_plot ? "YES" : "NO",
+      p.status
+    ]);
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(r => r.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `bhoomione_plots_export_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    if (onAuditLogged) {
+      onAuditLogged({
+        id: String(new Date().getTime()),
+        action: "DATA_EXPORTED",
+        entity_name: "plots",
+        entity_id: user.id,
+        created_at: new Date().toISOString(),
+        details: `Exported ${plots.length} plot records to CSV file successfully.`
+      });
+    }
+
+    setSuccessMess(`Successfully exported ${plots.length} plot records to CSV.`);
+    setTimeout(() => setSuccessMess(null), 4000);
   };
 
   const fetchProjectsPage = async () => {
@@ -898,16 +994,16 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
           </button>
           <button
             onClick={() => { setActiveTab("plots"); setErrorMess(null); }}
-            disabled={!hasPlotView}
+            disabled={!hasPlotView || !enabledFeatures.includes("plot_grid_view")}
             className={`flex-1 lg:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-              !hasPlotView ? "opacity-40" : ""
+              (!hasPlotView || !enabledFeatures.includes("plot_grid_view")) ? "opacity-45 cursor-not-allowed" : ""
             } ${activeTab === "plots" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900"}`}
             id="tab-plots"
           >
             <Compass className="w-3.5 h-3.5" />
-            <span>Plots ({plots.length})</span>
+            <span>Plots ({plots.length}){!enabledFeatures.includes("plot_grid_view") && " 🔒"}</span>
           </button>
-          {hasLayView && (
+          {hasLayView && enabledFeatures.includes("gis_maps") && (
             <button
               onClick={() => { setActiveTab("viewer"); setErrorMess(null); }}
               className={`flex-1 lg:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
@@ -919,7 +1015,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
               <span>Interactive Map</span>
             </button>
           )}
-          {hasDxfView && (
+          {hasDxfView && enabledFeatures.includes("dxf_import") && (
             <button
               onClick={() => { setActiveTab("cad"); setErrorMess(null); }}
               className={`flex-1 lg:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
@@ -1431,6 +1527,48 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                 )}
               </div>
 
+              {/* Spreadsheet / Card Mode View Switcher and CSV Exporter Toolbar */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white border border-slate-200 p-3 rounded-xl shadow-xs" id="plots-toolbar-actions">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">Workspace View:</span>
+                  <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-50">
+                    <button
+                      onClick={() => setPlotDisplayMode("spreadsheet")}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold cursor-pointer transition-all ${
+                        plotDisplayMode === "spreadsheet"
+                          ? "bg-white text-indigo-750 shadow-xs border border-slate-200/50"
+                          : "text-slate-500 hover:text-slate-900"
+                      }`}
+                      id="view-spreadsheet-btn"
+                    >
+                      <List className="w-3.5 h-3.5" />
+                      <span>Spreadsheet View</span>
+                    </button>
+                    <button
+                      onClick={() => setPlotDisplayMode("card")}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold cursor-pointer transition-all ${
+                        plotDisplayMode === "card"
+                          ? "bg-white text-indigo-750 shadow-xs border border-slate-200/50"
+                          : "text-slate-500 hover:text-slate-900"
+                      }`}
+                      id="view-card-btn"
+                    >
+                      <LayoutGrid className="w-3.5 h-3.5" />
+                      <span>Card View</span>
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleExportPlotsToCsv}
+                  className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 font-semibold text-xs px-3.5 py-2 rounded-xl transition-all shadow-xs cursor-pointer"
+                  id="export-plots-btn"
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-550" />
+                  <span>Export to CSV</span>
+                </button>
+              </div>
+
               {/* Bulk operations floating/inline command overlay */}
               {selectedPlotIds.length > 0 && (
                 <div className="bg-indigo-50 border border-indigo-200 p-3.5 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3.5 text-xs text-indigo-950 font-bold">
@@ -1560,128 +1698,252 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                 </div>
               </div>
 
-              {/* Data Table List of Plots */}
-              <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs">
-                <table className="w-full text-left text-xs text-slate-500 border-collapse">
-                  <thead className="bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-200">
-                    <tr>
-                      <th className="px-4 py-3 text-center w-10">
-                        <button
-                          onClick={selectAllFilteredPlots}
-                          className="text-slate-400 hover:text-slate-900 focus:outline-none"
-                        >
-                          {selectedPlotIds.length === plots.length && plots.length > 0 ? (
-                            <CheckSquare className="w-3.5 h-3.5 text-indigo-650" />
-                          ) : (
-                            <Square className="w-3.5 h-3.5 text-slate-300" />
-                          )}
-                        </button>
-                      </th>
-                      <th className="px-4 py-3">Plot Number</th>
-                      <th className="px-4 py-3 text-right">Area</th>
-                      <th className="px-3 py-3 text-center">Unit</th>
-                      <th className="px-4 py-3">Facing</th>
-                      <th className="px-4 py-3 text-right">Road Width</th>
-                      <th className="px-4 py-3 text-center">Corner Plot</th>
-                      <th className="px-4 py-3 text-center">Status</th>
-                      <th className="px-4 py-3 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-sans">
-                    {displayPlt.length === 0 ? (
+              {/* Plot Grid Workspace - Card View or Spreadsheet View Conditional Render */}
+              {plotDisplayMode === "spreadsheet" ? (
+                /* Data Table List of Plots */
+                <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs">
+                  <table className="w-full text-left text-xs text-slate-500 border-collapse">
+                    <thead className="bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-200">
                       <tr>
-                        <td colSpan={9} className="py-12 text-center text-slate-400">
-                          <Compass className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                          <span>No plots match current filtering logic.</span>
-                        </td>
-                      </tr>
-                    ) : (
-                      displayPlt.map((pl) => {
-                        const isChecked = selectedPlotIds.includes(pl.id);
-                        return (
-                          <tr
-                            key={pl.id}
-                            className={`hover:bg-slate-50/50 cursor-pointer transition-colors ${selectedPlot?.id === pl.id ? "bg-slate-55/70" : ""}`}
-                            onClick={() => setSelectedPlot(pl)}
+                        <th className="px-4 py-3 text-center w-10">
+                          <button
+                            onClick={selectAllFilteredPlots}
+                            className="text-slate-400 hover:text-slate-900 focus:outline-none"
                           >
-                            <td className="px-4 py-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                            {selectedPlotIds.length === plots.length && plots.length > 0 ? (
+                              <CheckSquare className="w-3.5 h-3.5 text-indigo-650" />
+                            ) : (
+                              <Square className="w-3.5 h-3.5 text-slate-300" />
+                            )}
+                          </button>
+                        </th>
+                        <th className="px-4 py-3">Plot Number</th>
+                        <th className="px-4 py-3 text-right">Area</th>
+                        <th className="px-3 py-3 text-center">Unit</th>
+                        <th className="px-4 py-3">Facing</th>
+                        <th className="px-4 py-3 text-right">Road Width</th>
+                        <th className="px-4 py-3 text-center">Corner Plot</th>
+                        <th className="px-4 py-3 text-center">Status</th>
+                        <th className="px-4 py-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-sans">
+                      {displayPlt.length === 0 ? (
+                        <tr>
+                          <td colSpan={9} className="py-12 text-center text-slate-400">
+                            <Compass className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                            <span>No plots match current filtering logic.</span>
+                          </td>
+                        </tr>
+                      ) : (
+                        displayPlt.map((pl) => {
+                          const isChecked = selectedPlotIds.includes(pl.id);
+                          return (
+                            <tr
+                              key={pl.id}
+                              className={`hover:bg-slate-50/50 cursor-pointer transition-colors ${selectedPlot?.id === pl.id ? "bg-slate-55/70" : ""}`}
+                              onClick={() => setSelectedPlot(pl)}
+                            >
+                              <td className="px-4 py-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  onClick={() => togglePlotRowSelect(pl.id)}
+                                  className="text-slate-400 hover:text-slate-900 focus:outline-none"
+                                >
+                                  {isChecked ? (
+                                    <CheckSquare className="w-3.5 h-3.5 text-indigo-650" />
+                                  ) : (
+                                    <Square className="w-3.5 h-3.5 text-slate-300" />
+                                  )}
+                                </button>
+                              </td>
+                              <td className="px-4 py-3.5 font-mono font-bold text-slate-900">
+                                <p>{pl.plot_number}</p>
+                                <p className="text-[9px] text-slate-400 font-normal">Layout: {pl.layout_name || pl.layout?.name || "N/A"}</p>
+                                {(() => {
+                                  const meta = tryParseJSON(pl.dimensions_metadata, {});
+                                  const attrs = Object.entries(meta.plot_attributes || {})
+                                    .filter(([_, val]) => val === true || val === "true" || val === 1);
+                                  if (attrs.length === 0) return null;
+                                  return (
+                                    <div className="flex flex-wrap gap-1 mt-1">
+                                      {attrs.map(([key]) => (
+                                        <span key={key} className="inline-block px-1 py-[2px] bg-slate-100 border border-slate-200 rounded text-[7.5px] text-slate-600 font-sans tracking-wide font-normal">
+                                          ✨ {key}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  );
+                                })()}
+                              </td>
+                              <td className="px-4 py-3.5 text-right font-mono font-bold text-slate-800">
+                                {Number(pl.area_value).toFixed(2)}
+                              </td>
+                              <td className="px-3 py-3.5 text-center font-mono text-[10px] text-slate-500 font-semibold">{getUnitCode(pl.measurement_unit_id)}</td>
+                              <td className="px-4 py-3.5 text-indigo-700 font-semibold text-[10.5px] uppercase tracking-wide">{pl.facing}</td>
+                              <td className="px-4 py-3.5 text-right font-mono font-medium text-slate-600">{Number(pl.road_width || 0).toFixed(1)} m</td>
+                              <td className="px-4 py-3.5 text-center">
+                                {pl.corner_plot ? (
+                                  <span className="px-2 py-0.5 rounded bg-cyan-50 border border-cyan-150 text-cyan-700 font-bold text-[9px] uppercase tracking-wide">🎯 Corner</span>
+                                ) : (
+                                  <span className="text-[10px] text-slate-350">Standard</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3.5 text-center">
+                                <span className={`px-2 py-0.5 rounded text-[9px] font-bold tracking-wide border block text-center ${
+                                  pl.status === "AVAILABLE" ? "bg-emerald-50 text-emerald-800 border-emerald-100" :
+                                  pl.status === "RESERVED" ? "bg-amber-50 text-amber-800 border-amber-100" :
+                                  pl.status === "BOOKED" ? "bg-blue-50 text-blue-800 border-blue-100" :
+                                  pl.status === "SOLD" ? "bg-slate-900 text-slate-100 border-slate-850" :
+                                  "bg-rose-50 text-rose-800 border-rose-100" // BLOCKED
+                                }`}>
+                                  {pl.status}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex justify-end gap-1.5">
+                                  <button
+                                    onClick={() => handleStartEditPlot(pl)}
+                                    className="p-1 text-slate-400 hover:text-slate-900"
+                                  >
+                                    <Edit className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeletePlot(pl.id, pl.plot_number)}
+                                    className="p-1 text-slate-400 hover:text-rose-600"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                /* Card View Mode Workspace */
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" id="plots-card-workspace">
+                  {displayPlt.length === 0 ? (
+                    <div className="col-span-full py-12 text-center text-slate-400 bg-white border border-slate-200 rounded-xl">
+                      <Compass className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                      <span>No plots match current filtering logic.</span>
+                    </div>
+                  ) : (
+                    displayPlt.map((pl) => {
+                      const isChecked = selectedPlotIds.includes(pl.id);
+                      return (
+                        <div
+                          key={pl.id}
+                          onClick={() => setSelectedPlot(pl)}
+                          className={`relative border rounded-xl p-4 transition-all duration-200 cursor-pointer bg-white shadow-xs flex flex-col justify-between ${
+                            selectedPlot?.id === pl.id
+                              ? "border-indigo-650 ring-2 ring-indigo-500/10 bg-indigo-50/10"
+                              : "border-slate-200 hover:border-slate-300 hover:shadow-md"
+                          }`}
+                        >
+                          {/* Card Top: Checkbox and Status Badge */}
+                          <div className="flex items-center justify-between gap-2 mb-3">
+                            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                               <button
                                 onClick={() => togglePlotRowSelect(pl.id)}
                                 className="text-slate-400 hover:text-slate-900 focus:outline-none"
                               >
                                 {isChecked ? (
-                                  <CheckSquare className="w-3.5 h-3.5 text-indigo-650" />
+                                  <CheckSquare className="w-4 h-4 text-indigo-650" />
                                 ) : (
-                                  <Square className="w-3.5 h-3.5 text-slate-300" />
+                                  <Square className="w-4 h-4 text-slate-300" />
                                 )}
                               </button>
-                            </td>
-                            <td className="px-4 py-3.5 font-mono font-bold text-slate-900">
-                              <p>{pl.plot_number}</p>
-                              <p className="text-[9px] text-slate-400 font-normal">Layout: {pl.layout_name || pl.layout?.name || "N/A"}</p>
-                              {(() => {
-                                const meta = tryParseJSON(pl.dimensions_metadata, {});
-                                const attrs = Object.entries(meta.plot_attributes || {})
-                                  .filter(([_, val]) => val === true || val === "true" || val === 1);
-                                if (attrs.length === 0) return null;
-                                return (
-                                  <div className="flex flex-wrap gap-1 mt-1">
-                                    {attrs.map(([key]) => (
-                                      <span key={key} className="inline-block px-1 py-[2px] bg-slate-100 border border-slate-200 rounded text-[7.5px] text-slate-600 font-sans tracking-wide font-normal">
-                                        ✨ {key}
-                                      </span>
-                                    ))}
-                                  </div>
-                                );
-                              })()}
-                            </td>
-                            <td className="px-4 py-3.5 text-right font-mono font-bold text-slate-800">
-                              {Number(pl.area_value).toFixed(2)}
-                            </td>
-                            <td className="px-3 py-3.5 text-center font-mono text-[10px] text-slate-500 font-semibold">{getUnitCode(pl.measurement_unit_id)}</td>
-                            <td className="px-4 py-3.5 text-indigo-700 font-semibold text-[10.5px] uppercase tracking-wide">{pl.facing}</td>
-                            <td className="px-4 py-3.5 text-right font-mono font-medium text-slate-600">{Number(pl.road_width || 0).toFixed(1)} m</td>
-                            <td className="px-4 py-3.5 text-center">
-                              {pl.corner_plot ? (
-                                <span className="px-2 py-0.5 rounded bg-cyan-50 border border-cyan-150 text-cyan-700 font-bold text-[9px] uppercase tracking-wide">🎯 Corner</span>
-                              ) : (
-                                <span className="text-[10px] text-slate-350">Standard</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3.5 text-center">
-                              <span className={`px-2 py-0.5 rounded text-[9px] font-bold tracking-wide border block text-center ${
-                                pl.status === "AVAILABLE" ? "bg-emerald-50 text-emerald-800 border-emerald-100" :
-                                pl.status === "RESERVED" ? "bg-amber-50 text-amber-800 border-amber-100" :
-                                pl.status === "BOOKED" ? "bg-blue-50 text-blue-800 border-blue-100" :
-                                pl.status === "SOLD" ? "bg-slate-900 text-slate-100 border-slate-850" :
-                                "bg-rose-50 text-rose-800 border-rose-100" // BLOCKED
-                              }`}>
-                                {pl.status}
+                              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">SELECT</span>
+                            </div>
+
+                            <span className={`px-2.5 py-0.5 rounded text-[9px] font-bold tracking-wide border ${
+                              pl.status === "AVAILABLE" ? "bg-emerald-50 text-emerald-800 border-emerald-100" :
+                              pl.status === "RESERVED" ? "bg-amber-50 text-amber-800 border-amber-100" :
+                              pl.status === "BOOKED" ? "bg-blue-50 text-blue-800 border-blue-100" :
+                              pl.status === "SOLD" ? "bg-slate-900 text-slate-100 border-slate-850" :
+                              "bg-rose-50 text-rose-800 border-rose-100" // BLOCKED
+                            }`}>
+                              {pl.status}
+                            </span>
+                          </div>
+
+                          {/* Card Mid: Plot Number and Layout Info */}
+                          <div className="mb-4">
+                            <h4 className="text-sm font-black text-slate-900">Plot #{pl.plot_number}</h4>
+                            <p className="text-[10px] text-slate-400 font-medium">Layout: {pl.layout_name || pl.layout?.name || "N/A"}</p>
+                            
+                            {/* Extensible custom attributes */}
+                            {(() => {
+                              const meta = tryParseJSON(pl.dimensions_metadata, {});
+                              const attrs = Object.entries(meta.plot_attributes || {})
+                                .filter(([_, val]) => val === true || val === "true" || val === 1);
+                              if (attrs.length === 0) return null;
+                              return (
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  {attrs.map(([key]) => (
+                                    <span key={key} className="inline-block px-1 py-[2px] bg-slate-100 border border-slate-200 rounded text-[7.5px] text-slate-600 font-sans tracking-wide">
+                                      ✨ {key}
+                                    </span>
+                                  ))}
+                                </div>
+                              );
+                            })()}
+                          </div>
+
+                          {/* Card Bottom Grid: Specs */}
+                          <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 text-[10px] text-slate-500 font-medium">
+                            <div className="flex flex-col">
+                              <span className="text-[9px] text-slate-400 uppercase tracking-wider font-bold">Area</span>
+                              <span className="font-mono text-slate-800 font-bold">{Number(pl.area_value).toFixed(2)} {getUnitCode(pl.measurement_unit_id)}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[9px] text-slate-400 uppercase tracking-wider font-bold">Facing</span>
+                              <span className="text-indigo-700 font-bold uppercase">{pl.facing}</span>
+                            </div>
+                            <div className="flex flex-col mt-1">
+                              <span className="text-[9px] text-slate-400 uppercase tracking-wider font-bold">Road Width</span>
+                              <span className="font-mono text-slate-800 font-bold">{Number(pl.road_width || 0).toFixed(1)} m</span>
+                            </div>
+                            <div className="flex flex-col mt-1">
+                              <span className="text-[9px] text-slate-400 uppercase tracking-wider font-bold">Corner Plot</span>
+                              <span>
+                                {pl.corner_plot ? (
+                                  <span className="px-1.5 py-0.2 bg-cyan-50 border border-cyan-150 text-cyan-700 font-bold text-[8px] uppercase tracking-wider rounded">🎯 YES</span>
+                                ) : (
+                                  <span className="text-slate-400">NO</span>
+                                )}
                               </span>
-                            </td>
-                            <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                              <div className="flex justify-end gap-1.5">
-                                <button
-                                  onClick={() => handleStartEditPlot(pl)}
-                                  className="p-1 text-slate-400 hover:text-slate-900"
-                                >
-                                  <Edit className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeletePlot(pl.id, pl.plot_number)}
-                                  className="p-1 text-slate-400 hover:text-rose-600"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                            </div>
+                          </div>
+
+                          {/* Quick inline action controls for manage-access */}
+                          {hasPlotManage && (
+                            <div className="flex justify-end gap-1.5 mt-3 border-t border-slate-150/45 pt-2" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                onClick={() => handleStartEditPlot(pl)}
+                                className="inline-flex items-center gap-1 text-[10px] text-indigo-650 hover:text-indigo-850 font-bold"
+                              >
+                                <Edit className="w-3 h-3" />
+                                <span>Edit</span>
+                              </button>
+                              <button
+                                onClick={() => handleDeletePlot(pl.id, pl.plot_number)}
+                                className="inline-flex items-center gap-1 text-[10px] text-slate-400 hover:text-rose-600 font-bold ml-2"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>Delete</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
 
               {/* Plots paginate controls */}
               <div className="flex items-center justify-between border-t border-slate-100 pt-4 px-1">
@@ -1976,6 +2238,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
             user={user}
             initialLayoutId={selectedLayout?.id || null}
             onAuditLogged={onAuditLogged}
+            enabledFeatures={enabledFeatures}
           />
         </div>
       )}

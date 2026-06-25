@@ -288,62 +288,8 @@ class SaasController extends Controller
      */
     public function getTenantSubscriptionSummary($id)
     {
-        $tenantId = $id;
-        $sub = \App\Services\SubscriptionEnforcementEngine::getTenantSubscription($tenantId);
-
-        $activePlanName = "Starter (Trial)";
-        $activePlanCode = "STARTER";
-        $activeAddons = [];
-
-        if ($sub) {
-            $plan = \App\Models\SubscriptionPlan::find($sub->plan_id);
-            if ($plan) {
-                $activePlanName = $plan->name;
-                $activePlanCode = $plan->plan_code;
-            }
-
-            // Find assigned addons
-            $addonIds = \Illuminate\Support\Facades\DB::table('tenant_addons')
-                ->where('tenant_subscription_id', $sub->id)
-                ->pluck('addon_id')
-                ->toArray();
-
-            if (!empty($addonIds)) {
-                $activeAddons = \App\Models\SubscriptionAddon::whereIn('id', $addonIds)
-                    ->where('status', 'ACTIVE')
-                    ->select('id', 'code', 'name', 'addon_type', 'monthly_price', 'yearly_price', 'one_time_price', 'description')
-                    ->get()
-                    ->toArray();
-            }
-        }
-
-        $limits = \App\Services\SubscriptionEnforcementEngine::getEffectiveLimits($tenantId);
-        $usage = \App\Services\SubscriptionEnforcementEngine::getUsage($tenantId);
-        
-        $plotsCount = $usage['plots_count'];
-        $slab = \App\Services\SubscriptionEnforcementEngine::getPlotBillingSlab($plotsCount);
-
-        // Utilization rates
-        $utilization = [
-            'projects' => $limits['projectsLimit'] > 0 ? round(($usage['projects_count'] / $limits['projectsLimit']) * 100, 1) : 0,
-            'layouts' => $limits['layoutsLimit'] > 0 ? round(($usage['layouts_count'] / $limits['layoutsLimit']) * 100, 1) : 0,
-            'plots' => $limits['plotsLimit'] > 0 ? round(($usage['plots_count'] / $limits['plotsLimit']) * 100, 1) : 0,
-            'users' => $limits['usersLimit'] > 0 ? round(($usage['users_count'] / $limits['usersLimit']) * 100, 1) : 0,
-            'storage' => $limits['fileStorageGb'] > 0 ? round(($usage['storage_used_gb'] / $limits['fileStorageGb']) * 100, 1) : 0,
-        ];
-
-        return response()->json([
-            'tenant_id' => $tenantId,
-            'active_plan_code' => $activePlanCode,
-            'active_plan_name' => $activePlanName,
-            'active_addons' => $activeAddons,
-            'limits' => $limits,
-            'usages' => $usage,
-            'utilization' => $utilization,
-            'plot_billing_slab' => $slab,
-            'enabled_features' => \App\Services\SubscriptionEnforcementEngine::getEffectiveFeatures($tenantId),
-            'remaining_plot_capacity' => max(0, $limits['plotsLimit'] - $plotsCount),
-        ]);
+        $summary = \App\Services\SubscriptionEnforcementEngine::getSubscriptionSummary($id);
+        return response()->json($summary);
     }
 
     /**

@@ -205,9 +205,13 @@ class DxfController extends Controller
         } catch (Exception $e) {
             DB::rollBack();
             if ($e->getMessage() === 'LIMIT_EXCEEDED') {
+                $limits = \App\Services\SubscriptionEnforcementEngine::getEffectiveLimits($tenantId);
+                $usage = \App\Services\SubscriptionEnforcementEngine::getUsage($tenantId);
                 return response()->json([
                     'error' => 'LIMIT_EXCEEDED',
-                    'message' => 'Your workspace file storage limit has been exceeded. Please upgrade your active subscription package.'
+                    'message' => 'Your workspace file storage limit has been exceeded. Please upgrade your active subscription package.',
+                    'limit' => $limits['fileStorageGb'] ?? 0,
+                    'current_usage' => $usage['storage_used_gb'] ?? 0
                 ], 403);
             }
             return response()->json(['error' => $e->getMessage() ?: 'An error occurred during DXF file registration.'], 500);

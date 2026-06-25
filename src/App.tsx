@@ -14,6 +14,7 @@ export default function App() {
   const [simulatedApp, setSimulatedApp] = useState<AppType | null>(null);
   const [simulatedTenant, setSimulatedTenant] = useState<string>("bhoomi-alpha");
   const [isSandboxMode, setIsSandboxMode] = useState(false);
+  const [enabledFeatures, setEnabledFeatures] = useState<string[]>([]);
 
   useEffect(() => {
     // 1. Resolve host and set primary defaults
@@ -68,8 +69,46 @@ export default function App() {
     return resolved ? resolved.tenant : null;
   };
 
-  const activeApp = getActiveAppType();
   const activeTenant = getActiveTenant();
+
+  useEffect(() => {
+    if (!activeTenant) {
+      setEnabledFeatures([]);
+      return;
+    }
+
+    let isMounted = true;
+    api.fetchMySubscriptionSummary(activeTenant)
+      .then((res) => {
+        if (isMounted && res && res.enabled_features) {
+          const rawFeats = res.enabled_features.map((f: string) => f.toLowerCase());
+          const expandedFeats = [...rawFeats];
+          if (rawFeats.includes("plots.view") || rawFeats.includes("plots.manage")) {
+            expandedFeats.push("plot_grid_view");
+          }
+          if (rawFeats.includes("interactive_map.view") || rawFeats.includes("interactive_map.manage") || rawFeats.includes("maps.view")) {
+            expandedFeats.push("gis_maps");
+            expandedFeats.push("satellite_view");
+          }
+          if (rawFeats.includes("dxf.view") || rawFeats.includes("dxf.manage") || rawFeats.includes("dxf_upload") || rawFeats.includes("layouts.view")) {
+            expandedFeats.push("dxf_import");
+            expandedFeats.push("layout_viewer");
+            expandedFeats.push("dxf_rendering");
+          }
+          setEnabledFeatures(expandedFeats);
+        }
+      })
+      .catch((err) => {
+        console.warn("Failed to fetch features in App.tsx simulation:", err);
+        if (isMounted) setEnabledFeatures([]);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeTenant]);
+
+  const activeApp = getActiveAppType();
 
   // Helper to construct simulated production / staging hostnames to explain setup to reviewers
   const getExpectedDomainUrl = (type: AppType, tenantName: string, staging: boolean): string => {
@@ -163,14 +202,16 @@ export default function App() {
               <div className="flex flex-col gap-1">
                 <span className="text-[10px] uppercase font-bold text-slate-400">Simulate Target Domain Application:</span>
                 <div className="flex p-0.5 bg-slate-900 border border-slate-800 rounded-lg" id="app-type-selector">
-                  <button
-                    onClick={() => setSimulatedApp("marketplace")}
-                    className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
-                      simulatedApp === "marketplace" ? "bg-indigo-600 text-white shadow" : "text-slate-400 hover:text-white"
-                    }`}
-                  >
-                    Marketplace
-                  </button>
+                  {(!activeTenant || enabledFeatures.includes("marketplace_publish")) && (
+                    <button
+                      onClick={() => setSimulatedApp("marketplace")}
+                      className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                        simulatedApp === "marketplace" ? "bg-indigo-600 text-white shadow" : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      Marketplace
+                    </button>
+                  )}
                   <button
                     onClick={() => setSimulatedApp("saas-admin")}
                     className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
@@ -187,22 +228,26 @@ export default function App() {
                   >
                     Tenant Workspace
                   </button>
-                  <button
-                    onClick={() => setSimulatedApp("customer-portal")}
-                    className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
-                      simulatedApp === "customer-portal" ? "bg-indigo-600 text-white shadow" : "text-slate-400 hover:text-white"
-                    }`}
-                  >
-                    Customer Portal
-                  </button>
-                  <button
-                    onClick={() => setSimulatedApp("agent-portal")}
-                    className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
-                      simulatedApp === "agent-portal" ? "bg-indigo-600 text-white shadow" : "text-slate-400 hover:text-white"
-                    }`}
-                  >
-                    Agent Portal
-                  </button>
+                  {(!activeTenant || enabledFeatures.includes("customer_portal")) && (
+                    <button
+                      onClick={() => setSimulatedApp("customer-portal")}
+                      className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                        simulatedApp === "customer-portal" ? "bg-indigo-600 text-white shadow" : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      Customer Portal
+                    </button>
+                  )}
+                  {(!activeTenant || enabledFeatures.includes("agent_portal")) && (
+                    <button
+                      onClick={() => setSimulatedApp("agent-portal")}
+                      className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                        simulatedApp === "agent-portal" ? "bg-indigo-600 text-white shadow" : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      Agent Portal
+                    </button>
+                  )}
                 </div>
               </div>
 
