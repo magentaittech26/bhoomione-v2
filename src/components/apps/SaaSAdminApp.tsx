@@ -1407,12 +1407,7 @@ export default function SaaSAdminApp() {
               <p className="text-xs text-slate-500 mt-1">Real-time analytical graphs, billing projections and workspace MRR multipliers.</p>
             </div>
             
-            <MrrDashboardTab 
-              tenants={tenants}
-              subscriptions={Object.values(tenantSubscriptions)}
-              plans={plans}
-              addons={addons}
-            />
+            <MrrDashboardTab />
           </div>
         )}
 

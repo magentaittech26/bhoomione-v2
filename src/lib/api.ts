@@ -295,6 +295,12 @@ class ApiClient {
     });
   }
 
+  async fetchDashboardStats(): Promise<any> {
+    return this.request<any>("/admin/dashboard-stats", {
+      method: "GET"
+    });
+  }
+
   async saveSaasSettings(settings: any[]): Promise<{ success: boolean; message: string }> {
     return this.request<{ success: boolean; message: string }>("/admin/settings", {
       method: "POST",
