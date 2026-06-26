@@ -19,13 +19,92 @@ interface SaasSettingsTabProps {
 }
 
 const SETTING_GROUPS = [
-  { id: "GENERAL", label: "General Settings", icon: Sliders, description: "Manage basic platform branding and corporate contact profiles." },
-  { id: "DOMAINS", label: "Domain & Routing", icon: Globe, description: "Configure hostname pattern resolutions and reverse proxy rules." },
-  { id: "BILLING", label: "Billing & Invoicing", icon: CreditCard, description: "Set default currencies, tax slab computations, and subscription grace windows." },
-  { id: "NOTIFICATIONS", label: "Notifications & Alerts", icon: Mail, description: "Assign default WhatsApp, SMS, and SMTP service providers." },
-  { id: "SECURITY", label: "Security & MFA", icon: Shield, description: "Establish strict password complexities, session timeouts, and audit logging lifespans." },
-  { id: "STORAGE", label: "Storage & Uploads", icon: HardDrive, description: "Manage default disk spaces and file parsing threshold boundaries." },
-  { id: "ADVANCED", label: "Advanced Technical Info", icon: Server, description: "Monitor cluster ingress nodes, container ports, and reverse proxy protocols." },
+  { id: "GENERAL", label: "General Settings", icon: Sliders, description: "Manage basic platform naming and profiles." },
+  { id: "COMPANY", label: "Company Details", icon: Building2, description: "Set registered corporate addresses and corporate names." },
+  { id: "BRANDING", label: "Portal Branding", icon: Sliders, description: "Configure logos and color values." },
+  { id: "LOCALIZATION", label: "Localization Info", icon: Globe, description: "Configure timezones and formatting conventions." },
+  { id: "CURRENCY", label: "Currency Configuration", icon: CreditCard, description: "Verify INR base currency symbols." },
+  { id: "GST", label: "GST Taxes Schema", icon: FileText, description: "Setup tax parameters and GST details." },
+  { id: "BILLING", label: "Billing & Lifecycle", icon: CreditCard, description: "Manage subscription windows and trial periods." },
+  { id: "DOMAINS", label: "Domains & Routing", icon: Globe, description: "Configure custom hostname proxy parameters." },
+  { id: "EMAIL", label: "Email SMTP Setup", icon: Mail, description: "Establish outbound SMTP mail relay services." },
+  { id: "WHATSAPP", label: "WhatsApp Gateway", icon: Phone, description: "Associate enterprise WhatsApp APIs." },
+  { id: "SMS", label: "SMS Gateway Routing", icon: Phone, description: "Manage transactional SMS providers." },
+  { id: "NOTIFICATIONS", label: "Notifications & Alerts", icon: Mail, description: "Setup reminder cycles and alerts." },
+  { id: "SECURITY", label: "Security & MFA Policies", icon: Shield, description: "Configure timeout metrics and password rigor." },
+  { id: "STORAGE", label: "Storage Volumes", icon: HardDrive, description: "Set standard file limits." },
+  { id: "AUDIT", label: "Audit Log Lifespans", icon: FileText, description: "Configure historic retention spans." },
+  { id: "ADVANCED", label: "System Telemetry", icon: Server, description: "Check container proxy ingress nodes." },
+];
+
+const DEFAULT_PLATFORM_SETTINGS: Omit<Setting, "id">[] = [
+  // 1. GENERAL
+  { settingGroup: "GENERAL", settingKey: "platform_name", settingValue: "BhoomiOne", settingType: "string", isPublic: true },
+  { settingGroup: "GENERAL", settingKey: "support_email", settingValue: "support@bhoomione.in", settingType: "string", isPublic: true },
+  { settingGroup: "GENERAL", settingKey: "support_phone", settingValue: "+91 98765 43210", settingType: "string", isPublic: true },
+  
+  // 2. COMPANY
+  { settingGroup: "COMPANY", settingKey: "company_name", settingValue: "BhoomiOne Technologies Pvt Ltd", settingType: "string", isPublic: true },
+  { settingGroup: "COMPANY", settingKey: "corporate_address", settingValue: "No. 42, 3rd Cross, Sector 1, HSR Layout, Bengaluru, Karnataka 560102", settingType: "string", isPublic: false },
+  
+  // 3. BRANDING
+  { settingGroup: "BRANDING", settingKey: "portal_logo_url", settingValue: "https://bhoomione.in/logo.png", settingType: "string", isPublic: true },
+  { settingGroup: "BRANDING", settingKey: "accent_color", settingValue: "#4f46e5", settingType: "string", isPublic: true },
+  
+  // 4. LOCALIZATION
+  { settingGroup: "LOCALIZATION", settingKey: "timezone", settingValue: "Asia/Kolkata", settingType: "string", isPublic: true },
+  { settingGroup: "LOCALIZATION", settingKey: "date_format", settingValue: "DD-MM-YYYY", settingType: "string", isPublic: true },
+  
+  // 5. CURRENCY
+  { settingGroup: "CURRENCY", settingKey: "currency", settingValue: "INR", settingType: "string", isPublic: true },
+  { settingGroup: "CURRENCY", settingKey: "currency_symbol", settingValue: "₹", settingType: "string", isPublic: true },
+  
+  // 6. GST
+  { settingGroup: "GST", settingKey: "gst_number", settingValue: "29AAAAA1111A1Z1", settingType: "string", isPublic: false },
+  { settingGroup: "GST", settingKey: "gst_percentage", settingValue: "18", settingType: "number", isPublic: false },
+  
+  // 7. BILLING
+  { settingGroup: "BILLING", settingKey: "default_trial_days", settingValue: "14", settingType: "number", isPublic: false },
+  { settingGroup: "BILLING", settingKey: "grace_period_days", settingValue: "7", settingType: "number", isPublic: false },
+  { settingGroup: "BILLING", settingKey: "invoice_prefix", settingValue: "BO-INV-", settingType: "string", isPublic: false },
+  
+  // 8. DOMAINS
+  { settingGroup: "DOMAINS", settingKey: "base_domain", settingValue: "bhoomione.in", settingType: "string", isPublic: true },
+  { settingGroup: "DOMAINS", settingKey: "admin_domain", settingValue: "admin.bhoomione.in", settingType: "string", isPublic: false },
+  { settingGroup: "DOMAINS", settingKey: "customer_portal_pattern", settingValue: "{{tenant}}.bhoomione.in/portal", settingType: "string", isPublic: true },
+  
+  // 9. EMAIL
+  { settingGroup: "EMAIL", settingKey: "smtp_host", settingValue: "smtp.mailgun.org", settingType: "string", isPublic: false },
+  { settingGroup: "EMAIL", settingKey: "smtp_port", settingValue: "587", settingType: "number", isPublic: false },
+  { settingGroup: "EMAIL", settingKey: "smtp_user", settingValue: "postmaster@bhoomione.in", settingType: "string", isPublic: false },
+  
+  // 10. WHATSAPP
+  { settingGroup: "WHATSAPP", settingKey: "whatsapp_provider", settingValue: "Twilio", settingType: "string", isPublic: false },
+  { settingGroup: "WHATSAPP", settingKey: "whatsapp_auth_token", settingValue: "secret_token_placeholder", settingType: "string", isPublic: false },
+  
+  // 11. SMS
+  { settingGroup: "SMS", settingKey: "sms_provider", settingValue: "Twilio SMS", settingType: "string", isPublic: false },
+  { settingGroup: "SMS", settingKey: "sms_sender_id", settingValue: "BHOOMI", settingType: "string", isPublic: false },
+  
+  // 12. NOTIFICATIONS
+  { settingGroup: "NOTIFICATIONS", settingKey: "reminder_days_before_renewal", settingValue: "7", settingType: "number", isPublic: false },
+  { settingGroup: "NOTIFICATIONS", settingKey: "overdue_reminder_days", settingValue: "3", settingType: "number", isPublic: false },
+  
+  // 13. SECURITY
+  { settingGroup: "SECURITY", settingKey: "session_timeout", settingValue: "120", settingType: "number", isPublic: false },
+  { settingGroup: "SECURITY", settingKey: "password_policy", settingValue: "STRONG", settingType: "string", isPublic: false },
+  { settingGroup: "SECURITY", settingKey: "mfa_required", settingValue: "false", settingType: "boolean", isPublic: false },
+  
+  // 14. STORAGE
+  { settingGroup: "STORAGE", settingKey: "default_storage_gb", settingValue: "10", settingType: "number", isPublic: false },
+  { settingGroup: "STORAGE", settingKey: "max_upload_size_mb", settingValue: "25", settingType: "number", isPublic: false },
+  
+  // 15. AUDIT
+  { settingGroup: "AUDIT", settingKey: "audit_retention_days", settingValue: "365", settingType: "number", isPublic: false },
+  
+  // 16. ADVANCED
+  { settingGroup: "ADVANCED", settingKey: "database_engine", settingValue: "PostgreSQL", settingType: "string", isPublic: false },
+  { settingGroup: "ADVANCED", settingKey: "cache_driver", settingValue: "Redis", settingType: "string", isPublic: false },
 ];
 
 export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({ onShowToast }) => {
@@ -53,7 +132,24 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({ onShowToast })
         settingType: item.settingType || item.setting_type || "string",
         isPublic: item.isPublic !== undefined ? !!item.isPublic : (item.is_public !== undefined ? !!item.is_public : false)
       }));
-      setSettings(formatted);
+
+      // Dynamically auto-create/initialize missing template configuration keys, keeping all real existing values
+      const merged = [...formatted];
+      DEFAULT_PLATFORM_SETTINGS.forEach(def => {
+        const exists = formatted.some(f => f.settingKey.toLowerCase() === def.settingKey.toLowerCase());
+        if (!exists) {
+          merged.push({
+            id: `init-${def.settingKey}`,
+            settingGroup: def.settingGroup,
+            settingKey: def.settingKey,
+            settingValue: def.settingValue,
+            settingType: def.settingType,
+            isPublic: def.isPublic
+          });
+        }
+      });
+
+      setSettings(merged);
     } catch (err: any) {
       console.error("Failed to load settings:", err);
       setError("Failed to retrieve platform settings from the secure database.");

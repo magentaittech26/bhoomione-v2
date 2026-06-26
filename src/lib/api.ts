@@ -468,6 +468,12 @@ class ApiClient {
     });
   }
 
+  async fetchDashboardStats(): Promise<any> {
+    return this.request<any>("/admin/dashboard-stats", {
+      method: "GET"
+    });
+  }
+
   async createAdminTenant(payload?: { name: string; code: string; plan?: string }): Promise<any> {
     return this.request<any>("/admin/tenants", {
       method: "POST",

@@ -19,6 +19,8 @@ interface AuditLog {
   new_values?: any;
   ip_address?: string;
   user_agent?: string;
+  category?: string;
+  severity?: string;
 }
 
 interface AuditLogsTabProps {
@@ -41,6 +43,26 @@ const COMMON_ACTIONS = [
   "SUBSCRIPTION_OVERRIDES_UPDATE"
 ];
 
+const getLogCategoryAndSeverity = (action: string): { category: string; severity: string } => {
+  const act = action.toUpperCase();
+  if (act.includes("LOGIN") || act.includes("AUTH") || act.includes("SECURITY") || act.includes("PASSWORD") || act.includes("MFA")) {
+    return { category: "Security", severity: act.includes("FAIL") ? "WARNING" : "INFO" };
+  }
+  if (act.includes("SUSPEND") || act.includes("EXPIRE") || act.includes("CANCEL") || act.includes("ARCHIVE") || act.includes("CRITICAL") || act.includes("ERROR")) {
+    return { category: "Subscription", severity: "CRITICAL" };
+  }
+  if (act.includes("OVERRIDE") || act.includes("SLAB") || act.includes("BILLING") || act.includes("INVOICE") || act.includes("TAX") || act.includes("GST")) {
+    return { category: "Billing", severity: "INFO" };
+  }
+  if (act.includes("PLAN") || act.includes("ADDON") || act.includes("LIMIT") || act.includes("MATRIX")) {
+    return { category: "Subscription", severity: "INFO" };
+  }
+  if (act.includes("MODULE") || act.includes("FEATURE") || act.includes("REGISTRY")) {
+    return { category: "System", severity: "INFO" };
+  }
+  return { category: "System", severity: "INFO" };
+};
+
 export default function AuditLogsTab({ onShowToast }: AuditLogsTabProps) {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -48,6 +70,8 @@ export default function AuditLogsTab({ onShowToast }: AuditLogsTabProps) {
 
   // Filter form states
   const [selectedAction, setSelectedAction] = useState<string>("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("");
+  const [selectedSeverity, setSelectedSeverity] = useState<string>("");
   const [operatorSearch, setOperatorSearch] = useState<string>("");
   const [targetSearch, setTargetSearch] = useState<string>("");
   const [dateFrom, setDateFrom] = useState<string>("");
@@ -56,8 +80,6 @@ export default function AuditLogsTab({ onShowToast }: AuditLogsTabProps) {
   
   // Pagination and Limit states
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [totalItems, setTotalItems] = useState<number>(0);
-  const [lastPage, setLastPage] = useState<number>(1);
   const [limit, setLimit] = useState<number>(25);
 
   // Detail Drawer state
@@ -65,39 +87,27 @@ export default function AuditLogsTab({ onShowToast }: AuditLogsTabProps) {
 
   useEffect(() => {
     fetchLogs();
-  }, [currentPage, limit]);
+  }, [hideNoise]); // Refresh server-side pool whenever noise setting changes
 
   const fetchLogs = async () => {
     setLoading(true);
     setError(null);
     try {
-      // Pass filters to our robust Laravel API
+      // Fetch a larger pool of up to 500 logs to enable premium, zero-latency local searching/filtering by category and severity
       const params = {
-        action: selectedAction || undefined,
-        operator: operatorSearch || undefined,
-        target: targetSearch || undefined,
-        date_from: dateFrom || undefined,
-        date_to: dateTo || undefined,
         hide_noise: hideNoise,
-        limit: limit,
-        page: currentPage
+        limit: 500,
+        page: 1
       };
 
       const response = await api.fetchAdminAuditLogs(params);
       
-      // Support both array response and standard paginated response from backend
       if (response && response.data !== undefined) {
         setLogs(response.data);
-        setTotalItems(response.total || response.data.length);
-        setLastPage(response.last_page || 1);
       } else if (Array.isArray(response)) {
         setLogs(response);
-        setTotalItems(response.length);
-        setLastPage(1);
       } else {
         setLogs([]);
-        setTotalItems(0);
-        setLastPage(1);
       }
     } catch (err: any) {
       console.error("Failed to fetch audit logs:", err);
@@ -110,22 +120,65 @@ export default function AuditLogsTab({ onShowToast }: AuditLogsTabProps) {
   const handleApplyFilters = (e: React.FormEvent) => {
     e.preventDefault();
     setCurrentPage(1);
-    fetchLogs();
   };
 
   const handleResetFilters = () => {
     setSelectedAction("");
+    setSelectedCategory("");
+    setSelectedSeverity("");
     setOperatorSearch("");
     setTargetSearch("");
     setDateFrom("");
     setDateTo("");
     setHideNoise(true);
     setCurrentPage(1);
-    // Use a small timeout to let states clear before calling API
-    setTimeout(() => {
-      fetchLogs();
-    }, 50);
   };
+
+  // Process and augment each log item with dynamic Category & Severity metadata
+  const processedLogs = logs.map(l => {
+    const { category, severity } = getLogCategoryAndSeverity(l.action);
+    return {
+      ...l,
+      category: l.category || category,
+      severity: l.severity || severity
+    };
+  });
+
+  // Client-side instant filter application pipeline
+  const filteredLogs = processedLogs.filter(l => {
+    if (selectedAction && l.action !== selectedAction) return false;
+    if (selectedCategory && l.category !== selectedCategory) return false;
+    if (selectedSeverity && l.severity !== selectedSeverity) return false;
+    
+    if (operatorSearch) {
+      const term = operatorSearch.toLowerCase();
+      if (!(l.operator || "").toLowerCase().includes(term)) return false;
+    }
+
+    if (targetSearch) {
+      const term = targetSearch.toLowerCase();
+      if (!(l.target || "").toLowerCase().includes(term)) return false;
+    }
+
+    if (dateFrom) {
+      const logTime = new Date(l.timestamp).getTime();
+      const fromTime = new Date(dateFrom).getTime();
+      if (logTime < fromTime) return false;
+    }
+
+    if (dateTo) {
+      const logTime = new Date(l.timestamp).getTime();
+      const toTime = new Date(dateTo).getTime() + 86400000; // include entire day
+      if (logTime > toTime) return false;
+    }
+
+    return true;
+  });
+
+  // Derived Pagination details
+  const totalItems = filteredLogs.length;
+  const lastPage = Math.ceil(totalItems / limit) || 1;
+  const paginatedLogs = filteredLogs.slice((currentPage - 1) * limit, currentPage * limit);
 
   // Helper to categorize log dates into Today, Yesterday, or Older
   const groupLogsByDate = (logsList: AuditLog[]) => {
@@ -156,7 +209,7 @@ export default function AuditLogsTab({ onShowToast }: AuditLogsTabProps) {
     return { today, yesterday, older };
   };
 
-  const { today, yesterday, older } = groupLogsByDate(logs);
+  const { today, yesterday, older } = groupLogsByDate(paginatedLogs);
 
   const getActionStyles = (action: string) => {
     if (action.includes("PROVISIONED") || action.includes("SUCCESS")) {
@@ -169,6 +222,38 @@ export default function AuditLogsTab({ onShowToast }: AuditLogsTabProps) {
       return "bg-indigo-50 text-indigo-700 border-indigo-100";
     }
     return "bg-slate-50 text-slate-700 border-slate-200";
+  };
+
+  const handleExportCSV = () => {
+    if (filteredLogs.length === 0) {
+      onShowToast("No telemetry logs found to export.", "error");
+      return;
+    }
+
+    const headers = ["Timestamp", "Action Code", "Operator", "Target Tenant", "Category", "Severity", "Event Details", "IP Address", "User Agent"];
+    const rows = filteredLogs.map(l => [
+      new Date(l.timestamp).toISOString(),
+      l.action,
+      l.operator || "SYSTEM",
+      l.target || "SYSTEM",
+      l.category || "System",
+      l.severity || "INFO",
+      (l.details || "").replace(/"/g, '""'), // Escape quotes safely
+      l.ip_address || "127.0.0.1",
+      (l.user_agent || "").replace(/"/g, '""')
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + [headers.join(","), ...rows.map(e => e.map(val => `"${val}"`).join(","))].join("\n");
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `bhoomione_telemetry_audit_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    onShowToast("SaaS platform audit logs exported successfully as CSV.", "success");
   };
 
   return (
@@ -195,6 +280,37 @@ export default function AuditLogsTab({ onShowToast }: AuditLogsTabProps) {
               {COMMON_ACTIONS.map(act => (
                 <option key={act} value={act}>{act}</option>
               ))}
+            </select>
+          </div>
+
+          {/* Category Search */}
+          <div className="space-y-1.5">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase">Category</label>
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-200 bg-white text-xs rounded-lg text-slate-750 font-medium"
+            >
+              <option value="">All Categories</option>
+              <option value="Security">Security</option>
+              <option value="Subscription">Subscription</option>
+              <option value="Billing">Billing</option>
+              <option value="System">System</option>
+            </select>
+          </div>
+
+          {/* Severity Search */}
+          <div className="space-y-1.5">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase">Severity</label>
+            <select
+              value={selectedSeverity}
+              onChange={(e) => setSelectedSeverity(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-200 bg-white text-xs rounded-lg text-slate-750 font-medium"
+            >
+              <option value="">All Severities</option>
+              <option value="INFO">INFO</option>
+              <option value="WARNING">WARNING</option>
+              <option value="CRITICAL">CRITICAL</option>
             </select>
           </div>
 
@@ -228,21 +344,6 @@ export default function AuditLogsTab({ onShowToast }: AuditLogsTabProps) {
             </div>
           </div>
 
-          {/* Limit settings */}
-          <div className="space-y-1.5">
-            <label className="block text-[10px] font-bold text-slate-500 uppercase">Logs count per page</label>
-            <select
-              value={limit}
-              onChange={(e) => setLimit(Number(e.target.value))}
-              className="w-full px-3 py-2 border border-slate-200 bg-white text-xs rounded-lg text-slate-750 font-medium"
-            >
-              <option value={10}>10 records</option>
-              <option value={25}>25 records (Default)</option>
-              <option value={50}>50 records</option>
-              <option value={100}>100 records</option>
-            </select>
-          </div>
-
           {/* Date From */}
           <div className="space-y-1.5">
             <label className="block text-[10px] font-bold text-slate-500 uppercase">Date From</label>
@@ -271,8 +372,23 @@ export default function AuditLogsTab({ onShowToast }: AuditLogsTabProps) {
             </div>
           </div>
 
+          {/* Limit settings */}
+          <div className="space-y-1.5">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase">Logs count per page</label>
+            <select
+              value={limit}
+              onChange={(e) => setLimit(Number(e.target.value))}
+              className="w-full px-3 py-2 border border-slate-200 bg-white text-xs rounded-lg text-slate-750 font-medium"
+            >
+              <option value={10}>10 records</option>
+              <option value={25}>25 records (Default)</option>
+              <option value={50}>50 records</option>
+              <option value={100}>100 records</option>
+            </select>
+          </div>
+
           {/* Hide Noise Toggle Switch */}
-          <div className="flex items-center gap-2.5 bg-white border border-slate-200 p-2.5 rounded-lg select-none">
+          <div className="flex items-center gap-2.5 bg-white border border-slate-200 p-2.5 rounded-lg select-none lg:col-span-2">
             <input
               type="checkbox"
               id="noise-toggle-checkbox"
@@ -281,23 +397,23 @@ export default function AuditLogsTab({ onShowToast }: AuditLogsTabProps) {
               className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
             />
             <label htmlFor="noise-toggle-checkbox" className="text-xs font-bold text-slate-600 cursor-pointer uppercase tracking-tight">
-              Hide system noise (TOKEN_REFRESH)
+              Hide system noise (TOKEN_REFRESH, LOGIN checks)
             </label>
           </div>
 
           {/* Button actions */}
-          <div className="flex gap-2">
+          <div className="flex gap-2 lg:col-span-2">
             <button
               type="button"
               onClick={handleResetFilters}
-              className="w-1/2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-3xs"
+              className="w-1/2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold py-2.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-3xs"
             >
               Reset
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="w-1/2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-3xs disabled:opacity-50"
+              className="w-1/2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-3xs disabled:opacity-50"
             >
               {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
               Apply Search
@@ -314,14 +430,23 @@ export default function AuditLogsTab({ onShowToast }: AuditLogsTabProps) {
             <h2 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Dynamic Activity Logs List</h2>
             <p className="text-[11px] text-slate-450">Displaying {totalItems} telemetric actions found according to current parameters.</p>
           </div>
-          <button 
-            onClick={fetchLogs}
-            disabled={loading}
-            className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs px-3 py-2 rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-3xs"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            Refresh List
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handleExportCSV}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3.5 py-2 rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-3xs"
+            >
+              <Table className="w-3.5 h-3.5" />
+              Export CSV
+            </button>
+            <button 
+              onClick={fetchLogs}
+              disabled={loading}
+              className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs px-3.5 py-2 rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-3xs"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -366,9 +491,11 @@ export default function AuditLogsTab({ onShowToast }: AuditLogsTabProps) {
                       <thead>
                         <tr className="bg-slate-50 text-slate-400 text-[10px] font-bold uppercase tracking-wider font-mono border-b border-slate-100">
                           <th className="px-5 py-3 w-28">Timestamp</th>
-                          <th className="px-5 py-3 w-56">Action Executed</th>
-                          <th className="px-5 py-3 w-48">Operator</th>
-                          <th className="px-5 py-3 w-32">Target/Scope</th>
+                          <th className="px-5 py-3 w-48">Action Executed</th>
+                          <th className="px-5 py-3 w-32">Category</th>
+                          <th className="px-5 py-3 w-24">Severity</th>
+                          <th className="px-5 py-3 w-40">Operator</th>
+                          <th className="px-5 py-3 w-28">Target</th>
                           <th className="px-5 py-3">Details / Entity</th>
                           <th className="px-5 py-3 text-right w-24">Actions</th>
                         </tr>
@@ -391,10 +518,29 @@ export default function AuditLogsTab({ onShowToast }: AuditLogsTabProps) {
                                 {l.action}
                               </span>
                             </td>
+                            <td className="px-5 py-3.5">
+                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                                l.category === "Security" ? "bg-indigo-50 text-indigo-700 border-indigo-100" :
+                                l.category === "Subscription" ? "bg-purple-50 text-purple-700 border-purple-100" :
+                                l.category === "Billing" ? "bg-teal-50 text-teal-700 border-teal-100" :
+                                "bg-slate-50 text-slate-600 border-slate-150"
+                              }`}>
+                                {l.category}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3.5">
+                              <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-extrabold ${
+                                l.severity === "CRITICAL" ? "bg-red-100 text-red-700 border border-red-200" :
+                                l.severity === "WARNING" ? "bg-amber-100 text-amber-700 border border-amber-200" :
+                                "bg-emerald-100 text-emerald-700 border border-emerald-200"
+                              }`}>
+                                {l.severity}
+                              </span>
+                            </td>
                             <td className="px-5 py-3.5 text-slate-700 font-medium">
                               <div className="flex items-center gap-1.5">
                                 <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                <span className="truncate max-w-[160px]" title={l.operator}>{l.operator}</span>
+                                <span className="truncate max-w-[140px]" title={l.operator}>{l.operator}</span>
                               </div>
                             </td>
                             <td className="px-5 py-3.5 font-bold font-mono">
@@ -402,7 +548,7 @@ export default function AuditLogsTab({ onShowToast }: AuditLogsTabProps) {
                                 {l.target}
                               </span>
                             </td>
-                            <td className="px-5 py-3.5 text-slate-600 font-sans max-w-sm truncate" title={l.details}>
+                            <td className="px-5 py-3.5 text-slate-600 font-sans max-w-xs truncate" title={l.details}>
                               {l.details}
                             </td>
                             <td className="px-5 py-3.5 text-right">

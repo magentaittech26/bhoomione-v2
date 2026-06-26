@@ -573,4 +573,158 @@ class SaasController extends Controller
 
         return $this->removeTenantAddon($request, $tenantId, $addonId);
     }
+
+    /**
+     * GET /api/v1/admin/dashboard-stats
+     */
+    public function getDashboardStats(Request $request)
+    {
+        try {
+            // Count metrics from PostgreSQL
+            $totalTenants = \App\Models\Tenant::count();
+            $totalProjects = \DB::table('projects')->count();
+            $totalLayouts = \DB::table('layouts')->count();
+            $totalPlots = \DB::table('plots')->count();
+
+            $totalBookings = 0;
+            if (\Illuminate\Support\Facades\Schema::hasTable('bookings')) {
+                $totalBookings = \DB::table('bookings')->count();
+            }
+
+            $totalCollections = 0;
+            if (\Illuminate\Support\Facades\Schema::hasTable('collections')) {
+                $totalCollections = \DB::table('collections')->count();
+            }
+
+            // Global Cloud Storage In GB (Sum size of all dxf_files in DB)
+            $storageBytes = \DB::table('dxf_files')->sum('file_size') ?? 0;
+            $storageUsedGb = round($storageBytes / (1024 * 1024 * 1024), 4);
+
+            // Fetch pricing data for MRR/ARR
+            $subscriptions = \App\Models\TenantSubscription::all();
+            $plans = \App\Models\SubscriptionPlan::all();
+            $addons = \App\Models\SubscriptionAddon::all();
+
+            $subscriptionMRR = 0;
+            $addonsMRR = 0;
+
+            $activeCount = 0;
+            $trialCount = 0;
+            $suspendedCount = 0;
+            $cancelledCount = 0;
+
+            foreach ($subscriptions as $sub) {
+                $status = strtoupper($sub->status ?? 'ACTIVE');
+                if ($status === 'ACTIVE') {
+                    $activeCount++;
+                } elseif ($status === 'TRIAL') {
+                    $trialCount++;
+                } elseif ($status === 'SUSPENDED' || $status === 'ARCHIVED') {
+                    $suspendedCount++;
+                } else {
+                    $cancelledCount++;
+                }
+
+                if (in_array($status, ['ACTIVE', 'TRIAL'])) {
+                    $plan = $plans->where('id', $sub->plan_id)->first();
+                    if ($plan) {
+                        $subscriptionMRR += (float) $plan->monthly_price;
+                    }
+
+                    $addonIds = \DB::table('tenant_addons')
+                        ->where('tenant_subscription_id', $sub->id)
+                        ->pluck('addon_id')
+                        ->toArray();
+
+                    if (!empty($addonIds)) {
+                        $addonSum = $addons->whereIn('id', $addonIds)
+                            ->where('status', 'ACTIVE')
+                            ->sum('monthly_price');
+                        $addonsMRR += (float) $addonSum;
+                    }
+                }
+            }
+
+            $totalMRR = $subscriptionMRR + $addonsMRR;
+            $estimatedARR = $totalMRR * 12;
+            $todaysRevenue = $totalMRR / 30;
+
+            // Activity / Log records
+            $recentAuditLogs = \App\Models\AuditLog::with(['user', 'tenant'])
+                ->latest()
+                ->take(10)
+                ->get()
+                ->map(function($l) {
+                    return [
+                        'id' => $l->id,
+                        'action' => $l->action,
+                        'target' => $l->tenant ? $l->tenant->tenant_code : 'SYSTEM',
+                        'operator' => $l->user ? $l->user->email : 'system-token',
+                        'details' => "Action: {$l->action} executed on {$l->entity_name} ({$l->entity_id}).",
+                        'timestamp' => $l->created_at ? $l->created_at->toIso8601String() : now()->toIso8601String()
+                    ];
+                });
+
+            $recentSignups = \App\Models\Tenant::latest()
+                ->take(5)
+                ->get()
+                ->map(function($t) {
+                    return [
+                        'id' => $t->id,
+                        'name' => $t->company_name,
+                        'code' => $t->tenant_code,
+                        'status' => $t->status ?? 'ACTIVE',
+                        'created_at' => $t->created_at ? $t->created_at->toIso8601String() : now()->toIso8601String(),
+                    ];
+                });
+
+            $recentRenewals = \App\Models\TenantSubscription::with('tenant')
+                ->whereNotNull('subscription_expiry_date')
+                ->orderBy('subscription_expiry_date', 'asc')
+                ->take(5)
+                ->get()
+                ->map(function($sub) {
+                    return [
+                        'tenant_name' => $sub->tenant ? $sub->tenant->company_name : $sub->tenant_id,
+                        'plan_code' => $sub->plan ? $sub->plan->plan_code : 'GROWTH',
+                        'expiry_date' => $sub->subscription_expiry_date,
+                    ];
+                });
+
+            $recentPayments = \App\Models\AuditLog::whereIn('action', ['PLAN_UPDATED', 'TENANT_PROVISION_SUCCESS', 'OVERRIDE_SAVED'])
+                ->latest()
+                ->take(5)
+                ->get()
+                ->map(function($log) {
+                    return [
+                        'tenant_name' => $log->tenant ? $log->tenant->company_name : 'System',
+                        'action' => $log->action,
+                        'timestamp' => $log->created_at ? $log->created_at->toIso8601String() : now()->toIso8601String(),
+                    ];
+                });
+
+            return response()->json([
+                'total_tenants' => $totalTenants,
+                'active_tenants' => $activeCount,
+                'trial_tenants' => $trialCount,
+                'suspended_tenants' => $suspendedCount,
+                'cancelled_tenants' => $cancelledCount,
+                'monthly_revenue' => $totalMRR,
+                'annual_revenue' => $estimatedARR,
+                'todays_revenue' => $todaysRevenue,
+                'total_projects' => $totalProjects,
+                'total_layouts' => $totalLayouts,
+                'total_plots' => $totalPlots,
+                'total_bookings' => $totalBookings,
+                'total_collections' => $totalCollections,
+                'storage_used_gb' => $storageUsedGb,
+                'recent_audit_logs' => $recentAuditLogs,
+                'recent_signups' => $recentSignups,
+                'recent_renewals' => $recentRenewals,
+                'recent_payments' => $recentPayments
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
+        }
+    }
 }

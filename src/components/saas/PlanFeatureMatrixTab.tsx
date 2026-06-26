@@ -153,14 +153,22 @@ export default function PlanFeatureMatrixTab({
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {features.map(f => (
-                    <tr key={f.code} className="hover:bg-slate-50/50">
-                      <td className="px-5 py-3 text-left">
-                        <div>
-                          <p className="font-bold text-slate-800">{f.name}</p>
-                          <p className="text-[9px] text-slate-400 font-mono">Permission: {f.code} • Group: {f.group}</p>
+                    <tr key={f.code} className="hover:bg-slate-50/50 group/row transition-all">
+                      <td className="px-5 py-3 text-left relative group">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-extrabold text-slate-900 text-xs">{f.name}</span>
+                            <span className="cursor-help text-slate-350 hover:text-slate-600 transition-colors" title={f.description || "Grants dynamic functional switches inside tenant systems."}>
+                              <Info className="w-3.5 h-3.5" />
+                            </span>
+                          </div>
+                          <p className="text-[9.5px] font-mono text-indigo-650 font-bold uppercase tracking-wider">code: {f.code} • group: {f.group}</p>
+                          {f.description && (
+                            <p className="text-[10px] text-slate-400 leading-normal max-w-sm">{f.description}</p>
+                          )}
                         </div>
                       </td>
-                      {plans.map(p => {
+                      {plans.map((p, pIndex) => {
                         const planCodeUpper = p.code.toUpperCase();
                         const featCodeUpper = f.code.toUpperCase();
                         
@@ -182,22 +190,59 @@ export default function PlanFeatureMatrixTab({
                           }
                         }
 
+                        // Determine inheritance
+                        let isInherited = false;
+                        if (pIndex > 0) {
+                          // Check if any previous tier has it enabled
+                          for (let i = 0; i < pIndex; i++) {
+                            const prevPlan = plans[i];
+                            const prevKey = Object.keys(matrix).find(k => k.toUpperCase() === prevPlan.code.toUpperCase()) || prevPlan.code;
+                            const prevFeatures = matrix[prevKey] || {};
+                            const prevFeatKey = Object.keys(prevFeatures).find(k => k.toUpperCase() === featCodeUpper) || f.code;
+                            const prevVal = prevFeatures[prevFeatKey];
+                            if ((prevVal as any) === "ENABLED" || (prevVal as any) === "TRUE" || (prevVal as any) === true) {
+                              isInherited = true;
+                              break;
+                            }
+                          }
+                        }
+
+                        // Determine gate lock warning
+                        const isPremiumGated = (featCodeUpper.includes("DXF") || featCodeUpper.includes("MAP") || featCodeUpper.includes("AI") || featCodeUpper.includes("API")) && 
+                                               (p.code.toLowerCase() === "starter" || p.code.toLowerCase() === "growth") && 
+                                               cellVal === "DISABLED";
+
                         return (
-                          <td key={p.code} className="px-3 py-3 text-center border-l border-slate-100">
-                            <select
-                              value={cellVal}
-                              onChange={(e) => onUpdateMatrixCell(p.code, f.code, e.target.value as any)}
-                              className={`p-1.5 rounded-lg text-[10px] font-bold border focus:outline-none cursor-pointer text-center w-full max-w-[130px] ${
-                                cellVal === "ENABLED" ? "bg-emerald-50 text-emerald-800 border-emerald-150" :
-                                cellVal === "DISABLED" ? "bg-red-50 text-red-800 border-red-150" :
-                                cellVal === "ADDON" ? "bg-indigo-50 text-indigo-805 border-indigo-150" : "bg-amber-50 text-amber-805 border-amber-150"
-                              }`}
-                            >
-                              <option value="ENABLED">✓ Enabled</option>
-                              <option value="DISABLED">❌ Disabled</option>
-                              <option value="ADDON">🔌 Add-on Only</option>
-                              <option value="ENTERPRISE">🏢 Enterprise Only</option>
-                            </select>
+                          <td key={p.code} className="px-3 py-4 text-center border-l border-slate-100 font-sans align-middle">
+                            <div className="flex flex-col items-center gap-1.5">
+                              <select
+                                value={cellVal}
+                                onChange={(e) => onUpdateMatrixCell(p.code, f.code, e.target.value as any)}
+                                className={`p-1.5 rounded-lg text-[10px] font-black border focus:outline-none cursor-pointer text-center w-full max-w-[125px] transition-all ${
+                                  cellVal === "ENABLED" ? "bg-emerald-50 text-emerald-800 border-emerald-150" :
+                                  cellVal === "DISABLED" ? "bg-red-50 text-red-800 border-red-150" :
+                                  cellVal === "ADDON" ? "bg-indigo-50 text-indigo-850 border-indigo-150" : "bg-amber-50 text-amber-850 border-amber-150"
+                                }`}
+                              >
+                                <option value="ENABLED">✓ Enabled</option>
+                                <option value="DISABLED">❌ Disabled</option>
+                                <option value="ADDON">🔌 Add-on Only</option>
+                                <option value="ENTERPRISE">🏢 Enterprise Only</option>
+                              </select>
+
+                              {/* Rich visual helper signals */}
+                              {cellVal === "ENABLED" && isInherited && (
+                                <span className="text-[9px] text-emerald-600 font-bold bg-emerald-50 px-1 py-0.5 rounded leading-none">
+                                  ✓ Inherited
+                                </span>
+                              )}
+
+                              {isPremiumGated && (
+                                <span className="text-[9px] text-amber-650 font-bold bg-amber-50 px-1 py-0.5 rounded flex items-center gap-0.5 leading-none">
+                                  🔒 Premium Gated
+                                </span>
+                              )}
+                            </div>
                           </td>
                         );
                       })}
@@ -289,112 +334,208 @@ export default function PlanFeatureMatrixTab({
       )}
 
       {activePlanSub === "tiers" && (
-        <div className="space-y-4" id="tiers-master-view">
-          <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200">
+        <div className="space-y-6" id="tiers-master-view">
+          <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 flex-wrap gap-4">
             <div className="space-y-0.5">
               <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Plan Master Configurations</h3>
               <p className="text-[11px] text-slate-500">Configure global template tiers pricing, trial durations, and sort orders dynamically without code changes.</p>
             </div>
             <button
               onClick={() => { setFormError(null); setShowAddPlan(true); }}
-              className="bg-indigo-650 hover:bg-indigo-750 text-white rounded-lg px-3 py-1.5 text-xs font-bold font-sans flex items-center gap-1"
+              className="bg-indigo-650 hover:bg-indigo-750 text-white rounded-lg px-4 py-2 text-xs font-bold font-sans flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus className="w-4 h-4 text-white" />
               Configure Plan Package
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {plans.map(p => (
-              <div key={p.code} className="bg-white border border-slate-200 p-5 rounded-2xl flex flex-col justify-between shadow-xs hover:border-slate-350 transition-all">
-                <div className="space-y-3">
-                  <div className="flex justify-between items-start border-b border-slate-100 pb-2">
-                    <div>
-                      <h4 className="text-sm font-bold text-slate-905">{p.name}</h4>
-                      <p className="text-[10px] font-mono text-slate-400">plan_code: {p.code}</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {plans.map(p => {
+              // Descriptive text mappings based on stable lookup codes
+              let planDesc = "Enterprise tier package with configurable variables and standard schema limits.";
+              if (p.code === "STARTER") {
+                planDesc = "Ideal for growing agencies and local developer hubs seeking automated plot inventory databases.";
+              } else if (p.code === "GROWTH") {
+                planDesc = "Powerhouse package with extended CAD parser uploads and customer CRM lead pipelines.";
+              } else if (p.code === "PROFESSIONAL") {
+                planDesc = "Full-spectrum enterprise control with multiple sub-sector layouts and commission scorecards.";
+              } else if (p.code === "ENTERPRISE") {
+                planDesc = "Unlimited scale and SLA support layers optimized for multi-state real estate conglomerates.";
+              }
+
+              // Extract dynamic baseline limits assigned to this plan
+              const limitsObj = (planLimits[p.code] || {
+                projectsLimit: 0, layoutsLimit: 0, plotsLimit: 0, usersLimit: 0, storageLimitGb: 0
+              }) as any;
+
+              // Extract enabled features
+              const enabledFeatures = features.filter(f => {
+                const planMatrix = matrix[p.code] || {};
+                const val = planMatrix[f.code];
+                return (val as any) === "ENABLED" || (val as any) === "TRUE" || (val as any) === true;
+              });
+
+              return (
+                <div key={p.code} className="bg-white border border-slate-200 p-6 rounded-2xl flex flex-col justify-between shadow-xs hover:shadow-md hover:border-slate-350 transition-all space-y-5">
+                  <div className="space-y-4">
+                    
+                    {/* Header */}
+                    <div className="flex justify-between items-start border-b border-slate-100 pb-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-md font-black text-slate-900">{p.name}</h4>
+                          <span className={`px-2 py-0.5 text-[9px] font-extrabold rounded-full ${
+                            p.status === "ACTIVE" 
+                              ? "bg-emerald-50 text-emerald-850 border border-emerald-150" 
+                              : "bg-red-50 text-red-800 border border-red-150"
+                          }`}>
+                            {p.status}
+                          </span>
+                        </div>
+                        <p className="text-[10px] font-mono text-slate-400 uppercase tracking-wider mt-0.5">plan_code: {p.code}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xl font-black text-indigo-950 font-mono">₹{p.monthlyPrice.toLocaleString()}</p>
+                        <p className="text-[9px] text-slate-400 font-bold uppercase">per month</p>
+                      </div>
                     </div>
-                    <span className={`inline-block px-1.5 py-0.5 text-[9px] rounded font-bold ${
-                      p.status === "ACTIVE" 
-                        ? "bg-emerald-50 text-emerald-800 border border-emerald-100" 
-                        : "bg-red-50 text-red-00"
-                    }`}>
-                      {p.status}
-                    </span>
+
+                    <p className="text-xs text-slate-655 leading-relaxed font-sans">{planDesc}</p>
+
+                    {/* Inline Config Inputs */}
+                    <div className="bg-slate-50 border border-slate-200/60 p-4 rounded-xl space-y-3.5">
+                      <p className="text-[10px] font-bold uppercase text-slate-500 tracking-wider">Dynamic Pricing Adjustments</p>
+                      
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <label className="block text-[9px] text-slate-450 font-bold uppercase mb-1">Monthly fee (₹)</label>
+                          <input 
+                            type="number"
+                            value={p.monthlyPrice}
+                            onChange={(e) => onUpdatePlan(p.code, { monthlyPrice: Number(e.target.value) })}
+                            className="w-full bg-white border border-slate-200 rounded-lg p-2 font-bold font-mono text-slate-800 focus:outline-none focus:border-indigo-400 transition-all"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[9px] text-slate-455 font-bold uppercase mb-1">Yearly fee (₹)</label>
+                          <input 
+                            type="number"
+                            value={p.yearlyPrice}
+                            onChange={(e) => onUpdatePlan(p.code, { yearlyPrice: Number(e.target.value) })}
+                            className="w-full bg-white border border-slate-200 rounded-lg p-2 font-bold font-mono text-slate-800 focus:outline-none focus:border-indigo-400 transition-all"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <label className="block text-[9px] text-slate-455 font-bold uppercase mb-1">Trial duration (days)</label>
+                          <input 
+                            type="number"
+                            value={p.trialDays}
+                            onChange={(e) => onUpdatePlan(p.code, { trialDays: Number(e.target.value) })}
+                            className="w-full bg-white border border-slate-200 rounded-lg p-2 font-bold font-mono text-slate-800 focus:outline-none focus:border-indigo-400 transition-all"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[9px] text-slate-455 font-bold uppercase mb-1">Sort order position</label>
+                          <input 
+                            type="number"
+                            value={p.sortOrder}
+                            onChange={(e) => onUpdatePlan(p.code, { sortOrder: Number(e.target.value) })}
+                            className="w-full bg-white border border-slate-200 rounded-lg p-2 font-bold font-mono text-slate-800 focus:outline-none focus:border-indigo-400 transition-all"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Allocated Limits (Database-driven) */}
+                    <div className="space-y-1.5 font-sans">
+                      <p className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Allocated Capacity Limits</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 font-mono">
+                        <div className="bg-slate-50 border border-slate-100 p-2 rounded-lg text-center">
+                          <p className="text-[8px] text-slate-400 font-bold uppercase">Projects</p>
+                          <p className="text-xs font-bold text-slate-850">{limitsObj.projectsLimit}</p>
+                        </div>
+                        <div className="bg-slate-50 border border-slate-100 p-2 rounded-lg text-center">
+                          <p className="text-[8px] text-slate-400 font-bold uppercase">Layouts</p>
+                          <p className="text-xs font-bold text-slate-850">{limitsObj.layoutsLimit}</p>
+                        </div>
+                        <div className="bg-slate-50 border border-slate-100 p-2 rounded-lg text-center">
+                          <p className="text-[8px] text-slate-400 font-bold uppercase">Plots</p>
+                          <p className="text-xs font-bold text-slate-850">{limitsObj.plotsLimit}</p>
+                        </div>
+                        <div className="bg-slate-50 border border-slate-100 p-2 rounded-lg text-center">
+                          <p className="text-[8px] text-slate-400 font-bold uppercase">Users</p>
+                          <p className="text-xs font-bold text-slate-850">{limitsObj.usersLimit}</p>
+                        </div>
+                        <div className="bg-slate-50 border border-slate-100 p-2 rounded-lg text-center">
+                          <p className="text-[8px] text-slate-400 font-bold uppercase">Storage</p>
+                          <p className="text-xs font-bold text-slate-850">{limitsObj.storageLimitGb} GB</p>
+                        </div>
+                        <div className="bg-slate-50 border border-slate-100 p-2 rounded-lg text-center">
+                          <p className="text-[8px] text-slate-400 font-bold uppercase">API limit</p>
+                          <p className="text-xs font-bold text-slate-850">{limitsObj.apiCallsLimit || "N/A"}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Included Features (Database-driven) */}
+                    <div className="space-y-2 font-sans">
+                      <p className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Included Features Matrix</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {enabledFeatures.length > 0 ? (
+                          enabledFeatures.slice(0, 5).map(f => (
+                            <span key={f.code} className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-900 border border-indigo-100/60 rounded px-1.5 py-0.5 text-[9px] font-bold">
+                              <Check className="w-2.5 h-2.5 text-indigo-600" />
+                              {f.name}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-[10px] text-slate-400">No active capabilities enabled in matrix.</span>
+                        )}
+                        {enabledFeatures.length > 5 && (
+                          <span className="inline-block text-[9px] text-slate-400 font-bold self-center">
+                            +{enabledFeatures.length - 5} more features
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 text-xs">
-                    <div>
-                      <p className="text-[9px] text-slate-400 font-bold uppercase">Monthly fee</p>
-                      <input 
-                        type="number"
-                        value={p.monthlyPrice}
-                        onChange={(e) => onUpdatePlan(p.code, { monthlyPrice: Number(e.target.value) })}
-                        className="w-full bg-slate-50 border border-slate-200 rounded p-1.5 font-bold font-mono text-slate-800 focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <p className="text-[9px] text-slate-400 font-bold uppercase">Yearly fee</p>
-                      <input 
-                        type="number"
-                        value={p.yearlyPrice}
-                        onChange={(e) => onUpdatePlan(p.code, { yearlyPrice: Number(e.target.value) })}
-                        className="w-full bg-slate-50 border border-slate-200 rounded p-1.5 font-bold font-mono text-slate-800 focus:outline-none"
-                      />
-                    </div>
-                  </div>
+                  {/* Actions footer */}
+                  <div className="pt-4 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex gap-2.5">
+                      <button
+                        onClick={() => onUpdatePlan(p.code, { status: p.status === "ACTIVE" ? "DISABLED" : "ACTIVE" })}
+                        className="text-xs font-bold text-slate-550 hover:text-red-650 hover:underline transition-all cursor-pointer"
+                      >
+                        {p.status === "ACTIVE" ? "Archive" : "Re-activate"}
+                      </button>
 
-                  <div className="grid grid-cols-2 gap-3 text-xs">
-                    <div>
-                      <p className="text-[9px] text-slate-400 font-bold uppercase">Evaluation/trial days</p>
-                      <input 
-                        type="number"
-                        value={p.trialDays}
-                        onChange={(e) => onUpdatePlan(p.code, { trialDays: Number(e.target.value) })}
-                        className="w-full bg-slate-50 border border-slate-200 rounded p-1.5 font-bold font-mono text-slate-800 focus:outline-none"
-                      />
+                      <button
+                        onClick={() => handleClonePlan(p)}
+                        className="text-xs font-bold text-indigo-650 hover:text-indigo-850 hover:underline flex items-center gap-1 transition-all cursor-pointer"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        Clone Plan
+                      </button>
                     </div>
-                    <div>
-                      <p className="text-[9px] text-slate-400 font-bold uppercase">Display sort order</p>
-                      <input 
-                        type="number"
-                        value={p.sortOrder}
-                        onChange={(e) => onUpdatePlan(p.code, { sortOrder: Number(e.target.value) })}
-                        className="w-full bg-slate-50 border border-slate-200 rounded p-1.5 font-bold font-mono text-slate-800 focus:outline-none"
-                      />
-                    </div>
+
+                    {onSavePlan && (
+                      <button
+                        onClick={() => onSavePlan(p.code)}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg px-3 py-1.5 text-xs font-sans flex items-center gap-1 shadow-xs transition-all cursor-pointer"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        Save Changes
+                      </button>
+                    )}
                   </div>
                 </div>
-
-                <div className="pt-4 border-t border-slate-100 mt-4 flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex gap-2.5">
-                    <button
-                      onClick={() => onUpdatePlan(p.code, { status: p.status === "ACTIVE" ? "DISABLED" : "ACTIVE" })}
-                      className="text-xs font-bold text-slate-550 hover:text-slate-850 hover:underline transition-all"
-                    >
-                      Set {p.status === "ACTIVE" ? "Inactive" : "Active"}
-                    </button>
-
-                    <button
-                      onClick={() => handleClonePlan(p)}
-                      className="text-xs font-bold text-indigo-650 hover:text-indigo-850 hover:underline flex items-center gap-1 transition-all"
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                      Clone
-                    </button>
-                  </div>
-
-                  {onSavePlan && (
-                    <button
-                      onClick={() => onSavePlan(p.code)}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg px-3 py-1.5 text-xs font-sans flex items-center gap-1 shadow-xs transition-all cursor-pointer"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                      Save Changes
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

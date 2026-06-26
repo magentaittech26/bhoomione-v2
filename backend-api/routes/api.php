@@ -304,6 +304,7 @@ Route::prefix('v1')->group(function () {
     // SAAS PLATFORM GLOBAL SETTINGS (Phase 1F.4)
     Route::get('/admin/settings', [SaasController::class, 'getPlatformSettings'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
     Route::post('/admin/settings', [SaasController::class, 'savePlatformSettings'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::get('/admin/dashboard-stats', [SaasController::class, 'getDashboardStats'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
 
     // TENANT OPERATIONS & PROVISIONING LIFECYCLE ROUTE MAPS (Phase 1F.2)
     Route::get('/admin/tenants', [TenantProvisioningController::class, 'getTenants'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);

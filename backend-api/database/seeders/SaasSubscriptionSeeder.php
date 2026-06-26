@@ -43,7 +43,7 @@ class SaasSubscriptionSeeder extends Seeder
             $module = SaasModule::updateOrCreate(
                 ['code' => $m['code']],
                 [
-                    'id' => (string) Str::uuid(),
+                    'id' => SaasModule::where('code', $m['code'])->value('id') ?? (string) Str::uuid(),
                     'name' => $m['name'],
                     'group' => $m['group'],
                     'description' => $m['description'],
@@ -56,10 +56,11 @@ class SaasSubscriptionSeeder extends Seeder
             $moduleModels[$m['code']] = $module;
 
             // Seed 2 child features per module (View and Manage)
+            $fViewCode = strtolower($m['code']) . '.view';
             $fView = SaasFeature::updateOrCreate(
-                ['code' => strtolower($m['code']) . '.view'],
+                ['code' => $fViewCode],
                 [
-                    'id' => (string) Str::uuid(),
+                    'id' => SaasFeature::where('code', $fViewCode)->value('id') ?? (string) Str::uuid(),
                     'module_id' => $module->id,
                     'name' => 'View ' . $m['name'],
                     'group' => $m['group'],
@@ -68,10 +69,12 @@ class SaasSubscriptionSeeder extends Seeder
                     'default_enabled' => true
                 ]
             );
+            
+            $fManageCode = strtolower($m['code']) . '.manage';
             $fManage = SaasFeature::updateOrCreate(
-                ['code' => strtolower($m['code']) . '.manage'],
+                ['code' => $fManageCode],
                 [
-                    'id' => (string) Str::uuid(),
+                    'id' => SaasFeature::where('code', $fManageCode)->value('id') ?? (string) Str::uuid(),
                     'module_id' => $module->id,
                     'name' => 'Manage ' . $m['name'],
                     'group' => $m['group'],
@@ -184,7 +187,7 @@ class SaasSubscriptionSeeder extends Seeder
             $plan = SubscriptionPlan::updateOrCreate(
                 ['plan_code' => $p['plan_code']],
                 [
-                    'id' => (string) Str::uuid(),
+                    'id' => SubscriptionPlan::where('plan_code', $p['plan_code'])->value('id') ?? (string) Str::uuid(),
                     'name' => $p['name'],
                     'monthly_price' => $p['monthly_price'],
                     'yearly_price' => $p['yearly_price'],
@@ -199,7 +202,7 @@ class SaasSubscriptionSeeder extends Seeder
                 SubscriptionPlanLimit::updateOrCreate(
                     ['plan_id' => $plan->id, 'limit_key' => $key],
                     [
-                        'id' => (string) Str::uuid(),
+                        'id' => SubscriptionPlanLimit::where(['plan_id' => $plan->id, 'limit_key' => $key])->value('id') ?? (string) Str::uuid(),
                         'limit_value' => $val
                     ]
                 );
@@ -208,10 +211,11 @@ class SaasSubscriptionSeeder extends Seeder
             // Connect Plan features
             foreach ($p['enabled_features'] as $fName) {
                 if (isset($featureModels[$fName])) {
+                    $featId = $featureModels[$fName]->id;
                     SubscriptionPlanFeature::updateOrCreate(
-                        ['plan_id' => $plan->id, 'feature_id' => $featureModels[$fName]->id],
+                        ['plan_id' => $plan->id, 'feature_id' => $featId],
                         [
-                            'id' => (string) Str::uuid(),
+                            'id' => SubscriptionPlanFeature::where(['plan_id' => $plan->id, 'feature_id' => $featId])->value('id') ?? (string) Str::uuid(),
                             'access_level' => 'ENABLED'
                         ]
                     );
@@ -275,7 +279,7 @@ class SaasSubscriptionSeeder extends Seeder
             SubscriptionAddon::updateOrCreate(
                 ['code' => $add['code']],
                 [
-                    'id' => (string) Str::uuid(),
+                    'id' => SubscriptionAddon::where('code', $add['code'])->value('id') ?? (string) Str::uuid(),
                     'name' => $add['name'],
                     'addon_type' => $add['addon_type'],
                     'monthly_price' => $add['monthly'],
@@ -302,9 +306,9 @@ class SaasSubscriptionSeeder extends Seeder
             SubscriptionPlotSlab::updateOrCreate(
                 ['min_plots' => $slab['min'], 'max_plots' => $slab['max']],
                 [
-                    'id' => (string) Str::uuid(),
+                    'id' => SubscriptionPlotSlab::where(['min_plots' => $slab['min'], 'max_plots' => $slab['max']])->value('id') ?? (string) Str::uuid(),
                     'monthly_price' => $slab['monthly'],
-                     'yearly_price' => $slab['yearly'],
+                    'yearly_price' => $slab['yearly'],
                     'status' => 'ACTIVE'
                 ]
             );

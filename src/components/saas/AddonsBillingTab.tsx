@@ -312,92 +312,227 @@ export default function AddonsBillingTab({
               Register Add-on Feature
             </button>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-sans">
-            {addons.map(a => (
-              <div key={a.code} className="bg-white border border-slate-200 p-5 rounded-2xl flex flex-col justify-between shadow-xs hover:border-slate-350 transition-all">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-start border-b border-slate-100 pb-2">
-                    <div>
-                      <h4 className="text-xs font-bold text-slate-905">{a.name}</h4>
-                      <p className="text-[9.5px] font-mono text-indigo-600 font-bold uppercase tracking-wider">code: {a.code}</p>
-                    </div>
-                    <button
-                      onClick={() => onUpdateAddon(a.code, { status: a.status === "ACTIVE" ? "DISABLED" : "ACTIVE" })}
-                      className={`px-2 py-0.5 rounded-full text-[9px] font-bold cursor-pointer ${
-                        a.status === "ACTIVE" ? "bg-emerald-50 text-emerald-805" : "bg-red-50 text-red-805"
-                      }`}
-                    >
-                      {a.status}
-                    </button>
-                  </div>
-                  
-                  {/* Type and Capabilities badges */}
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    <span className="bg-indigo-50 text-indigo-700 text-[9px] font-extrabold px-2 py-0.5 rounded uppercase">
-                      Type: {a.addon_type || "FEATURE"}
-                    </span>
-                    {a.addon_type === "FEATURE" && a.feature_code && (
-                      <span className="bg-amber-50 text-amber-850 border border-amber-100 text-[9px] font-mono px-2 py-0.5 rounded">
-                        Grants: {a.feature_code}
-                      </span>
-                    )}
-                    {a.addon_type === "CAPACITY" && a.limit_key && (
-                      <span className="bg-emerald-50 text-emerald-850 border border-emerald-100 text-[9px] font-mono px-2 py-0.5 rounded">
-                        +{a.limit_increment} {a.limit_key}
-                      </span>
-                    )}
-                    {(a.oneTimePrice || 0) > 0 && (
-                      <span className="bg-sky-50 text-sky-850 border border-sky-100 text-[9px] font-extrabold px-2 py-0.5 rounded">
-                        One-Time: ₹{a.oneTimePrice}
-                      </span>
-                    )}
-                  </div>
-
-                  <p className="text-[11px] text-slate-400 leading-normal">{a.description}</p>
-                </div>
-
-                 <div className="pt-4 border-t border-slate-100 mt-4 flex items-center justify-between text-xs gap-3">
-                   <div className="flex flex-wrap gap-2.5">
-                     <div>
-                       <span className="text-[9px] text-slate-400 font-bold uppercase block mb-1">Monthly (₹)</span>
-                       <input 
-                         type="number"
-                         value={a.monthlyPrice}
-                         onChange={(e) => onUpdateAddon(a.code, { monthlyPrice: Number(e.target.value) })}
-                         className="w-16 bg-slate-50 border border-slate-200 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs focus:bg-white focus:outline-none"
-                       />
-                     </div>
-                     <div>
-                       <span className="text-[9px] text-slate-400 font-bold uppercase block mb-1">Yearly (₹)</span>
-                       <input 
-                         type="number"
-                         value={a.yearlyPrice}
-                         onChange={(e) => onUpdateAddon(a.code, { yearlyPrice: Number(e.target.value) })}
-                         className="w-16 bg-slate-50 border border-slate-200 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs focus:bg-white focus:outline-none"
-                       />
-                     </div>
-                     <div>
-                       <span className="text-[9px] text-slate-400 font-bold uppercase block mb-1">One-Time (₹)</span>
-                       <input 
-                         type="number"
-                         value={a.oneTimePrice || 0}
-                         onChange={(e) => onUpdateAddon(a.code, { oneTimePrice: Number(e.target.value) })}
-                         className="w-16 bg-slate-50 border border-slate-200 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs focus:bg-white focus:outline-none"
-                       />
-                     </div>
-                   </div>
-
-                   <button
-                     onClick={() => onUpdateAddon(a.code, {})} // Trigger save
-                     className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg px-2.5 py-1.5 text-[10px] font-sans flex items-center gap-1 shadow-xs transition-all cursor-pointer whitespace-nowrap align-self-end mt-auto"
-                   >
-                     <Check className="w-3 h-3" />
-                     Save Add-on
-                   </button>
-                 </div>
+          {/* Segmented groups of addons */}
+          <div className="space-y-8 font-sans" id="addon-catalog-view-grouped">
+            
+            {/* 1. Feature Add-ons */}
+            <div className="space-y-4">
+              <div className="border-b border-slate-100 pb-2">
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-indigo-600" />
+                  Feature Add-ons
+                </h4>
+                <p className="text-[10px] text-slate-500">Enable advanced functional modules, custom widgets, or GIS CAD mapping tools.</p>
               </div>
-            ))}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {addons.filter(a => (a.addon_type || "FEATURE") === "FEATURE").length > 0 ? (
+                  addons.filter(a => (a.addon_type || "FEATURE") === "FEATURE").map(a => (
+                    <div key={a.code} className="bg-white border border-slate-205 p-5 rounded-2xl flex flex-col justify-between shadow-3xs hover:border-slate-350 transition-all">
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-start border-b border-slate-100 pb-2">
+                          <div>
+                            <h4 className="text-xs font-bold text-slate-905">{a.name}</h4>
+                            <p className="text-[9.5px] font-mono text-indigo-650 font-bold uppercase tracking-wider">code: {a.code}</p>
+                          </div>
+                          <button
+                            onClick={() => onUpdateAddon(a.code, { status: a.status === "ACTIVE" ? "DISABLED" : "ACTIVE" })}
+                            className={`px-2 py-0.5 rounded-full text-[9px] font-bold cursor-pointer ${
+                              a.status === "ACTIVE" ? "bg-emerald-50 text-emerald-805" : "bg-red-50 text-red-805"
+                            }`}
+                          >
+                            {a.status}
+                          </button>
+                        </div>
+                        {a.feature_code && (
+                          <div className="flex pt-1">
+                            <span className="bg-amber-50 text-amber-850 border border-amber-100 text-[9px] font-mono px-2 py-0.5 rounded">
+                              Grants Access: {a.feature_code}
+                            </span>
+                          </div>
+                        )}
+                        <p className="text-[11px] text-slate-400 leading-normal">{a.description}</p>
+                      </div>
+
+                      <div className="pt-4 border-t border-slate-100 mt-4 flex items-center justify-between text-xs gap-3">
+                        <div className="flex flex-wrap gap-2.5">
+                          <div>
+                            <span className="text-[9px] text-slate-400 font-bold uppercase block mb-1">Monthly (₹)</span>
+                            <input 
+                              type="number"
+                              value={a.monthlyPrice}
+                              onChange={(e) => onUpdateAddon(a.code, { monthlyPrice: Number(e.target.value) })}
+                              className="w-16 bg-slate-50 border border-slate-205 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs focus:bg-white focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <span className="text-[9px] text-slate-400 font-bold uppercase block mb-1">Yearly (₹)</span>
+                            <input 
+                              type="number"
+                              value={a.yearlyPrice}
+                              onChange={(e) => onUpdateAddon(a.code, { yearlyPrice: Number(e.target.value) })}
+                              className="w-16 bg-slate-50 border border-slate-205 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs focus:bg-white focus:outline-none"
+                            />
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => onUpdateAddon(a.code, {})} 
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg px-2.5 py-1.5 text-[10px] font-sans flex items-center gap-1 shadow-3xs transition-all cursor-pointer whitespace-nowrap"
+                        >
+                          <Check className="w-3 h-3" />
+                          Save Changes
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-slate-400 py-3 col-span-2">No active feature addons registered.</p>
+                )}
+              </div>
+            </div>
+
+            {/* 2. Capacity Add-ons */}
+            <div className="space-y-4">
+              <div className="border-b border-slate-100 pb-2">
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-emerald-605" />
+                  Capacity Add-ons
+                </h4>
+                <p className="text-[10px] text-slate-500">Allow customers to buy resource limit boosts such as extra Projects, Layouts, Plots, or storage buckets.</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {addons.filter(a => a.addon_type === "CAPACITY").length > 0 ? (
+                  addons.filter(a => a.addon_type === "CAPACITY").map(a => (
+                    <div key={a.code} className="bg-white border border-slate-205 p-5 rounded-2xl flex flex-col justify-between shadow-3xs hover:border-slate-350 transition-all">
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-start border-b border-slate-100 pb-2">
+                          <div>
+                            <h4 className="text-xs font-bold text-slate-905">{a.name}</h4>
+                            <p className="text-[9.5px] font-mono text-emerald-600 font-bold uppercase tracking-wider">code: {a.code}</p>
+                          </div>
+                          <button
+                            onClick={() => onUpdateAddon(a.code, { status: a.status === "ACTIVE" ? "DISABLED" : "ACTIVE" })}
+                            className={`px-2 py-0.5 rounded-full text-[9px] font-bold cursor-pointer ${
+                              a.status === "ACTIVE" ? "bg-emerald-50 text-emerald-805" : "bg-red-50 text-red-805"
+                            }`}
+                          >
+                            {a.status}
+                          </button>
+                        </div>
+                        {a.limit_key && (
+                          <div className="flex pt-1">
+                            <span className="bg-emerald-50 text-emerald-850 border border-emerald-100 text-[9px] font-mono px-2 py-0.5 rounded">
+                              Increment Limit: +{a.limit_increment} {a.limit_key}
+                            </span>
+                          </div>
+                        )}
+                        <p className="text-[11px] text-slate-400 leading-normal">{a.description}</p>
+                      </div>
+
+                      <div className="pt-4 border-t border-slate-100 mt-4 flex items-center justify-between text-xs gap-3">
+                        <div className="flex flex-wrap gap-2.5">
+                          <div>
+                            <span className="text-[9px] text-slate-400 font-bold uppercase block mb-1">Monthly (₹)</span>
+                            <input 
+                              type="number"
+                              value={a.monthlyPrice}
+                              onChange={(e) => onUpdateAddon(a.code, { monthlyPrice: Number(e.target.value) })}
+                              className="w-16 bg-slate-50 border border-slate-205 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs focus:bg-white focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <span className="text-[9px] text-slate-400 font-bold uppercase block mb-1">Yearly (₹)</span>
+                            <input 
+                              type="number"
+                              value={a.yearlyPrice}
+                              onChange={(e) => onUpdateAddon(a.code, { yearlyPrice: Number(e.target.value) })}
+                              className="w-16 bg-slate-50 border border-slate-205 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs focus:bg-white focus:outline-none"
+                            />
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => onUpdateAddon(a.code, {})} 
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg px-2.5 py-1.5 text-[10px] font-sans flex items-center gap-1 shadow-3xs transition-all cursor-pointer"
+                        >
+                          <Check className="w-3 h-3" />
+                          Save Changes
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-slate-400 py-3 col-span-2">No active capacity limit addons registered.</p>
+                )}
+              </div>
+            </div>
+
+            {/* 3. Service Add-ons */}
+            <div className="space-y-4">
+              <div className="border-b border-slate-100 pb-2">
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                  <Layout className="w-4 h-4 text-amber-600" />
+                  Service Add-ons
+                </h4>
+                <p className="text-[10px] text-slate-500">Provide direct support plans, API keys integration setup, SMS message packets, or customized portal branding services.</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {addons.filter(a => a.addon_type === "SERVICE").length > 0 ? (
+                  addons.filter(a => a.addon_type === "SERVICE").map(a => (
+                    <div key={a.code} className="bg-white border border-slate-205 p-5 rounded-2xl flex flex-col justify-between shadow-3xs hover:border-slate-350 transition-all">
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-start border-b border-slate-100 pb-2">
+                          <div>
+                            <h4 className="text-xs font-bold text-slate-905">{a.name}</h4>
+                            <p className="text-[9.5px] font-mono text-amber-655 font-bold uppercase tracking-wider">code: {a.code}</p>
+                          </div>
+                          <button
+                            onClick={() => onUpdateAddon(a.code, { status: a.status === "ACTIVE" ? "DISABLED" : "ACTIVE" })}
+                            className={`px-2 py-0.5 rounded-full text-[9px] font-bold cursor-pointer ${
+                              a.status === "ACTIVE" ? "bg-emerald-50 text-emerald-805" : "bg-red-50 text-red-805"
+                            }`}
+                          >
+                            {a.status}
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-slate-400 leading-normal">{a.description}</p>
+                      </div>
+
+                      <div className="pt-4 border-t border-slate-100 mt-4 flex items-center justify-between text-xs gap-3">
+                        <div className="flex flex-wrap gap-2.5">
+                          <div>
+                            <span className="text-[9px] text-slate-400 font-bold uppercase block mb-1">Monthly (₹)</span>
+                            <input 
+                              type="number"
+                              value={a.monthlyPrice}
+                              onChange={(e) => onUpdateAddon(a.code, { monthlyPrice: Number(e.target.value) })}
+                              className="w-16 bg-slate-50 border border-slate-205 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs focus:bg-white focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <span className="text-[9px] text-slate-400 font-bold uppercase block mb-1">Yearly (₹)</span>
+                            <input 
+                              type="number"
+                              value={a.yearlyPrice}
+                              onChange={(e) => onUpdateAddon(a.code, { yearlyPrice: Number(e.target.value) })}
+                              className="w-16 bg-slate-50 border border-slate-205 rounded p-1 font-bold font-mono text-slate-800 text-center text-xs focus:bg-white focus:outline-none"
+                            />
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => onUpdateAddon(a.code, {})} 
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg px-2.5 py-1.5 text-[10px] font-sans flex items-center gap-1 shadow-3xs transition-all cursor-pointer"
+                        >
+                          <Check className="w-3 h-3" />
+                          Save Changes
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-slate-400 py-3 col-span-2">No active service addons registered.</p>
+                )}
+              </div>
+            </div>
+
           </div>
         </div>
       )}
