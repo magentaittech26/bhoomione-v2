@@ -51,9 +51,4 @@ class Layout extends Model
     {
         return $this->hasMany(Plot::class, 'layout_id');
     }
-
-    public function geoReference()
-    {
-        return $this->hasOne(LayoutGeoReference::class, 'layout_id');
-    }
 }

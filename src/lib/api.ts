@@ -295,12 +295,6 @@ class ApiClient {
     });
   }
 
-  async fetchDashboardStats(): Promise<any> {
-    return this.request<any>("/admin/dashboard-stats", {
-      method: "GET"
-    });
-  }
-
   async saveSaasSettings(settings: any[]): Promise<{ success: boolean; message: string }> {
     return this.request<{ success: boolean; message: string }>("/admin/settings", {
       method: "POST",
@@ -348,30 +342,6 @@ class ApiClient {
   async fetchProvisioningLogs(): Promise<any[]> {
     return this.request<any[]>("/admin/tenants/logs", {
       method: "GET"
-    });
-  }
-
-  async fetchWorkspaceTemplates(): Promise<any[]> {
-    return this.request<any[]>("/admin/tenants/templates", {
-      method: "GET"
-    });
-  }
-
-  async retryProvisioningJob(id: string): Promise<any> {
-    return this.request<any>(`/admin/tenants/jobs/${id}/retry`, {
-      method: "POST"
-    });
-  }
-
-  async cancelProvisioningJob(id: string): Promise<any> {
-    return this.request<any>(`/admin/tenants/jobs/${id}/cancel`, {
-      method: "POST"
-    });
-  }
-
-  async resumeProvisioningJob(id: string): Promise<any> {
-    return this.request<any>(`/admin/tenants/jobs/${id}/resume`, {
-      method: "POST"
     });
   }
 
@@ -711,29 +681,6 @@ class ApiClient {
 
   async fetchStyleProfiles(): Promise<any> {
     return this.request<any>("/dxf/style-profiles", {
-      method: "GET",
-    });
-  }
-
-  // ==========================================
-  // PHASE 2A.2 GEOREFERENCE ENDPOINTS
-  // ==========================================
-
-  async fetchLayoutGeoStatus(layoutId: string): Promise<any> {
-    return this.request<any>(`/layouts/${layoutId}/geo-status`, {
-      method: "GET",
-    });
-  }
-
-  async saveLayoutGeoReference(layoutId: string, data: any): Promise<any> {
-    return this.request<any>(`/layouts/${layoutId}/geo-reference`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-  }
-
-  async fetchLayoutGeoJson(layoutId: string): Promise<any> {
-    return this.request<any>(`/layouts/${layoutId}/geojson`, {
       method: "GET",
     });
   }

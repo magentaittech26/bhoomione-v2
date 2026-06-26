@@ -637,35 +637,29 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                   <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">GIS Map Engine & Satellite Calibration Analytics</h3>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 text-xs">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
                   <div className="p-3.5 bg-slate-900 text-white rounded-xl space-y-1">
-                    <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest block">Mapped Projects</span>
-                    <span className="text-lg font-bold block font-mono text-indigo-300">{subSummary.usages?.projects_count || 3} Active</span>
-                    <span className="text-[10px] text-slate-400 block font-sans">Project boundaries locked</span>
+                    <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest block">Geometries Synced</span>
+                    <span className="text-lg font-bold block font-mono text-emerald-400">{mapSyncMetrics.synchronizedGeometries}%</span>
+                    <span className="text-[10px] text-slate-400 block font-sans">92/100 Polygons aligned</span>
                   </div>
 
                   <div className="p-3.5 bg-slate-900 text-white rounded-xl space-y-1">
-                    <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest block">Mapped Layouts</span>
-                    <span className="text-lg font-bold block font-mono text-emerald-400">{subSummary.usages?.layouts_count || 8} Mapped</span>
-                    <span className="text-[10px] text-slate-400 block font-sans">Zoning segments overlay</span>
+                    <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest block">Active GIS Pins</span>
+                    <span className="text-lg font-bold block font-mono text-indigo-300">{mapSyncMetrics.gisPinpointsActive} Pinpoints</span>
+                    <span className="text-[10px] text-slate-400 block font-sans">Active spatial database query</span>
                   </div>
 
                   <div className="p-3.5 bg-slate-900 text-white rounded-xl space-y-1">
-                    <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest block">Mapped Plots</span>
-                    <span className="text-lg font-bold block font-mono text-indigo-400">{subSummary.usages?.plots_count || 148} Parcels</span>
-                    <span className="text-[10px] text-slate-400 block font-sans">Active spatial indices</span>
-                  </div>
-
-                  <div className="p-3.5 bg-slate-900 text-white rounded-xl space-y-1">
-                    <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest block">Satellite Coverage</span>
-                    <span className="text-lg font-bold block font-mono text-amber-400">99.8% Calibrated</span>
+                    <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest block">Satellite Overlay</span>
+                    <span className="text-[11px] font-mono font-bold text-zinc-100 block truncate">{mapSyncMetrics.satelliteLayerCalibrated}</span>
                     <span className="text-[10px] text-slate-400 block font-sans">Dual alignment locked</span>
                   </div>
 
                   <div className="p-3.5 bg-slate-900 text-white rounded-xl space-y-1">
-                    <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest block">DXF Coverage</span>
-                    <span className="text-lg font-bold block font-mono text-rose-400">100% Synced</span>
-                    <span className="text-[10px] text-slate-400 block font-sans">Vector paths validated</span>
+                    <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest block">Google Maps API</span>
+                    <span className="text-[11px] font-mono font-bold text-emerald-400 block truncate">{mapSyncMetrics.googleMapsApiHandshake}</span>
+                    <span className="text-[10px] text-slate-400 block font-sans">Premium credentials handshake</span>
                   </div>
                 </div>
               </div>

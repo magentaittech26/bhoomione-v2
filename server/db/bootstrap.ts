@@ -458,25 +458,6 @@ export async function bootstrapDatabase() {
       )
     `);
 
-    // 33. layout_geo_references Table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS layout_geo_references (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        layout_id UUID NOT NULL UNIQUE REFERENCES layouts(id) ON DELETE CASCADE,
-        anchor_1_dxf_x DOUBLE PRECISION NOT NULL,
-        anchor_1_dxf_y DOUBLE PRECISION NOT NULL,
-        anchor_1_lat DOUBLE PRECISION NOT NULL,
-        anchor_1_lng DOUBLE PRECISION NOT NULL,
-        anchor_2_dxf_x DOUBLE PRECISION NOT NULL,
-        anchor_2_dxf_y DOUBLE PRECISION NOT NULL,
-        anchor_2_lat DOUBLE PRECISION NOT NULL,
-        anchor_2_lng DOUBLE PRECISION NOT NULL,
-        transform_matrix JSONB NOT NULL DEFAULT '{}'::jsonb,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
     // Drop obsolete violating JSON config table if active
     await client.query(`DROP TABLE IF EXISTS saas_config CASCADE`);
 

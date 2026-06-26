@@ -15,7 +15,6 @@ class DatabaseSeeder extends Seeder
             RoleAndPermissionSeeder::class,
             SaasSubscriptionSeeder::class,
             SaasPlatformSettingsSeeder::class,
-            WorkspaceTemplateSeeder::class,
         ]);
     }
 }

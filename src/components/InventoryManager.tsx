@@ -2238,7 +2238,6 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
             user={user}
             initialLayoutId={selectedLayout?.id || null}
             onAuditLogged={onAuditLogged}
-            enabledFeatures={enabledFeatures}
           />
         </div>
       )}

@@ -533,8 +533,10 @@ class SaasSubscriptionService
      */
     public static function getPlatformSettings()
     {
-        $seeder = new \Database\Seeders\SaasPlatformSettingsSeeder();
-        $seeder->run();
+        if (\App\Models\SaasPlatformSetting::count() === 0) {
+            $seeder = new \Database\Seeders\SaasPlatformSettingsSeeder();
+            $seeder->run();
+        }
         return \App\Models\SaasPlatformSetting::all();
     }
 

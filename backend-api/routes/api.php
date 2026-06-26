@@ -5,7 +5,6 @@ use App\Http\Controllers\Api\v1\AuthController;
 use App\Http\Controllers\Api\v1\ProjectController;
 use App\Http\Controllers\Api\v1\LayoutController;
 use App\Http\Controllers\Api\v1\PlotController;
-use App\Http\Controllers\Api\v1\LayoutGeoController;
 use App\Http\Controllers\Api\v1\DxfController;
 use App\Http\Controllers\Api\v1\SaasController;
 use App\Http\Controllers\Api\v1\TenantProvisioningController;
@@ -305,15 +304,10 @@ Route::prefix('v1')->group(function () {
     // SAAS PLATFORM GLOBAL SETTINGS (Phase 1F.4)
     Route::get('/admin/settings', [SaasController::class, 'getPlatformSettings'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
     Route::post('/admin/settings', [SaasController::class, 'savePlatformSettings'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
-    Route::get('/admin/dashboard-stats', [SaasController::class, 'getDashboardStats'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
 
     // TENANT OPERATIONS & PROVISIONING LIFECYCLE ROUTE MAPS (Phase 1F.2)
     Route::get('/admin/tenants', [TenantProvisioningController::class, 'getTenants'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
-    Route::get('/admin/tenants/templates', [TenantProvisioningController::class, 'getTemplates'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
     Route::get('/admin/tenants/logs', [TenantProvisioningController::class, 'getLogs'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
-    Route::post('/admin/tenants/jobs/{id}/retry', [TenantProvisioningController::class, 'retryJob'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
-    Route::post('/admin/tenants/jobs/{id}/cancel', [TenantProvisioningController::class, 'cancelJob'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
-    Route::post('/admin/tenants/jobs/{id}/resume', [TenantProvisioningController::class, 'resumeJob'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
     Route::get('/admin/tenants/{id}/lifecycle-events', [TenantProvisioningController::class, 'getLifecycleEvents'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
     Route::post('/admin/tenants/provision', [TenantProvisioningController::class, 'provision'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
     Route::post('/admin/tenants/{id}/activate', [TenantProvisioningController::class, 'activate'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
@@ -365,13 +359,6 @@ Route::prefix('v1')->group(function () {
         Route::post('/layouts', [LayoutController::class, 'store'])->middleware([PermissionRequirementMiddleware::class . ':layouts.manage']);
         Route::put('/layouts/{id}', [LayoutController::class, 'update'])->middleware([PermissionRequirementMiddleware::class . ':layouts.manage']);
         Route::delete('/layouts/{id}', [LayoutController::class, 'destroy'])->middleware([PermissionRequirementMiddleware::class . ':layouts.manage']);
-
-        // Layout Georeferencing (GIS) Group
-        Route::middleware([\App\Http\Middleware\SubscriptionFeatureGate::class . ':gis_maps'])->group(function () {
-            Route::get('/layouts/{id}/geo-status', [LayoutGeoController::class, 'geoStatus'])->middleware([PermissionRequirementMiddleware::class . ':layouts.view']);
-            Route::post('/layouts/{id}/geo-reference', [LayoutGeoController::class, 'geoReference'])->middleware([PermissionRequirementMiddleware::class . ':layouts.manage']);
-            Route::get('/layouts/{id}/geojson', [LayoutGeoController::class, 'geoJson'])->middleware([PermissionRequirementMiddleware::class . ':layouts.view']);
-        });
 
         // Plots Group
         Route::get('/plots', [PlotController::class, 'index'])->middleware([PermissionRequirementMiddleware::class . ':plots.view']);

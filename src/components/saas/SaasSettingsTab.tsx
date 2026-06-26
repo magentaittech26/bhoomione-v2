@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { 
-  Sliders, Building2, Sparkles, Languages, Landmark, Percent, Globe, CreditCard, 
-  Mail, Shield, HardDrive, MessageSquare, Settings, Server, Bell,
-  Save, AlertCircle, RefreshCw, CheckCircle2, Info, Phone, FileText, Lock
+  Globe, Shield, CreditCard, Mail, HardDrive, Sliders, Server, 
+  Save, AlertCircle, RefreshCw, CheckCircle2, Info, Building2, Phone, FileText, Lock
 } from "lucide-react";
 import { api } from "../../lib/api";
 
@@ -21,20 +20,12 @@ interface SaasSettingsTabProps {
 
 const SETTING_GROUPS = [
   { id: "GENERAL", label: "General Settings", icon: Sliders, description: "Manage basic platform branding and corporate contact profiles." },
-  { id: "COMPANY", label: "Company Profile", icon: Building2, description: "Manage legal entity names, addresses, PAN, and corporate identity details." },
-  { id: "BRANDING", label: "Branding & Assets", icon: Sparkles, description: "Customize platform color themes, logos, and favicons." },
-  { id: "LOCALIZATION", label: "Localization", icon: Languages, description: "Configure system timezone, default language, and date/time formatting rules." },
-  { id: "CURRENCY", label: "Currency Settings", icon: Landmark, description: "Set the base accounting currency, visual symbols, and formatting structures." },
-  { id: "TAX", label: "Tax Configuration", icon: Percent, description: "Set tax rates, descriptions, and inclusive/exclusive calculation treatment." },
-  { id: "DOMAINS", label: "Domain & Routing", icon: Globe, description: "Configure base sub-domain hostnames, reverse proxy, and SSL policies." },
-  { id: "BILLING", label: "Billing & Invoicing", icon: CreditCard, description: "Set default trial extensions, overdue suspension windows, and invoice prefixes." },
-  { id: "NOTIFICATIONS", label: "Notifications & Alerts", icon: Bell, description: "Define alert frequencies and default notification recipient templates." },
-  { id: "SECURITY", label: "Security & MFA", icon: Shield, description: "Enforce system-wide password complexities, MFA, and idle session lifetimes." },
-  { id: "STORAGE", label: "Storage & Uploads", icon: HardDrive, description: "Set file upload payload boundaries and tenant storage quotas." },
-  { id: "EMAIL", label: "Email Gateway (SMTP)", icon: Mail, description: "Establish SMTP credentials and system sender email details." },
-  { id: "WHATSAPP", label: "WhatsApp Gateway", icon: MessageSquare, description: "Configure WhatsApp API integrations and template settings." },
-  { id: "SYSTEM", label: "System Drivers", icon: Settings, description: "Monitor active databases, API gateway drivers, cache systems, and task queues." },
-  { id: "ADVANCED", label: "Advanced Technical Info", icon: Server, description: "Review network ingress binding ports and sandbox telemetry logs." },
+  { id: "DOMAINS", label: "Domain & Routing", icon: Globe, description: "Configure hostname pattern resolutions and reverse proxy rules." },
+  { id: "BILLING", label: "Billing & Invoicing", icon: CreditCard, description: "Set default currencies, tax slab computations, and subscription grace windows." },
+  { id: "NOTIFICATIONS", label: "Notifications & Alerts", icon: Mail, description: "Assign default WhatsApp, SMS, and SMTP service providers." },
+  { id: "SECURITY", label: "Security & MFA", icon: Shield, description: "Establish strict password complexities, session timeouts, and audit logging lifespans." },
+  { id: "STORAGE", label: "Storage & Uploads", icon: HardDrive, description: "Manage default disk spaces and file parsing threshold boundaries." },
+  { id: "ADVANCED", label: "Advanced Technical Info", icon: Server, description: "Monitor cluster ingress nodes, container ports, and reverse proxy protocols." },
 ];
 
 export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({ onShowToast }) => {
@@ -53,6 +44,7 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({ onShowToast })
     setError(null);
     try {
       const data = await api.fetchSaasSettings();
+      // Ensure camelCase fields are parsed cleanly (if database returned snake_case due to different drivers)
       const formatted = data.map((item: any) => ({
         id: item.id,
         settingGroup: item.settingGroup || item.setting_group || "GENERAL",
@@ -82,6 +74,7 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({ onShowToast })
   const handleSave = async () => {
     setSaving(true);
     try {
+      // Map to payload matching Laravel model keys
       const payload = settings.map(s => ({
         setting_group: s.settingGroup,
         setting_key: s.settingKey,
@@ -100,6 +93,7 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({ onShowToast })
     }
   };
 
+  // Filter settings for currently active group
   const filteredSettings = settings.filter(s => s.settingGroup === activeGroup);
 
   const getSettingLabelAndIcon = (key: string) => {
@@ -108,102 +102,39 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({ onShowToast })
       case "platform_name": return { label: "Platform Branding Name", placeholder: "e.g., BhoomiOne", icon: Sliders };
       case "support_email": return { label: "System Support Email Address", placeholder: "e.g., support@bhoomione.in", icon: Mail };
       case "support_phone": return { label: "System Support Phone Line", placeholder: "e.g., +91 98765 43210", icon: Phone };
-      
-      // Company
-      case "company_name": return { label: "Registered Corporate Entity", placeholder: "e.g., BhoomiOne Land Systems Pvt Ltd", icon: Building2 };
-      case "corporate_identity_number": return { label: "Corporate Identity Number (CIN)", placeholder: "e.g., U72200KA2026PTC123456", icon: FileText };
-      case "pan_number": return { label: "Permanent Account Number (PAN)", placeholder: "e.g., AAACB1234A", icon: FileText };
+      case "company_name": return { label: "Registered Corporate Entity", placeholder: "e.g., BhoomiOne Technologies Pvt Ltd", icon: Building2 };
       case "gst_number": return { label: "GST Identification Number (GSTIN)", placeholder: "e.g., 29AAAAA1111A1Z1", icon: FileText };
       case "address": return { label: "Registered Corporate Address", placeholder: "Full corporate address details", icon: Building2 };
-
-      // Branding
-      case "primary_color": return { label: "Primary Brand Color (Hex)", placeholder: "e.g., #4f46e5", icon: Sparkles };
-      case "secondary_color": return { label: "Secondary Accent Color (Hex)", placeholder: "e.g., #0ea5e9", icon: Sparkles };
-      case "logo_url": return { label: "Corporate Logo URL", placeholder: "e.g., /assets/logo-bhoomione.png", icon: Sparkles };
-      case "favicon_url": return { label: "Browser Favicon URL", placeholder: "e.g., /favicon.ico", icon: Sparkles };
-
-      // Localization
-      case "timezone": return { label: "Default Timezone", placeholder: "e.g., Asia/Kolkata", icon: Languages };
-      case "date_format": return { label: "Default Date Format", placeholder: "e.g., DD-MM-YYYY", icon: Languages };
-      case "time_format": return { label: "Default Time Format", placeholder: "e.g., 24_HOUR", icon: Languages };
-      case "default_language": return { label: "Default Language Code", placeholder: "e.g., en", icon: Languages };
-
-      // Currency
-      case "currency_code": return { label: "Central Currency Code", placeholder: "e.g., INR", icon: Landmark };
-      case "currency_symbol": return { label: "Visual Currency Symbol", placeholder: "e.g., ₹", icon: Landmark };
-      case "thousand_separator": return { label: "Thousand Grouping Separator", placeholder: "e.g., ,", icon: Landmark };
-      case "decimal_separator": return { label: "Decimal Point Separator", placeholder: "e.g., .", icon: Landmark };
-
-      // Tax
-      case "tax_name": return { label: "Tax Classification Name", placeholder: "e.g., GST", icon: Percent };
-      case "tax_rate_percent": return { label: "Standard Tax Percentage (%)", placeholder: "e.g., 18", icon: Percent };
-      case "tax_treatment": return { label: "Tax Calculation Treatment", placeholder: "EXCLUSIVE", icon: Percent };
-
       // Domains
       case "base_domain": return { label: "Core Workspace Base Domain", placeholder: "e.g., bhoomione.in", icon: Globe };
       case "admin_domain": return { label: "Super Admin Supervision Domain", placeholder: "e.g., admin.bhoomione.in", icon: Lock };
       case "marketplace_domain": return { label: "Townships Open Marketplace Domain", placeholder: "e.g., market.bhoomione.in", icon: Globe };
-      case "tenant_subdomain_pattern": return { label: "Tenant Subdomain Schema Pattern", placeholder: "e.g., {tenant}.bhoomione.in", icon: Globe };
-      case "customer_portal_pattern": return { label: "Customer Portal Route Schema Pattern", placeholder: "e.g., portal.{tenant}.bhoomione.in", icon: Globe };
-      case "agent_portal_pattern": return { label: "Agent Portal Route Schema Pattern", placeholder: "e.g., agents.{tenant}.bhoomione.in", icon: Globe };
-      case "custom_domain_policy": return { label: "Custom Domain Mapping SSL Policy", placeholder: "e.g., Manual approval required", icon: Shield };
-
+      case "customer_portal_pattern": return { label: "Customer Portal Route Schema Pattern", placeholder: "e.g., {{tenant}}.bhoomione.in/portal", icon: Globe };
+      case "agent_portal_pattern": return { label: "Agent Portal Route Schema Pattern", placeholder: "e.g., {{tenant}}.bhoomione.in/agent", icon: Globe };
+      case "custom_domain_policy": return { label: "Custom Domain Mapping SSL Policy", placeholder: "e.g., REWRITE_SSL_CNAME", icon: Shield };
       // Billing
-      case "currency": return { label: "Alternative Billing Currency Code", placeholder: "e.g., INR", icon: CreditCard };
-      case "gst_percentage": return { label: "Legacy GST percentage (%)", placeholder: "18", icon: CreditCard };
+      case "currency": return { label: "System Base Transaction Currency Code", placeholder: "e.g., INR", icon: CreditCard };
+      case "gst_percentage": return { label: "Default Service GST percentage (%)", placeholder: "18", icon: CreditCard };
       case "invoice_prefix": return { label: "Automated Invoice Prefix Code", placeholder: "BO-INV-", icon: FileText };
       case "default_trial_days": return { label: "Default Trial Span (Days)", placeholder: "14", icon: Sliders };
       case "grace_period_days": return { label: "Payment Overdue Grace Extension (Days)", placeholder: "7", icon: Sliders };
-      case "auto_suspend_after_due_days": return { label: "Auto Suspend Workspace After Due (Days)", placeholder: "15", icon: Sliders };
+      case "auto_suspend_after_due_days": return { label: "Auto Suspend Workspace After (Days Overdue)", placeholder: "5", icon: Sliders };
       case "auto_expire_after_days": return { label: "Auto Archive Cancelled Workspaces After (Days)", placeholder: "30", icon: Sliders };
-
       // Notifications
-      case "notification_channels": return { label: "Enforced Notification Channels", placeholder: "e.g., EMAIL_SMS_WHATSAPP", icon: Bell };
-      case "reminder_days_before_renewal": return { label: "Renewal Reminder (Days Before)", placeholder: "7", icon: Sliders };
-      case "renewal_reminder_days": return { label: "Subsequent Reminders Interval (Days)", placeholder: "7", icon: Sliders };
-      case "overdue_reminder_days": return { label: "Overdue Reminder Frequency (Days)", placeholder: "3", icon: Sliders };
-
+      case "email_provider": return { label: "Primary SMTP/Email Gateway Engine", placeholder: "e.g., SES, SendGrid", icon: Mail };
+      case "whatsapp_provider": return { label: "Primary WhatsApp Business API Gateway", placeholder: "e.g., Twilio", icon: Phone };
+      case "sms_provider": return { label: "Primary Transactional SMS Provider", placeholder: "e.g., Twilio, Plivo", icon: Phone };
+      case "reminder_days_before_renewal": return { label: "First Renewal Reminder Alert (Days Before Due)", placeholder: "7", icon: Sliders };
       // Security
       case "session_timeout": return { label: "Idle Administrator Session Expiry (Minutes)", placeholder: "120", icon: Sliders };
-      case "session_timeout_minutes": return { label: "Fallback Session Expiry (Minutes)", placeholder: "120", icon: Sliders };
       case "password_policy": return { label: "Minimum Passphrase Policy Grade", placeholder: "STRONG", icon: Shield };
-      case "password_min_length": return { label: "Minimum Passphrase Length", placeholder: "8", icon: Shield };
       case "mfa_required": return { label: "Enforce Multi-Factor Authentication (MFA)", placeholder: "false", icon: Lock };
       case "audit_retention_days": return { label: "System Compliance Logs Retention Span (Days)", placeholder: "365", icon: FileText };
-
       // Storage
       case "default_storage_gb": return { label: "Default Plan Disk Allocation Quota (GB)", placeholder: "10", icon: HardDrive };
-      case "max_upload_size_mb": return { label: "Max Raw File Attachment Limit (MB)", placeholder: "25", icon: HardDrive };
+      case "max_upload_size_mb": return { label: "Max Raw File Attachment Multi-part Limit (MB)", placeholder: "100", icon: HardDrive };
       case "dxf_upload_limit_mb": return { label: "Heavy AutoCAD DXF Parser Upload Limits (MB)", placeholder: "50", icon: HardDrive };
-      case "image_upload_limit_mb": return { label: "Layout Overlay Image Limit (MB)", placeholder: "10", icon: HardDrive };
-
-      // Email
-      case "email_provider": return { label: "Primary SMTP/Email Gateway Engine", placeholder: "e.g., SMTP", icon: Mail };
-      case "smtp_host": return { label: "SMTP Server Host Hostname", placeholder: "smtp.mailgun.org", icon: Mail };
-      case "smtp_port": return { label: "SMTP Server Connection Port", placeholder: "587", icon: Mail };
-      case "smtp_username": return { label: "SMTP Authorized User Account", placeholder: "postmaster@bhoomione.in", icon: Mail };
-      case "smtp_password": return { label: "SMTP Password Secret Key", placeholder: "••••••••", icon: Lock };
-      case "smtp_encryption": return { label: "SMTP Connection Cryptographic Protocol", placeholder: "tls", icon: Shield };
-      case "from_email": return { label: "Outgoing System Sender Email Address", placeholder: "noreply@bhoomione.in", icon: Mail };
-      case "from_name": return { label: "Outgoing System Sender Display Name", placeholder: "BhoomiOne Alerts", icon: Mail };
-
-      // WhatsApp
-      case "whatsapp_provider": return { label: "WhatsApp Gateway Engine", placeholder: "Twilio", icon: MessageSquare };
-      case "whatsapp_account_sid": return { label: "WhatsApp Account SID Token", placeholder: "ACxxxxxxxxxxxxxxxxxxxx", icon: MessageSquare };
-      case "whatsapp_auth_token": return { label: "WhatsApp Auth Password Credentials", placeholder: "••••••••", icon: Lock };
-      case "whatsapp_sender_number": return { label: "WhatsApp Corporate Sender Number", placeholder: "+14155238886", icon: Phone };
-
-      // System
-      case "api_gateway_mode": return { label: "SaaS API Gateway Execution Mode", placeholder: "Laravel", icon: Settings };
-      case "frontend_runtime": return { label: "Frontend Dynamic Asset Bundler Engine", placeholder: "Vite", icon: Settings };
-      case "database_engine": return { label: "Central Relational Database Engine", placeholder: "PostgreSQL", icon: Settings };
-      case "cache_driver": return { label: "Fast Key-Value Cache Engine Driver", placeholder: "Redis", icon: Settings };
-      case "queue_driver": return { label: "Background Async Task Queue Driver", placeholder: "Redis", icon: Settings };
-
-      // Advanced
-      case "maintenance_mode": return { label: "Enforce Global Maintenance Overlay", placeholder: "false", icon: Shield };
-      case "debug_mode": return { label: "Enforce Raw Developer Trace Logs", placeholder: "false", icon: Shield };
-      case "allowed_cors_origins": return { label: "Allowed CORS Policy Ingress Origins", placeholder: "*", icon: Globe };
+      case "image_upload_limit_mb": return { label: "Layout Layout Overlay Image Limit (MB)", placeholder: "20", icon: HardDrive };
 
       default: return { label: key.replace(/_/g, " ").toUpperCase(), placeholder: "", icon: Sliders };
     }
@@ -211,7 +142,7 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({ onShowToast })
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center p-16 space-y-4 bg-white border border-slate-200 rounded-2xl shadow-xs" id="settings-loading-view">
+      <div className="flex flex-col items-center justify-center p-16 space-y-4 bg-white border border-slate-200 rounded-2xl shadow-3xs" id="settings-loading-view">
         <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin" />
         <p className="text-xs font-bold text-slate-500 font-sans tracking-wide">Retrieving secure platform configuration keys...</p>
       </div>
@@ -221,7 +152,7 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({ onShowToast })
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start font-sans" id="saas-platform-settings-grid">
       {/* 1. LEFT SIDEBAR NAVIGATION GROUPS */}
-      <div className="lg:col-span-1 space-y-1.5 max-h-[80vh] overflow-y-auto pr-1" id="settings-sidebar-nav">
+      <div className="lg:col-span-1 space-y-1.5" id="settings-sidebar-nav">
         {SETTING_GROUPS.map(g => {
           const Icon = g.icon;
           const isActive = activeGroup === g.id;
@@ -229,9 +160,9 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({ onShowToast })
             <button
               key={g.id}
               onClick={() => setActiveGroup(g.id)}
-              className={`w-full text-left p-3 rounded-xl flex items-center gap-3 transition-all duration-150 cursor-pointer border ${
+              className={`w-full text-left p-4 rounded-xl flex items-center gap-3.5 transition-all duration-150 cursor-pointer border ${
                 isActive 
-                  ? "bg-indigo-600 border-indigo-700 text-white shadow-sm font-extrabold" 
+                  ? "bg-indigo-600 border-indigo-700 text-white shadow-md font-extrabold" 
                   : "bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50"
               }`}
             >
@@ -248,7 +179,7 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({ onShowToast })
       </div>
 
       {/* 2. RIGHT FORM EDITOR VIEW */}
-      <div className="lg:col-span-3 bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden" id="settings-editor-container">
+      <div className="lg:col-span-3 bg-white border border-slate-200 rounded-2xl shadow-3xs overflow-hidden" id="settings-editor-container">
         
         {/* Header summary of current group */}
         <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
@@ -260,14 +191,16 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({ onShowToast })
               {SETTING_GROUPS.find(g => g.id === activeGroup)?.description}
             </p>
           </div>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            <span>{saving ? "Replicating..." : "Save Settings"}</span>
-          </button>
+          {activeGroup !== "ADVANCED" && (
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="bg-indigo-650 hover:bg-indigo-750 text-white text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              <span>{saving ? "Replicating..." : "Save Settings"}</span>
+            </button>
+          )}
         </div>
 
         {/* Content Panel */}
@@ -290,58 +223,6 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({ onShowToast })
                     This technical gateway telemetry area details live ingress routing ports and Nginx proxy setups. Modifying container configurations manually is restricted to maintain locked sandbox encapsulation rules.
                   </p>
                 </div>
-              </div>
-
-              {/* Editable Fields in Advanced Group */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-6 border-b border-slate-100">
-                {filteredSettings.map(s => {
-                  const info = getSettingLabelAndIcon(s.settingKey);
-                  const RowIcon = info.icon;
-                  return (
-                    <div key={s.settingKey} className="p-4 bg-slate-50/50 border border-slate-100 hover:border-slate-200 rounded-xl transition-all space-y-2 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center gap-2.5 mb-2.5">
-                          <div className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 shrink-0">
-                            <RowIcon className="w-3.5 h-3.5" />
-                          </div>
-                          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">
-                            {info.label}
-                          </label>
-                        </div>
-
-                        {s.settingType === "boolean" ? (
-                          <div className="flex items-center gap-3 mt-1.5">
-                            <input 
-                              type="checkbox"
-                              id={`check-${s.settingKey}`}
-                              checked={s.settingValue === "true" || s.settingValue === "1" || s.settingValue === "yes"}
-                              onChange={(e) => handleValueChange(s.settingKey, e.target.checked ? "true" : "false")}
-                              className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
-                            />
-                            <span className="text-xs text-slate-600">
-                              {s.settingValue === "true" || s.settingValue === "1" || s.settingValue === "yes" ? "Enabled" : "Disabled"}
-                            </span>
-                          </div>
-                        ) : (
-                          <input 
-                            type="text"
-                            value={s.settingValue || ""}
-                            onChange={(e) => handleValueChange(s.settingKey, e.target.value)}
-                            placeholder={info.placeholder}
-                            className="w-full px-3.5 py-2 border border-slate-200 bg-white hover:border-slate-300 focus:border-indigo-500 text-xs rounded-lg transition-all focus:ring-1 focus:ring-indigo-500/10 font-sans outline-hidden text-slate-800"
-                          />
-                        )}
-                      </div>
-
-                      <div className="pt-2.5 flex items-center justify-between text-[10px] text-slate-400 font-mono tracking-tight select-none">
-                        <span>Key: {s.settingKey}</span>
-                        <span className={`px-1.5 py-0.5 rounded text-[8px] uppercase font-bold tracking-wider ${s.isPublic ? "bg-teal-50 text-teal-700 border border-teal-100" : "bg-slate-100 text-slate-500 border border-slate-200"}`}>
-                          {s.isPublic ? "Public API" : "Secure Server"}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -385,7 +266,7 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({ onShowToast })
             <div className="space-y-6">
               {filteredSettings.length === 0 ? (
                 <div className="p-8 text-center text-slate-400 font-medium text-xs">
-                  No configuration keys have been initialized for this group in the database. Saved defaults will initialize.
+                  No configuration keys have been initialized for this group.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -397,7 +278,7 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({ onShowToast })
                       <div key={s.settingKey} className="p-4 bg-slate-50/50 border border-slate-100 hover:border-slate-200 rounded-xl transition-all space-y-2 flex flex-col justify-between">
                         <div>
                           <div className="flex items-center gap-2.5 mb-2.5">
-                            <div className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 shrink-0">
+                            <div className="p-1.5 rounded-lg bg-indigo-50 text-indigo-650 shrink-0">
                               <RowIcon className="w-3.5 h-3.5" />
                             </div>
                             <label className="block text-xs font-bold text-slate-750 uppercase tracking-wide">
@@ -410,12 +291,12 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({ onShowToast })
                               <input 
                                 type="checkbox"
                                 id={`check-${s.settingKey}`}
-                                checked={s.settingValue === "true" || s.settingValue === "1" || s.settingValue === "yes"}
+                                checked={s.settingValue === "true" || s.settingValue === "1"}
                                 onChange={(e) => handleValueChange(s.settingKey, e.target.checked ? "true" : "false")}
                                 className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
                               />
                               <span className="text-xs text-slate-600">
-                                {s.settingValue === "true" || s.settingValue === "1" || s.settingValue === "yes" ? "Enabled" : "Disabled"}
+                                {s.settingValue === "true" || s.settingValue === "1" ? "Enabled" : "Disabled"}
                               </span>
                             </div>
                           ) : (
@@ -424,7 +305,7 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({ onShowToast })
                               value={s.settingValue || ""}
                               onChange={(e) => handleValueChange(s.settingKey, e.target.value)}
                               placeholder={info.placeholder}
-                              className="w-full px-3.5 py-2 border border-slate-200 bg-white hover:border-slate-300 focus:border-indigo-500 text-xs rounded-lg transition-all focus:ring-1 focus:ring-indigo-500/10 font-sans outline-hidden text-slate-800"
+                              className="w-full px-3.5 py-2 border border-slate-200 bg-white hover:border-slate-350 focus:border-indigo-500 text-xs rounded-lg transition-all focus:ring-1 focus:ring-indigo-500/10 font-sans outline-hidden text-slate-800"
                             />
                           )}
                         </div>
