@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { 
-  Plus, Check, Trash2, Edit3, Shield, Box, Zap, Settings, Info, Copy, Sliders, DollarSign, RefreshCw, X, AlertTriangle, HelpCircle
+  Plus, Check, Trash2, Edit3, Shield, Box, Zap, Settings, Info, Copy, Sliders, DollarSign, RefreshCw, X, AlertTriangle, HelpCircle, Search, Sparkles, Tag, Users, Activity, CreditCard
 } from "lucide-react";
 import { SubscriptionPlan, SaasFeature, PlanLimits } from "./SaasTypes.ts";
 
@@ -46,6 +46,13 @@ export default function PlanFeatureMatrixTab({
   const [newPlan, setNewPlan] = useState({
     name: "", code: "", monthlyPrice: 99, yearlyPrice: 990, trialDays: 14, sortOrder: 5
   });
+
+  // Advanced 4-Tab Plan Editor Modal states
+  const [activeEditPlan, setActiveEditPlan] = useState<SubscriptionPlan | null>(null);
+  const [editorTab, setEditorTab] = useState<"general" | "pricing" | "limits" | "features">("general");
+  const [featureSearchTerm, setFeatureSearchTerm] = useState("");
+  const [newLimitKey, setNewLimitKey] = useState("");
+  const [newLimitValue, setNewLimitValue] = useState<number>(0);
 
   const handleCreatePlanSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -521,6 +528,18 @@ export default function PlanFeatureMatrixTab({
                         <Copy className="w-3.5 h-3.5" />
                         Clone Plan
                       </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveEditPlan(p);
+                          setEditorTab("general");
+                        }}
+                        className="text-xs font-bold text-amber-650 hover:text-amber-850 hover:underline flex items-center gap-1 transition-all cursor-pointer"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        Edit Full Plan
+                      </button>
                     </div>
 
                     {onSavePlan && (
@@ -640,6 +659,515 @@ export default function PlanFeatureMatrixTab({
           </div>
         </div>
       )}
+
+      {/* Advanced 4-Tab Plan Editor Modal */}
+      {activeEditPlan && (() => {
+        const p = plans.find(plan => plan.code === activeEditPlan.code) || activeEditPlan;
+        const limitsForPlan = planLimits[p.code] || {
+          projectsLimit: 0, layoutsLimit: 0, plotsLimit: 0, usersLimit: 0, storageLimitGb: 0
+        };
+
+        // Group features by category/group
+        const groupedFeatures: Record<string, SaasFeature[]> = {};
+        features.forEach(f => {
+          const groupName = f.group || "Core Platform";
+          if (!groupedFeatures[groupName]) {
+            groupedFeatures[groupName] = [];
+          }
+          groupedFeatures[groupName].push(f);
+        });
+
+        return (
+          <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl max-w-3xl w-full h-[90vh] md:h-[80vh] flex flex-col shadow-2xl border border-slate-200 animate-scaleUp overflow-hidden font-sans">
+              
+              {/* Header */}
+              <div className="bg-slate-900 text-white p-6 shrink-0 flex justify-between items-center">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-black tracking-tight">Advanced Plan Configuration Editor</h3>
+                    <span className="text-[10px] uppercase font-mono font-bold bg-indigo-500/30 text-indigo-200 px-2 py-0.5 rounded border border-indigo-500/20">
+                      {p.code}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-355">Configure enterprise credentials, pricing metrics, resource caps, and access matrices.</p>
+                </div>
+                <button 
+                  onClick={() => setActiveEditPlan(null)}
+                  className="text-slate-400 hover:text-white transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Sub-navigation Tabs */}
+              <div className="flex border-b border-slate-200 bg-slate-50 px-6 py-2 shrink-0 gap-1 overflow-x-auto">
+                {[
+                  { id: "general", label: "General Config", icon: Settings },
+                  { id: "pricing", label: "Pricing & GST", icon: CreditCard },
+                  { id: "limits", label: "Capacity Limits", icon: Sliders },
+                  { id: "features", label: "Enabled Features", icon: Shield }
+                ].map(tab => {
+                  const isActive = editorTab === tab.id;
+                  const Icon = tab.icon;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setEditorTab(tab.id as any)}
+                      className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                        isActive 
+                          ? "bg-white text-indigo-700 shadow-3xs border border-slate-200" 
+                          : "text-slate-500 hover:text-slate-900"
+                      }`}
+                    >
+                      <Icon className={`w-3.5 h-3.5 ${isActive ? "text-indigo-600" : "text-slate-400"}`} />
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Scrollable Tab Content Area */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6 text-slate-650">
+                
+                {/* GENERAL TAB */}
+                {editorTab === "general" && (
+                  <div className="space-y-4">
+                    <div className="bg-amber-50 border border-amber-200/50 p-4 rounded-2xl text-[11px] text-amber-800 leading-normal">
+                      Configure base product naming structures, customer visibility parameters, and system rendering badges.
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider">Plan Display Name</label>
+                        <input
+                          type="text"
+                          value={p.name}
+                          onChange={(e) => onUpdatePlan(p.code, { name: e.target.value })}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-semibold focus:bg-white focus:border-indigo-400 focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider">Plan Lookup Code</label>
+                        <input
+                          type="text"
+                          readOnly
+                          disabled
+                          value={p.code}
+                          className="w-full bg-slate-100 border border-slate-200 rounded-xl p-2.5 text-xs font-mono text-slate-500 cursor-not-allowed"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider">Description</label>
+                      <textarea
+                        rows={3}
+                        value={p.description || ""}
+                        onChange={(e) => onUpdatePlan(p.code, { description: e.target.value })}
+                        placeholder="Describe the plan benefits and target audience..."
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-sans focus:bg-white focus:border-indigo-400 focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider">Status</label>
+                        <select
+                          value={p.status}
+                          onChange={(e) => onUpdatePlan(p.code, { status: e.target.value as any })}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-bold focus:bg-white focus:outline-none"
+                        >
+                          <option value="ACTIVE">ACTIVE</option>
+                          <option value="DISABLED">DISABLED</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider">Theme Color (Hex/Class)</label>
+                        <input
+                          type="text"
+                          value={p.color || ""}
+                          onChange={(e) => onUpdatePlan(p.code, { color: e.target.value })}
+                          placeholder="e.g. #4f46e5"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-mono font-bold focus:bg-white focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider">Sort Order Position</label>
+                        <input
+                          type="number"
+                          value={p.sortOrder}
+                          onChange={(e) => onUpdatePlan(p.code, { sortOrder: Number(e.target.value) })}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-bold focus:bg-white focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 pt-2">
+                      <div className="space-y-1 bg-slate-50 p-3 rounded-xl border border-slate-150">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-[10px] font-bold uppercase text-slate-550 tracking-wider">Recommended Badge</label>
+                          <input
+                            type="checkbox"
+                            checked={!!p.isRecommended}
+                            onChange={(e) => onUpdatePlan(p.code, { isRecommended: e.target.checked })}
+                            className="w-4 h-4 rounded text-indigo-650 cursor-pointer"
+                          />
+                        </div>
+                        <p className="text-[10px] text-slate-400">Highlights this plan as 'Most Popular' on customer checkout screens.</p>
+                      </div>
+
+                      <div className="space-y-1 bg-slate-50 p-3 rounded-xl border border-slate-150 flex flex-col justify-between">
+                        <div className="flex items-center justify-between gap-4">
+                          <label className="block text-[10px] font-bold uppercase text-slate-550 tracking-wider">Visibility Level</label>
+                          <select
+                            value={p.visibility || "PUBLIC"}
+                            onChange={(e) => onUpdatePlan(p.code, { visibility: e.target.value as any })}
+                            className="bg-white border border-slate-200 rounded p-1 text-[10px] font-bold focus:outline-none"
+                          >
+                            <option value="PUBLIC">🌍 Public</option>
+                            <option value="PRIVATE">🔒 Private Link</option>
+                            <option value="INTERNAL">🏢 Internal Only</option>
+                          </select>
+                        </div>
+                        <p className="text-[10px] text-slate-400">Restricts checkouts to corporate or internal staff workspaces.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* PRICING TAB */}
+                {editorTab === "pricing" && (
+                  <div className="space-y-4">
+                    <div className="bg-indigo-50/50 border border-indigo-100 p-4 rounded-2xl text-[11px] text-indigo-850 leading-normal">
+                      Configure base monthly, yearly, and one-time licensing fees. Establish tax metrics and GST behaviour.
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider">Monthly Recurring Price</label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-2.5 text-slate-400 text-xs font-bold">₹</span>
+                          <input
+                            type="number"
+                            value={p.monthlyPrice}
+                            onChange={(e) => onUpdatePlan(p.code, { monthlyPrice: Number(e.target.value) })}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 pl-7 text-xs font-black font-mono focus:bg-white focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider">Yearly Recurring Price</label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-2.5 text-slate-400 text-xs font-bold">₹</span>
+                          <input
+                            type="number"
+                            value={p.yearlyPrice}
+                            onChange={(e) => onUpdatePlan(p.code, { yearlyPrice: Number(e.target.value) })}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 pl-7 text-xs font-black font-mono focus:bg-white focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider">One-Time License Fee (Optional)</label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-2.5 text-slate-400 text-xs font-bold">₹</span>
+                          <input
+                            type="number"
+                            value={p.oneTimeLicenseFee || 0}
+                            onChange={(e) => onUpdatePlan(p.code, { oneTimeLicenseFee: Number(e.target.value) })}
+                            placeholder="e.g. 50000"
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 pl-7 text-xs font-black font-mono focus:bg-white focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider">Annual Maintenance (AMC Fee)</label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-2.5 text-slate-400 text-xs font-bold">₹</span>
+                          <input
+                            type="number"
+                            value={p.amcFee || 0}
+                            onChange={(e) => onUpdatePlan(p.code, { amcFee: Number(e.target.value) })}
+                            placeholder="e.g. 15000"
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 pl-7 text-xs font-black font-mono focus:bg-white focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider">Trial Evaluation (Days)</label>
+                        <input
+                          type="number"
+                          value={p.trialDays}
+                          onChange={(e) => onUpdatePlan(p.code, { trialDays: Number(e.target.value) })}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-black font-mono focus:bg-white focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider">Base Currency</label>
+                        <select
+                          value={p.currency || "INR"}
+                          onChange={(e) => onUpdatePlan(p.code, { currency: e.target.value })}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-bold focus:bg-white focus:outline-none"
+                        >
+                          <option value="INR">INR (₹)</option>
+                          <option value="USD">USD ($)</option>
+                          <option value="EUR">EUR (€)</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider">GST Behaviour Schema</label>
+                        <select
+                          value={p.gstBehavior || "INCLUSIVE"}
+                          onChange={(e) => onUpdatePlan(p.code, { gstBehavior: e.target.value as any })}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-bold focus:bg-white focus:outline-none"
+                        >
+                          <option value="INCLUSIVE">INCLUSIVE (18% Included)</option>
+                          <option value="EXCLUSIVE">EXCLUSIVE (18% Extra)</option>
+                          <option value="EXEMPT">EXEMPT (No Taxes)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* LIMITS TAB */}
+                {editorTab === "limits" && (
+                  <div className="space-y-4">
+                    <div className="bg-teal-50/50 border border-teal-200/50 p-4 rounded-2xl text-[11px] text-teal-800 leading-normal flex justify-between items-center">
+                      <div>
+                        Assign dynamic numerical threshold parameters and system caps.
+                        <strong className="block mt-0.5 text-teal-900">Any dynamic key added here is automatically supported!</strong>
+                      </div>
+                    </div>
+
+                    {/* Add Custom Limit Sub-Form */}
+                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex gap-3 items-end">
+                      <div className="flex-1 space-y-1">
+                        <label className="block text-[9px] font-bold uppercase text-slate-450">Custom Limit Parameter Key</label>
+                        <input
+                          type="text"
+                          value={newLimitKey}
+                          onChange={(e) => setNewLimitKey(e.target.value.replace(/\s+/g, ""))}
+                          placeholder="e.g. max_bookings"
+                          className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-mono font-bold focus:outline-none"
+                        />
+                      </div>
+                      <div className="w-[120px] space-y-1">
+                        <label className="block text-[9px] font-bold uppercase text-slate-450">Value limit</label>
+                        <input
+                          type="number"
+                          value={newLimitValue}
+                          onChange={(e) => setNewLimitValue(Number(e.target.value))}
+                          className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-mono font-bold focus:outline-none"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!newLimitKey.trim()) return;
+                          onUpdatePlanLimit(p.code, newLimitKey as any, newLimitValue);
+                          setNewLimitKey("");
+                          setNewLimitValue(0);
+                        }}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg p-2 px-3 text-xs font-bold h-[35px] cursor-pointer"
+                      >
+                        Add Parameter
+                      </button>
+                    </div>
+
+                    <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white max-h-[300px] overflow-y-auto">
+                      <table className="w-full text-xs text-left">
+                        <thead className="bg-slate-50 text-[10px] text-slate-400 uppercase font-bold">
+                          <tr>
+                            <th className="p-3">Limit Dimension / Key</th>
+                            <th className="p-3 text-center w-[150px]">Allowed Bound</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-sans">
+                          {Object.entries(limitsForPlan).map(([key, val]) => {
+                            // Map well-known keys to friendly names
+                            const labelsMap: Record<string, string> = {
+                              projectsLimit: "🏢 Total Projects Limit",
+                              layoutsLimit: "📐 Subdiv Sector Layouts",
+                              plotsLimit: "🗺️ Max Plot Ledger Count",
+                              customersLimit: "👥 Customers CRM Records",
+                              usersLimit: "👤 Authorized User Logins",
+                              agentsLimit: "💼 Active Broker Agents",
+                              storageLimitGb: "☁️ Assigned Cloud Storage (GB)",
+                              documentsLimit: "📄 CAD Documents Catalog",
+                              dxfFilesLimit: "⚙️ DXF Imports Allowed",
+                              marketplaceListingsLimit: "🌐 Marketplace Listings",
+                              apiCallsLimit: "⚡ API Gateway Requests / mo",
+                              whatsAppMessagesLimit: "💬 WhatsApp Notifications / mo",
+                              aiCreditsLimit: "🤖 AI Evaluation Credits"
+                            };
+                            return (
+                              <tr key={key} className="hover:bg-slate-50/50">
+                                <td className="p-3">
+                                  <span className="font-extrabold text-slate-800 block">{labelsMap[key] || key}</span>
+                                  <span className="text-[9.5px] text-slate-400 font-mono">key: {key}</span>
+                                </td>
+                                <td className="p-3">
+                                  <input
+                                    type="number"
+                                    value={val === undefined || val === null ? "" : val}
+                                    onChange={(e) => onUpdatePlanLimit(p.code, key as any, e.target.value === "" ? 0 : Number(e.target.value))}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded p-1.5 text-center font-mono font-bold focus:bg-white focus:outline-none"
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* FEATURES TAB */}
+                {editorTab === "features" && (
+                  <div className="space-y-4">
+                    <div className="bg-indigo-50/40 border border-indigo-100 p-4 rounded-2xl text-[11px] text-indigo-800 flex justify-between items-center gap-4 flex-wrap">
+                      <div className="leading-normal">
+                        Toggle functional access switches assigned to this plan.
+                        <span className="block text-slate-450 font-bold">Enabled features are accessible by active workspace subscription handshakes.</span>
+                      </div>
+                      
+                      <div className="relative max-w-[220px] w-full">
+                        <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+                        <input
+                          type="text"
+                          placeholder="Search modules & features..."
+                          value={featureSearchTerm}
+                          onChange={(e) => setFeatureSearchTerm(e.target.value)}
+                          className="w-full bg-white border border-slate-200 rounded-lg pl-8 p-1.5 text-xs focus:outline-none focus:border-indigo-400"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-4 max-h-[350px] overflow-y-auto pr-1">
+                      {Object.entries(groupedFeatures).map(([groupName, groupFeaturesList]) => {
+                        // Filter features in this group based on search term
+                        const filteredList = groupFeaturesList.filter(f => 
+                          f.name.toLowerCase().includes(featureSearchTerm.toLowerCase()) || 
+                          f.code.toLowerCase().includes(featureSearchTerm.toLowerCase()) ||
+                          (f.description && f.description.toLowerCase().includes(featureSearchTerm.toLowerCase()))
+                        );
+
+                        if (filteredList.length === 0) return null;
+
+                        return (
+                          <div key={groupName} className="bg-slate-50 border border-slate-150 p-4 rounded-2xl space-y-2.5">
+                            <h4 className="text-[10px] font-extrabold text-slate-550 uppercase tracking-wider border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                              {groupName}
+                            </h4>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                              {filteredList.map((f) => {
+                                const isChecked = matrix[p.code]?.[f.code] === "ENABLED";
+                                
+                                // Inheritance detection
+                                let isInherited = false;
+                                const planIndex = plans.findIndex(plan => plan.code === p.code);
+                                if (planIndex > 0) {
+                                  for (let i = 0; i < planIndex; i++) {
+                                    if (matrix[plans[i].code]?.[f.code] === "ENABLED") {
+                                      isInherited = true;
+                                      break;
+                                    }
+                                  }
+                                }
+
+                                return (
+                                  <div key={f.code} className="flex items-start gap-2.5 p-2 bg-white rounded-lg border border-slate-150 shadow-3xs">
+                                    <input
+                                      type="checkbox"
+                                      id={`feat-modal-${p.code}-${f.code}`}
+                                      checked={isChecked}
+                                      onChange={(e) => {
+                                        onUpdateMatrixCell(p.code, f.code, e.target.checked ? "ENABLED" : "DISABLED");
+                                      }}
+                                      className="w-4 h-4 rounded text-indigo-650 cursor-pointer mt-0.5"
+                                    />
+                                    <div className="space-y-0.5 flex-1 min-w-0">
+                                      <label htmlFor={`feat-modal-${p.code}-${f.code}`} className="font-extrabold text-slate-900 cursor-pointer block select-none">
+                                        {f.name}
+                                      </label>
+                                      <p className="text-[9px] text-slate-400 font-mono select-none">code: {f.code}</p>
+                                      {f.description && (
+                                        <p className="text-[9.5px] text-slate-500 leading-normal select-none">{f.description}</p>
+                                      )}
+                                      
+                                      <div className="flex gap-1.5 pt-1.5">
+                                        {isInherited && (
+                                          <span className="text-[8.5px] bg-emerald-50 text-emerald-800 border border-emerald-100 font-bold px-1.5 py-0.5 rounded leading-none flex items-center gap-0.5">
+                                            ✓ Inherited
+                                          </span>
+                                        )}
+                                        {isChecked && (
+                                          <span className="text-[8.5px] bg-indigo-50 text-indigo-800 border border-indigo-100 font-bold px-1.5 py-0.5 rounded leading-none flex items-center gap-0.5">
+                                            🔌 Enabled
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+              </div>
+
+              {/* Actions Footer */}
+              <div className="bg-slate-50 border-t border-slate-200 p-4 shrink-0 flex gap-3 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setActiveEditPlan(null)}
+                  className="bg-white border border-slate-250 text-slate-700 py-2 px-4 rounded-xl font-bold text-xs cursor-pointer hover:bg-slate-100"
+                >
+                  Close & Discard
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onSavePlan) {
+                      onSavePlan(p.code);
+                    }
+                    setActiveEditPlan(null);
+                  }}
+                  className="bg-indigo-650 hover:bg-indigo-750 text-white py-2 px-5 rounded-xl font-bold text-xs shadow-md cursor-pointer flex items-center gap-1"
+                >
+                  <Check className="w-4 h-4" />
+                  Save Plan & Close
+                </button>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
 
     </div>
   );

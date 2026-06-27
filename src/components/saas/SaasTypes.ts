@@ -32,6 +32,14 @@ export interface SubscriptionPlan {
   trialDays: number;
   status: "ACTIVE" | "DISABLED";
   sortOrder: number;
+  description?: string;
+  color?: string;
+  isRecommended?: boolean;
+  visibility?: "PUBLIC" | "PRIVATE" | "INTERNAL";
+  oneTimeLicenseFee?: number;
+  amcFee?: number;
+  currency?: string;
+  gstBehavior?: "INCLUSIVE" | "EXCLUSIVE" | "EXEMPT";
 }
 
 export interface PlanLimits {
