@@ -139,10 +139,10 @@ export default function ModuleRegistryTab({
                     <th className="px-5 py-4">Module</th>
                     <th className="px-5 py-4">Category</th>
                     <th className="px-5 py-4 text-center">Billable</th>
-                    <th className="px-5 py-4 text-center">Enabled</th>
                     <th className="px-5 py-4 text-center">Core</th>
                     <th className="px-5 py-4 text-center">Version</th>
                     <th className="px-5 py-4">Dependencies</th>
+                    <th className="px-5 py-4 text-center">Enabled</th>
                     <th className="px-5 py-4 text-center">Status</th>
                     <th className="px-5 py-4 text-right">Actions</th>
                   </tr>
@@ -172,13 +172,13 @@ export default function ModuleRegistryTab({
                     }
 
                     return (
-                      <tr key={m.code} className="hover:bg-slate-50/50">
+                      <tr key={m.code} className="hover:bg-slate-55/40">
                         {/* Module (Name & Code) */}
                         <td className="px-5 py-4">
                           <div>
                             <p className="font-extrabold text-slate-900 text-xs">{m.name}</p>
                             <p className="text-[10px] text-slate-400 font-mono mt-0.5">{m.code}</p>
-                            <p className="text-[10.5px] text-slate-500 mt-1 leading-normal max-w-sm">{m.description || "No manual description provided for module components."}</p>
+                            <p className="text-[10.5px] text-slate-505 mt-1 leading-normal max-w-sm">{m.description || "No manual description provided for module components."}</p>
                           </div>
                         </td>
 
@@ -198,21 +198,6 @@ export default function ModuleRegistryTab({
                           }`}>
                             {m.isBillable ? "⚡ Billable" : "Free Core"}
                           </span>
-                        </td>
-
-                        {/* Enabled (Toggle Switch) */}
-                        <td className="px-5 py-4 text-center">
-                          <button
-                            onClick={() => onUpdateModule(m.code, { status: m.status === "ACTIVE" ? "DISABLED" : "ACTIVE" })}
-                            className="focus:outline-none hover:opacity-85 transition-all cursor-pointer align-middle inline-block"
-                            title={m.status === "ACTIVE" ? "Click to Disable Module" : "Click to Enable Module"}
-                          >
-                            {m.status === "ACTIVE" ? (
-                              <ToggleRight className="w-8 h-8 text-emerald-500" />
-                            ) : (
-                              <ToggleLeft className="w-8 h-8 text-slate-300" />
-                            )}
-                          </button>
                         </td>
 
                         {/* Core (IsCore Flag) */}
@@ -236,6 +221,21 @@ export default function ModuleRegistryTab({
                         {/* Dependencies */}
                         <td className="px-5 py-4 text-slate-550 font-mono text-[9.5px]">
                           {deps}
+                        </td>
+
+                        {/* Enabled (Toggle Switch) */}
+                        <td className="px-5 py-4 text-center">
+                          <button
+                            onClick={() => onUpdateModule(m.code, { status: m.status === "ACTIVE" ? "DISABLED" : "ACTIVE" })}
+                            className="focus:outline-none hover:opacity-85 transition-all cursor-pointer align-middle inline-block"
+                            title={m.status === "ACTIVE" ? "Click to Disable Module" : "Click to Enable Module"}
+                          >
+                            {m.status === "ACTIVE" ? (
+                              <ToggleRight className="w-8 h-8 text-emerald-505" />
+                            ) : (
+                              <ToggleLeft className="w-8 h-8 text-slate-300" />
+                            )}
+                          </button>
                         </td>
 
                         {/* Status (Runtime indicator) */}

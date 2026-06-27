@@ -4,6 +4,7 @@ import {
   Save, AlertCircle, RefreshCw, CheckCircle2, Info, Building2, Phone, FileText, Lock
 } from "lucide-react";
 import { api } from "../../lib/api";
+import AddonsBillingTab from "./AddonsBillingTab.tsx";
 
 interface Setting {
   id?: string;
@@ -16,6 +17,12 @@ interface Setting {
 
 interface SaasSettingsTabProps {
   onShowToast: (message: string, type: "success" | "error") => void;
+  slabs?: any[];
+  addons?: any[];
+  onAddSlab?: (slab: any) => void;
+  onUpdateSlab?: (id: string, updates: any) => void;
+  onDeleteSlab?: (id: string) => void;
+  onReorderSlabs?: (orderedIds: string[]) => void;
 }
 
 const SETTING_GROUPS = [
@@ -26,6 +33,7 @@ const SETTING_GROUPS = [
   { id: "CURRENCY", label: "Currency Configuration", icon: CreditCard, description: "Verify INR base currency symbols." },
   { id: "GST", label: "GST Taxes Schema", icon: FileText, description: "Setup tax parameters and GST details." },
   { id: "BILLING", label: "Billing & Lifecycle", icon: CreditCard, description: "Manage subscription windows and trial periods." },
+  { id: "PRICING_RULES", label: "Internal Pricing Rules", icon: CreditCard, description: "Manage plot billing slabs and internal pricing rules." },
   { id: "DOMAINS", label: "Domains & Routing", icon: Globe, description: "Configure custom hostname proxy parameters." },
   { id: "EMAIL", label: "Email SMTP Setup", icon: Mail, description: "Establish outbound SMTP mail relay services." },
   { id: "WHATSAPP", label: "WhatsApp Gateway", icon: Phone, description: "Associate enterprise WhatsApp APIs." },
@@ -107,7 +115,15 @@ const DEFAULT_PLATFORM_SETTINGS: Omit<Setting, "id">[] = [
   { settingGroup: "ADVANCED", settingKey: "cache_driver", settingValue: "Redis", settingType: "string", isPublic: false },
 ];
 
-export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({ onShowToast }) => {
+export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({ 
+  onShowToast,
+  slabs = [],
+  addons = [],
+  onAddSlab,
+  onUpdateSlab,
+  onDeleteSlab,
+  onReorderSlabs
+}) => {
   const [activeGroup, setActiveGroup] = useState<string>("GENERAL");
   const [settings, setSettings] = useState<Setting[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -287,7 +303,7 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({ onShowToast })
               {SETTING_GROUPS.find(g => g.id === activeGroup)?.description}
             </p>
           </div>
-          {activeGroup !== "ADVANCED" && (
+          {activeGroup !== "ADVANCED" && activeGroup !== "PRICING_RULES" && (
             <button
               onClick={handleSave}
               disabled={saving}
@@ -308,7 +324,21 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({ onShowToast })
             </div>
           )}
 
-          {activeGroup === "ADVANCED" ? (
+          {activeGroup === "PRICING_RULES" ? (
+            <div className="space-y-6" id="pricing-rules-view">
+              <AddonsBillingTab 
+                defaultTab="slabs"
+                slabs={slabs}
+                addons={addons}
+                onAddSlab={onAddSlab || (() => {})}
+                onUpdateSlab={onUpdateSlab || (() => {})}
+                onDeleteSlab={onDeleteSlab || (() => {})}
+                onReorderSlabs={onReorderSlabs || (() => {})}
+                onAddAddon={() => {}}
+                onUpdateAddon={() => {}}
+              />
+            </div>
+          ) : activeGroup === "ADVANCED" ? (
             /* TECHNICAL GATEWAY INFRASTRUCTURE INFO SCREEN */
             <div className="space-y-6" id="advanced-ingress-view">
               <div className="bg-amber-50/50 border border-amber-200 rounded-xl p-5 flex items-start gap-4 text-xs">
