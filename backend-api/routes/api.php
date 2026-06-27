@@ -282,6 +282,7 @@ Route::prefix('v1')->group(function () {
     // -------------------------------------------------------------------------
     Route::get('/admin/modules', [SaasController::class, 'getModules'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
     Route::post('/admin/modules', [SaasController::class, 'saveModule'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::get('/admin/features', [SaasController::class, 'getFeatures'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
     Route::post('/admin/features', [SaasController::class, 'saveFeature'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
     Route::get('/admin/plans', [SaasController::class, 'getPlans'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
     Route::post('/admin/plans', [SaasController::class, 'savePlan'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);

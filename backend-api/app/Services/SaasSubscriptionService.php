@@ -28,6 +28,14 @@ class SaasSubscriptionService
     }
 
     /**
+     * Retrieve all features.
+     */
+    public static function getFeatures()
+    {
+        return SaasFeature::orderBy('code')->get();
+    }
+
+    /**
      * Create or Update a SaaS Module.
      */
     public static function saveModule(array $data, array $context): SaasModule

@@ -39,6 +39,14 @@ class SaasController extends Controller
     }
 
     /**
+     * GET /api/v1/admin/features
+     */
+    public function getFeatures()
+    {
+        return response()->json(SaasSubscriptionService::getFeatures());
+    }
+
+    /**
      * POST /api/v1/admin/modules
      */
     public function saveModule(Request $request)

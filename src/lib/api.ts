@@ -223,6 +223,12 @@ class ApiClient {
     });
   }
 
+  async fetchSaasFeatures(): Promise<any[]> {
+    return this.request<any[]>("/admin/features", {
+      method: "GET"
+    });
+  }
+
   async fetchSaasPlans(): Promise<any[]> {
     return this.request<any[]>("/admin/plans", {
       method: "GET"

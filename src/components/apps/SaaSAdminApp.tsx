@@ -94,31 +94,10 @@ export default function SaaSAdminApp() {
   };
 
   // Module Registry
-  const [modules, setModules] = useState<SaasModule[]>([
-    { name: "SaaS Admin Core", code: "SAAS_ADMIN", group: "System", description: "Global multi-tenant supervisory console and DNS cluster config.", status: "ACTIVE", isCore: true, isBillable: false, sortOrder: 1, defaultFeatureAccess: [] },
-    { name: "Tenant Workspace", code: "TENANT_WORKSPACE", group: "System", description: "Self-service tenant environment routing framework.", status: "ACTIVE", isCore: true, isBillable: false, sortOrder: 2, defaultFeatureAccess: [] },
-    { name: "Projects Catalog", code: "PROJECTS", group: "Core Planning", description: "Design, catalog, track, and administer township real estate projects.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 3, defaultFeatureAccess: [] },
-    { name: "Layout Subdivisions", code: "LAYOUTS", group: "Core Planning", description: "Phased land parcel plans and sector map zoning layouts.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 4, defaultFeatureAccess: [] },
-    { name: "Plot Parcels Registry", code: "PLOTS", group: "Core Planning", description: "Individual tract plots inventory ledger catalog with custom attributes.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 5, defaultFeatureAccess: [] },
-    { name: "Customer Management", code: "CUSTOMERS", group: "CRM", description: "All-inclusive lead nurturing, contact profiles, and buyer records.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 6, defaultFeatureAccess: [] },
-    { name: "Agent Workspace", code: "AGENTS", group: "CRM", description: "Broker network controls, dynamic agent performance, and metrics.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 7, defaultFeatureAccess: [] },
-    { name: "Interactive Map", code: "INTERACTIVE_MAP", group: "Integrations", description: "Realtime SVG CAD mapper with plot reservation visual indicators.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 8, defaultFeatureAccess: [] },
-    { name: "DXF Engine Parser", code: "DXF_ENGINE", group: "Integrations", description: "Heavy CAD drawing parser to translate design diagrams into databases.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 9, defaultFeatureAccess: [] },
-    { name: "WhatsApp Integrations", code: "WHATSAPP", group: "Integrations", description: "Automated direct trigger alerts on user reservation checkouts.", status: "ACTIVE", isCore: false, isBillable: true, sortOrder: 10, defaultFeatureAccess: [] }
-  ]);
+  const [modules, setModules] = useState<SaasModule[]>([]);
 
   // Feature Catalog
-  const [features, setFeatures] = useState<SaasFeature[]>([
-    { name: "Township projects catalog", code: "PROJECTS", moduleCode: "PROJECTS", group: "Core Planning", description: "Create and scale township planning models.", status: "ACTIVE", defaultEnabled: true },
-    { name: "Subdivision planning tool", code: "LAYOUTS", moduleCode: "LAYOUTS", group: "Core Planning", description: "Zoned sector plans and division lines.", status: "ACTIVE", defaultEnabled: true },
-    { name: "Physical lot registers", code: "PLOTS", moduleCode: "PLOTS", group: "Core Planning", description: "Assign coordinates, lot numbers and PLC rates.", status: "ACTIVE", defaultEnabled: true },
-    { name: "Buyer records logs", code: "CUSTOMERS", moduleCode: "CUSTOMERS", group: "CRM", description: "Manage customer profiles and reservation ledgers.", status: "ACTIVE", defaultEnabled: true },
-    { name: "Broker agent scorecard", code: "AGENTS", moduleCode: "AGENTS", group: "CRM", description: "Keep logs on external broker sales targets and payouts.", status: "ACTIVE", defaultEnabled: true },
-    { name: "DXF CAD Drawing upload", code: "DXF_UPLOAD", moduleCode: "DXF_ENGINE", group: "Integrations", description: "Render canvas lots directly out of dynamic .dxf blueprints.", status: "ACTIVE", defaultEnabled: true },
-    { name: "Interactive property layouts", code: "MAP_INTERACTION", moduleCode: "INTERACTIVE_MAP", group: "Integrations", description: "Visual parcel lockups on mapping widgets.", status: "ACTIVE", defaultEnabled: true },
-    { name: "Automated reservation alerts", code: "WHATSAPP_TRIGGERS", moduleCode: "WHATSAPP", group: "Integrations", description: "Automatic WhatsApp broadcast warnings on payment locks.", status: "ACTIVE", defaultEnabled: true },
-    { name: "Custom API client keys", code: "API_ACCESS", moduleCode: "SAAS_ADMIN", group: "System", description: "Export telemetry datasets to external ERP software.", status: "ACTIVE", defaultEnabled: true }
-  ]);
+  const [features, setFeatures] = useState<SaasFeature[]>([]);
 
   // Subscription Plans
   const [plans, setPlans] = useState<SubscriptionPlan[]>([
@@ -170,8 +149,9 @@ export default function SaaSAdminApp() {
     try {
       const targetTenants = currentTenantsList || tenants;
 
-      const [modulesData, plansData, addonsData, slabsData] = await Promise.all([
+      const [modulesData, featuresData, plansData, addonsData, slabsData] = await Promise.all([
         api.fetchSaasModules(),
+        api.fetchSaasFeatures().catch(() => []),
         api.fetchSaasPlans(),
         api.fetchSaasAddons(),
         api.fetchSaasSlabs()
@@ -186,27 +166,41 @@ export default function SaaSAdminApp() {
         setModules(normalized);
       }
 
-      // Flatten saas_features nested in modules Data
+      // Flatten saas_features nested in modules Data, or use featuresData if present
       const allFeatures: SaasFeature[] = [];
-      modulesData.forEach((m: any) => {
-        if (m.features) {
-          m.features.forEach((f: any) => {
-            allFeatures.push({
-              id: f.id,
-              name: f.name,
-              code: f.code,
-              moduleCode: m.code,
-              group: f.group,
-              description: f.description,
-              status: f.status,
-              defaultEnabled: f.defaultEnabled
-            });
+      if (Array.isArray(featuresData) && featuresData.length > 0) {
+        featuresData.forEach((f: any) => {
+          const parentMod = modulesData?.find((m: any) => m.id === f.module_id);
+          allFeatures.push({
+            id: f.id,
+            name: f.name,
+            code: f.code,
+            moduleCode: parentMod ? parentMod.code : (f.module?.code || f.module_code || ""),
+            group: f.group,
+            description: f.description,
+            status: f.status,
+            defaultEnabled: f.default_enabled !== undefined ? !!f.default_enabled : !!f.defaultEnabled
           });
-        }
-      });
-      if (allFeatures.length > 0) {
-        setFeatures(allFeatures);
+        });
+      } else if (modulesData) {
+        modulesData.forEach((m: any) => {
+          if (m.features) {
+            m.features.forEach((f: any) => {
+              allFeatures.push({
+                id: f.id,
+                name: f.name,
+                code: f.code,
+                moduleCode: m.code,
+                group: f.group,
+                description: f.description,
+                status: f.status,
+                defaultEnabled: f.default_enabled !== undefined ? !!f.default_enabled : !!f.defaultEnabled
+              });
+            });
+          }
+        });
       }
+      setFeatures(allFeatures);
 
       // Populate plans, baseline planLimits, and planFeatureMatrix
       const planList: SubscriptionPlan[] = [];
@@ -1279,6 +1273,26 @@ export default function SaaSAdminApp() {
 
           {/* Viewport content */}
         
+        {/* Module Registry Tab */}
+        {["module-registry", "feature-catalog"].includes(activeTab) && (
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs animate-fadeIn font-sans">
+            <ModuleRegistryTab 
+              modules={modules}
+              features={features}
+              plans={plans}
+              addons={addons}
+              matrix={matrix}
+              isLoading={loadingConfig}
+              error={configError}
+              onAddModule={handleAddModule}
+              onUpdateModule={handleUpdateModule}
+              onAddFeature={handleAddFeature}
+              onUpdateFeature={handleUpdateFeature}
+              defaultTab={activeTab === "module-registry" ? "modules" : "features"}
+            />
+          </div>
+        )}
+
         {activeTab === "tenant-registry" && (
           <TenantManagementTab showToast={showToast} />
         )}
