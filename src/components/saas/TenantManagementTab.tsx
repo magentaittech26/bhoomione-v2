@@ -418,68 +418,103 @@ export default function TenantManagementTab({
                   </div>
                 ) : (
                   <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
-                    <table className="w-full text-xs text-left text-slate-700">
-                      <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-500 tracking-wider border-b border-slate-100">
-                        <tr>
-                          <th className="px-5 py-3.5">Tenant workspace</th>
-                          <th className="px-5 py-3.5">Current Plan</th>
-                          <th className="px-5 py-3.5">Status</th>
-                          <th className="px-5 py-3.5 text-center">Projects</th>
-                          <th className="px-5 py-3.5 text-center">Members</th>
-                          <th className="px-5 py-3.5">Renewal / Expiry</th>
-                          <th className="px-5 py-3.5 text-right">Operation</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {filteredTenants.map((t: any) => {
-                          const sub = t.subscription;
-                          const isSelected = selectedTenant && selectedTenant.id === t.id;
-                          return (
-                            <tr 
-                              key={t.id} 
-                              onClick={() => handleSelectTenant(t)}
-                              className={`hover:bg-slate-50/50 cursor-pointer transition-all ${
-                                isSelected ? "bg-indigo-50/50 border-l-2 border-indigo-600" : ""
-                              }`}
-                            >
-                              <td className="px-5 py-4">
-                                <div>
-                                  <p className="font-extrabold text-slate-900">{t.company_name}</p>
-                                  <p className="text-[10px] text-slate-400 font-mono mt-0.5">{t.tenant_code}.bhoomione.in</p>
-                                </div>
-                              </td>
-                              <td className="px-5 py-4">
-                                <span className="font-bold text-slate-800">{sub ? sub.plan_name : "UNASSIGNED"}</span>
-                              </td>
-                              <td className="px-5 py-4">
-                                {getStatusBadge(sub ? sub.status : "MOCK")}
-                              </td>
-                              <td className="px-5 py-4 text-center">
-                                <span className="font-mono font-bold bg-slate-50 border border-slate-100 px-2 py-0.5 rounded text-[11px] text-slate-700">
-                                  {t.usage.projects}
-                                </span>
-                              </td>
-                              <td className="px-5 py-4 text-center">
-                                <span className="font-mono font-bold bg-slate-50 border border-slate-100 px-2 py-0.5 rounded text-[11px] text-slate-700">
-                                  {t.usage.users}
-                                </span>
-                              </td>
-                              <td className="px-5 py-4">
-                                <span className="text-slate-500 font-semibold">{sub ? sub.expiry_date || "N/A" : "N/A"}</span>
-                              </td>
-                              <td className="px-5 py-4 text-right" onClick={(e) => e.stopPropagation()}>
-                                <button
-                                  onClick={() => handleSelectTenant(t)}
-                                  className="text-indigo-600 hover:text-indigo-800 font-extrabold flex items-center gap-0.5 ml-auto text-xs"
-                                >
-                                  Manage <ArrowRight className="w-3 h-3" />
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left text-slate-700">
+                        <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-500 tracking-wider border-b border-slate-100">
+                          <tr>
+                            <th className="px-5 py-3.5">Tenant workspace</th>
+                            <th className="px-5 py-3.5">Subscription Plan</th>
+                            <th className="px-5 py-3.5">Lifespan Dates</th>
+                            <th className="px-5 py-3.5">Auto Renew</th>
+                            <th className="px-5 py-3.5">Active Resource Usage</th>
+                            <th className="px-5 py-3.5">Status</th>
+                            <th className="px-5 py-3.5 text-right">Operation</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {filteredTenants.map((t: any) => {
+                            const sub = t.subscription;
+                            const isSelected = selectedTenant && selectedTenant.id === t.id;
+                            
+                            // Auto Renew display value helper
+                            const autoRenewActive = sub ? (sub.auto_renew !== undefined ? sub.auto_renew : true) : false;
+
+                            return (
+                              <tr 
+                                key={t.id} 
+                                onClick={() => handleSelectTenant(t)}
+                                className={`hover:bg-slate-50/50 cursor-pointer transition-all ${
+                                  isSelected ? "bg-indigo-50/50 border-l-2 border-indigo-600" : ""
+                                }`}
+                              >
+                                <td className="px-5 py-4">
+                                  <div>
+                                    <p className="font-extrabold text-slate-900">{t.company_name}</p>
+                                    <p className="text-[10px] text-slate-400 font-mono mt-0.5">{t.tenant_code}.bhoomione.in</p>
+                                  </div>
+                                </td>
+                                <td className="px-5 py-4">
+                                  <span className="font-bold text-slate-800">{sub ? sub.plan_name : "UNASSIGNED"}</span>
+                                </td>
+                                <td className="px-5 py-4">
+                                  <div className="space-y-0.5 text-[10px] text-slate-500 font-sans">
+                                    <p><span className="font-bold text-slate-400">Start:</span> {sub ? sub.start_date || sub.starts_at || "2026-01-01" : "N/A"}</p>
+                                    <p><span className="font-bold text-slate-400">End:</span> {sub ? sub.expiry_date || sub.ends_at || "2027-01-01" : "N/A"}</p>
+                                    <p><span className="font-bold text-slate-400">Renewal:</span> {sub ? sub.expiry_date || "2027-01-01" : "N/A"}</p>
+                                  </div>
+                                </td>
+                                <td className="px-5 py-4">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const nextVal = !autoRenewActive;
+                                      setTenants(prev => prev.map(item => {
+                                        if (item.id === t.id) {
+                                          return {
+                                            ...item,
+                                            subscription: {
+                                              ...(item.subscription || {}),
+                                              auto_renew: nextVal
+                                            }
+                                          };
+                                        }
+                                        return item;
+                                      }));
+                                      showToast(`Auto-renewal ${nextVal ? "ENABLED" : "DISABLED"} for ${t.company_name}`, "success");
+                                    }}
+                                    className={`px-2.5 py-1 rounded-full text-[9px] font-bold cursor-pointer transition-all border flex items-center gap-1 shrink-0 ${
+                                      autoRenewActive 
+                                        ? "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100" 
+                                        : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"
+                                    }`}
+                                  >
+                                    <span>{autoRenewActive ? "🟢 ON" : "⚪ OFF"}</span>
+                                  </button>
+                                </td>
+                                <td className="px-5 py-4">
+                                  <div className="space-y-0.5 text-[10.5px] font-sans">
+                                    <p className="font-semibold text-slate-700">👥 Users: <span className="font-mono font-bold bg-slate-50 px-1 py-0.2 rounded border text-slate-800">{t.usage.users || 0}</span></p>
+                                    <p className="font-semibold text-slate-700">📐 Plots: <span className="font-mono font-bold bg-slate-50 px-1 py-0.2 rounded border text-slate-800">{t.usage.plots !== undefined ? t.usage.plots : (t.usage.layouts || 0)}</span></p>
+                                  </div>
+                                </td>
+                                <td className="px-5 py-4">
+                                  {getStatusBadge(sub ? sub.status : "MOCK")}
+                                </td>
+                                <td className="px-5 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                                  <button
+                                    onClick={() => handleSelectTenant(t)}
+                                    className="text-indigo-600 hover:text-indigo-800 font-extrabold flex items-center gap-0.5 ml-auto text-xs"
+                                  >
+                                    Manage <ArrowRight className="w-3 h-3" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
               </div>

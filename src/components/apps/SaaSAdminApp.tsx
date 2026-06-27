@@ -1121,7 +1121,7 @@ export default function SaaSAdminApp() {
             const Icon = t.icon;
             // Map active state properly to handle both top-level and inner-tabs
             const isSelected = activeTab === t.id || 
-              (t.id === "subscription-center" && ["plan-master", "addons", "tenant-licenses", "usage", "billing", "invoices", "coupons", "promotions", "audit"].includes(activeTab)) ||
+              (t.id === "subscription-center" && ["plan-master", "addons", "tenant-licenses", "usage", "invoices", "audit"].includes(activeTab)) ||
               (t.id === "module-registry" && ["module-registry", "feature-catalog"].includes(activeTab));
 
             return (
@@ -1183,7 +1183,7 @@ export default function SaaSAdminApp() {
               <span className="text-slate-655 font-sans font-bold">
                 {activeTab === "mrr-dashboard" ? "Dashboard" :
                  activeTab === "tenant-registry" ? "Workspace Tenants" :
-                 ["plan-master", "addons", "tenant-licenses", "usage", "billing", "invoices", "coupons", "promotions", "audit"].includes(activeTab) ? "Subscription Center" :
+                 ["plan-master", "addons", "tenant-licenses", "usage", "invoices", "audit"].includes(activeTab) ? "Subscription Center" :
                  ["module-registry", "feature-catalog"].includes(activeTab) ? "Module Registry" :
                  activeTab === "tenant-overrides" ? "Tenant Overrides overrides" :
                  activeTab === "audit-logs" ? "Telemetry Audit Logs" : "System Settings"}
@@ -1192,7 +1192,7 @@ export default function SaaSAdminApp() {
             <h2 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider mt-0.5" id="header-main-title">
               {activeTab === "mrr-dashboard" ? "Revenue & Operations Analytics Dashboard" :
                activeTab === "tenant-registry" ? "Active Tenant Workspace Clusters" :
-               ["plan-master", "addons", "tenant-licenses", "usage", "billing", "invoices", "coupons", "promotions", "audit"].includes(activeTab) ? "Global Subscription Center / Pricing Packages" :
+               ["plan-master", "addons", "tenant-licenses", "usage", "invoices", "audit"].includes(activeTab) ? "Global Subscription Center / Pricing Packages" :
                ["module-registry", "feature-catalog"].includes(activeTab) ? "Platform Module Registry & Features Catalog" :
                activeTab === "tenant-overrides" ? "Dynamic Tenant Overrides Plan Manager" :
                activeTab === "audit-logs" ? "Telemetry Ingress Audit Logs Streams" : 
@@ -1220,17 +1220,14 @@ export default function SaaSAdminApp() {
         <div className="flex-1 p-6 md:p-8 space-y-6 overflow-y-auto">
 
           {/* INNER TABS FOR SUBSCRIPTION CENTER */}
-          {["plan-master", "addons", "tenant-licenses", "usage", "billing", "invoices", "coupons", "promotions", "audit"].includes(activeTab) && (
+          {["plan-master", "addons", "tenant-licenses", "usage", "invoices", "audit"].includes(activeTab) && (
             <div className="flex border-b border-slate-200 overflow-x-auto gap-1 bg-white p-2 rounded-xl border mb-6 shadow-3xs shrink-0">
               {[
                 { id: "plan-master", label: "Plans", icon: DollarSign },
                 { id: "addons", label: "Add-ons", icon: Shield },
                 { id: "tenant-licenses", label: "Tenant Licenses", icon: Users },
                 { id: "usage", label: "Usage", icon: Activity },
-                { id: "billing", label: "Billing", icon: CreditCard },
                 { id: "invoices", label: "Invoices", icon: Info },
-                { id: "coupons", label: "Coupons", icon: Tag },
-                { id: "promotions", label: "Promotions", icon: Star },
                 { id: "audit", label: "Audit", icon: Terminal }
               ].map(sub => {
                 const isActive = activeTab === sub.id;
@@ -1358,93 +1355,88 @@ export default function SaaSAdminApp() {
               ))}
             </div>
 
-            <div className="bg-slate-50 p-4 border border-slate-205 rounded-xl space-y-3">
-              <h4 className="text-[11px] font-extrabold text-slate-900 uppercase">Top 5 resource heavy tenants</h4>
+            <div className="bg-slate-50 p-5 border border-slate-205 rounded-xl space-y-3">
+              <h4 className="text-[11px] font-extrabold text-slate-900 uppercase tracking-wider">Ecosystem Resource Usage Ledger</h4>
               <div className="overflow-x-auto text-xs">
-                <table className="w-full text-left text-slate-600">
-                  <thead className="bg-slate-100/50 font-bold text-slate-500 text-[10px] uppercase">
+                <table className="w-full text-left text-slate-600 bg-white rounded-lg border border-slate-200">
+                  <thead className="bg-slate-50 font-bold text-slate-550 text-[10px] uppercase border-b border-slate-200">
                     <tr>
-                      <th className="p-2.5">Tenant Code</th>
-                      <th className="p-2.5">Projects</th>
-                      <th className="p-2.5">Storage (GB)</th>
-                      <th className="p-2.5">API Queries (mo)</th>
-                      <th className="p-2.5">GIS Maps Loaded</th>
+                      <th className="p-3">Resource Type / Name</th>
+                      <th className="p-3 text-center">Resource Code</th>
+                      <th className="p-3">Metric Type</th>
+                      <th className="p-3 text-right">Monthly Usage</th>
+                      <th className="p-3 text-right">Yearly Usage</th>
+                      <th className="p-3 text-right">Lifetime Usage</th>
+                      <th className="p-3 text-center" style={{ width: "160px" }}>% of Plan Limit</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-150">
+                  <tbody className="divide-y divide-slate-150 font-sans">
                     {[
-                      { code: "IND_MUNICIPAL_01", projects: 320, storage: "42.5 GB", api: "480,200", maps: "1,240" },
-                      { code: "ELD_LANDS_WEST", projects: 180, storage: "19.8 GB", api: "210,000", maps: "850" },
-                      { code: "KRN_DEVELOPERS", projects: 120, storage: "12.2 GB", api: "155,000", maps: "490" },
-                      { code: "SMR_PLAN_HUB", projects: 95, storage: "9.5 GB", api: "98,000", maps: "320" },
-                      { code: "BHR_BUILDERS_PVT", projects: 88, storage: "8.1 GB", api: "85,400", maps: "210" }
+                      {
+                        name: "GIS Map Layout Storage Node",
+                        code: "RES-STR-01",
+                        metricType: "File Bytes (S3 Compatible)",
+                        monthly: "18.5 GB",
+                        yearly: "192.4 GB",
+                        lifetime: "412.8 GB",
+                        pct: 82,
+                        pctColor: "bg-indigo-600"
+                      },
+                      {
+                        name: "Google Maps Platform Directions API",
+                        code: "RES-API-GM",
+                        metricType: "HTTP External Queries",
+                        monthly: "45,200 Hits",
+                        yearly: "512,000 Hits",
+                        lifetime: "1,248,000 Hits",
+                        pct: 45,
+                        pctColor: "bg-amber-500"
+                      },
+                      {
+                        name: "Tenant GIS Plots Databases",
+                        code: "RES-DB-PLT",
+                        metricType: "PostgreSQL Database Rows",
+                        monthly: "12,400 Rows",
+                        yearly: "148,000 Rows",
+                        lifetime: "482,900 Rows",
+                        pct: 96,
+                        pctColor: "bg-rose-500"
+                      },
+                      {
+                        name: "Active Dedicated Cluster Nodes",
+                        code: "RES-NODE-TNT",
+                        metricType: "Orchestrated Docker Pods",
+                        monthly: "12 Pods",
+                        yearly: "18 Pods",
+                        lifetime: "25 Pods",
+                        pct: 60,
+                        pctColor: "bg-emerald-600"
+                      },
+                      {
+                        name: "Auto-CAD DXF File Translators",
+                        code: "RES-CAD-DXF",
+                        metricType: "Vector Processing Hours",
+                        monthly: "120 Hours",
+                        yearly: "1,140 Hours",
+                        lifetime: "3,180 Hours",
+                        pct: 75,
+                        pctColor: "bg-violet-600"
+                      }
                     ].map((row, idx) => (
-                      <tr key={idx} className="hover:bg-slate-100/30">
-                        <td className="p-2.5 font-mono font-bold text-slate-900">{row.code}</td>
-                        <td className="p-2.5 font-semibold">{row.projects}</td>
-                        <td className="p-2.5 font-semibold font-mono text-indigo-650">{row.storage}</td>
-                        <td className="p-2.5 font-semibold font-mono text-slate-700">{row.api}</td>
-                        <td className="p-2.5 font-semibold font-mono text-slate-700">{row.maps}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Billing */}
-        {activeTab === "billing" && (
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs animate-fadeIn font-sans space-y-6">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <div>
-                <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Automated Billing Ledger & Gateway Rules</h3>
-                <p className="text-[11px] text-slate-500">View real-time auto-billing retry sequences and payment collection gateways.</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                <p className="text-[10px] text-slate-400 font-extrabold uppercase">Payment Gateway Provider</p>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-black text-slate-800">Razorpay Enterprise Integration</span>
-                  <span className="text-[9px] bg-emerald-50 text-emerald-800 border border-emerald-100 font-bold px-1.5 py-0.5 rounded">ONLINE</span>
-                </div>
-                <p className="text-[10px] text-slate-500">Auto-recurring cards and corporate net banking mandates enabled.</p>
-              </div>
-
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                <p className="text-[10px] text-slate-400 font-extrabold uppercase">Billing Recurrence Engine</p>
-                <p className="text-xs font-black text-slate-800">Next Auto-Run Scheduled</p>
-                <p className="text-[10px] text-indigo-600 font-mono font-bold">2026-06-28 00:00:00 UTC</p>
-              </div>
-
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                <p className="text-[10px] text-slate-400 font-extrabold uppercase">GST Invoice Settings</p>
-                <p className="text-xs font-black text-slate-800">Corporate IGST / CGST 18%</p>
-                <p className="text-[10px] text-slate-500">Consolidated monthly tax summary logs enabled.</p>
-              </div>
-            </div>
-
-            <div className="bg-slate-50 p-4 border border-slate-205 rounded-xl space-y-3">
-              <h4 className="text-[11px] font-extrabold text-slate-900 uppercase">Billing retry sequence logs (Latest 3 runs)</h4>
-              <div className="overflow-x-auto text-xs">
-                <table className="w-full text-left text-slate-600">
-                  <tbody className="divide-y divide-slate-150">
-                    {[
-                      { time: "2026-06-27 02:15:20", msg: "Recurring billing cron completed. Processed 42 workspaces, generated 3 invoices, successfully charged 2 credit cards automatically.", level: "INFO" },
-                      { time: "2026-06-26 12:44:02", msg: "Payment collection failed for workspace [IND_MUNICIPAL_01]. Card status: EXPIRED. Grace period initiated (7 days left). Sending automated alerts.", level: "WARNING" },
-                      { time: "2026-06-25 00:00:15", msg: "Razorpay webhook received: Payment ID pay_XYZ987654. Confirmed renewal subscription for [KRN_DEVELOPERS]. Plan: GROWTH_YEARLY.", level: "SUCCESS" }
-                    ].map((row, idx) => (
-                      <tr key={idx} className="hover:bg-slate-100/30 font-mono text-[10px]">
-                        <td className="p-2.5 text-slate-400 font-bold whitespace-nowrap">{row.time}</td>
-                        <td className="p-2.5">
-                          <span className={`inline-block font-extrabold text-[8px] px-1 py-0.5 rounded mr-2 ${
-                            row.level === "SUCCESS" ? "bg-emerald-50 text-emerald-800" :
-                            row.level === "WARNING" ? "bg-red-50 text-red-800" : "bg-blue-50 text-blue-800"
-                          }`}>{row.level}</span>
-                          <span className="text-slate-700 leading-relaxed font-sans">{row.msg}</span>
+                      <tr key={idx} className="hover:bg-slate-50/50">
+                        <td className="p-3 font-extrabold text-slate-800">{row.name}</td>
+                        <td className="p-3 text-center font-mono font-bold text-slate-500">{row.code}</td>
+                        <td className="p-3 text-slate-500 font-semibold">{row.metricType}</td>
+                        <td className="p-3 text-right font-mono font-bold text-indigo-650">{row.monthly}</td>
+                        <td className="p-3 text-right font-mono font-semibold text-slate-700">{row.yearly}</td>
+                        <td className="p-3 text-right font-mono font-semibold text-slate-700">{row.lifetime}</td>
+                        <td className="p-3 text-center">
+                          <div className="flex items-center gap-2 justify-center">
+                            <span className="font-mono font-bold text-[10px] text-slate-600">{row.pct}%</span>
+                            <div className="w-16 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                              <div className={`${row.pctColor} rounded-full h-1.5`} style={{ width: `${row.pct}%` }} />
+                            </div>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1454,6 +1446,8 @@ export default function SaaSAdminApp() {
             </div>
           </div>
         )}
+
+
 
         {/* Invoices */}
         {activeTab === "invoices" && (
@@ -1501,80 +1495,7 @@ export default function SaaSAdminApp() {
           </div>
         )}
 
-        {/* Coupons */}
-        {activeTab === "coupons" && (
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs animate-fadeIn font-sans space-y-6">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3 flex-wrap gap-4">
-              <div>
-                <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Promo Coupon Codes Catalog</h3>
-                <p className="text-[11px] text-slate-500">Configure corporate discounts, custom launch percentage coupons, and seasonal price adjustments.</p>
-              </div>
-              <button 
-                onClick={() => showToast("Dynamic Coupon registry creation is available! Modify settings directly to add customized pricing variables.", "success")}
-                className="bg-indigo-650 hover:bg-indigo-750 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition-all"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Create Coupon Code</span>
-              </button>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs">
-              {[
-                { code: "BHOOMI_LAUNCH_25", label: "Early Adopter Promotion", value: "25% OFF", type: "Percentage Recurring", limit: "First 100 Tenants", status: "ACTIVE", color: "text-emerald-700 bg-emerald-50 border border-emerald-100" },
-                { code: "CORP_IND_ANNUAL", label: "State Government Subsidy", value: "₹15,000 OFF", type: "Flat Rate Deduction", limit: "Municipal Tenants", status: "ACTIVE", color: "text-emerald-700 bg-emerald-50 border border-emerald-100" },
-                { code: "SPRING_STG_EXPIRED", label: "Historic Spring Campaign", value: "10% OFF", type: "Percentage Base", limit: "No restriction", status: "EXPIRED", color: "text-slate-400 bg-slate-100 border border-slate-200" }
-              ].map((row, idx) => (
-                <div key={idx} className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-4 hover:shadow-sm transition-all flex flex-col justify-between">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono font-black text-indigo-700 text-sm tracking-wide bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">{row.code}</span>
-                      <span className={`text-[8.5px] font-bold px-2 py-0.5 rounded-full ${row.color}`}>{row.status}</span>
-                    </div>
-                    <p className="font-extrabold text-slate-900 text-xs">{row.label}</p>
-                    <p className="text-slate-500 text-[10px] leading-relaxed">Type: {row.type} • Limit: {row.limit}</p>
-                  </div>
-                  <div className="pt-3 border-t border-slate-150 flex items-center justify-between">
-                    <span className="text-[10px] text-slate-400 uppercase font-bold">Value Multiplier</span>
-                    <span className="text-md font-black text-indigo-950 font-mono">{row.value}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Promotions */}
-        {activeTab === "promotions" && (
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs animate-fadeIn font-sans space-y-6">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3 flex-wrap gap-4">
-              <div>
-                <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Outreach & Campaigns Marketing Banners</h3>
-                <p className="text-[11px] text-slate-500">Configure active promotions shown inside customer portal dashboards to drive annual plan upgrades.</p>
-              </div>
-            </div>
-
-            <div className="bg-slate-50 p-6 border border-slate-205 rounded-2xl space-y-4">
-              <div className="flex items-start gap-4">
-                <div className="p-3 bg-indigo-50 text-indigo-650 rounded-xl shrink-0">
-                  <Star className="w-6 h-6" />
-                </div>
-                <div className="space-y-1 text-xs">
-                  <h4 className="font-extrabold text-slate-900 uppercase tracking-wide">Active Portal Banner: "Upgrade & Save 20%"</h4>
-                  <p className="text-slate-600 leading-normal max-w-2xl">
-                    Displays on the left margin sidebar inside the standard customer workspaces. Urges Starter and Growth tier tenants to upgrade their plan to the annual Professional cycle to receive complimentary DXF integration nodes and custom GIS maps.
-                  </p>
-                </div>
-              </div>
-
-              <div className="pt-3 border-t border-slate-200 flex items-center gap-6 text-[10px] text-slate-450 font-mono uppercase font-bold flex-wrap">
-                <span>Impressions (30d): <strong className="text-slate-800">12,480 Views</strong></span>
-                <span>Click-through (CTR): <strong className="text-emerald-700">4.82%</strong></span>
-                <span>Total Conversions: <strong className="text-indigo-600">32 Upgrades</strong></span>
-                <span>Status: <strong className="text-emerald-700">LIVE & TARGETING ACTIVE</strong></span>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Audit */}
         {activeTab === "audit" && (

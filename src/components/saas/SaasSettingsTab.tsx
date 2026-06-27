@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { 
   Globe, Shield, CreditCard, Mail, HardDrive, Sliders, Server, 
-  Save, AlertCircle, RefreshCw, CheckCircle2, Info, Building2, Phone, FileText, Lock
+  Save, AlertCircle, RefreshCw, CheckCircle2, Info, Building2, Phone, FileText, Lock,
+  Star, Tag, Terminal, Activity, Zap, Plus
 } from "lucide-react";
 import { api } from "../../lib/api";
 import AddonsBillingTab from "./AddonsBillingTab.tsx";
@@ -32,8 +33,10 @@ const SETTING_GROUPS = [
   { id: "LOCALIZATION", label: "Localization Info", icon: Globe, description: "Configure timezones and formatting conventions." },
   { id: "CURRENCY", label: "Currency Configuration", icon: CreditCard, description: "Verify INR base currency symbols." },
   { id: "GST", label: "GST Taxes Schema", icon: FileText, description: "Setup tax parameters and GST details." },
-  { id: "BILLING", label: "Billing & Lifecycle", icon: CreditCard, description: "Manage subscription windows and trial periods." },
+  { id: "BILLING", label: "Billing & Gateway", icon: CreditCard, description: "Configure payment gateway, logs, and billing intervals." },
   { id: "PRICING_RULES", label: "Internal Pricing Rules", icon: CreditCard, description: "Manage plot billing slabs and internal pricing rules." },
+  { id: "COUPONS", label: "Promo Coupons", icon: Tag, description: "Configure corporate discounts and promotional coupons." },
+  { id: "PROMOTIONS", label: "Active Campaigns", icon: Star, description: "Manage active upgrade campaigns and banner views." },
   { id: "DOMAINS", label: "Domains & Routing", icon: Globe, description: "Configure custom hostname proxy parameters." },
   { id: "EMAIL", label: "Email SMTP Setup", icon: Mail, description: "Establish outbound SMTP mail relay services." },
   { id: "WHATSAPP", label: "WhatsApp Gateway", icon: Phone, description: "Associate enterprise WhatsApp APIs." },
@@ -113,6 +116,25 @@ const DEFAULT_PLATFORM_SETTINGS: Omit<Setting, "id">[] = [
   // 16. ADVANCED
   { settingGroup: "ADVANCED", settingKey: "database_engine", settingValue: "PostgreSQL", settingType: "string", isPublic: false },
   { settingGroup: "ADVANCED", settingKey: "cache_driver", settingValue: "Redis", settingType: "string", isPublic: false },
+];
+
+const SETTING_CATEGORIES = [
+  {
+    title: "Platform Core",
+    groups: ["GENERAL", "COMPANY", "BRANDING", "LOCALIZATION", "SECURITY"]
+  },
+  {
+    title: "Commercial Engine",
+    groups: ["BILLING", "PRICING_RULES", "COUPONS", "PROMOTIONS", "CURRENCY", "GST"]
+  },
+  {
+    title: "Communications",
+    groups: ["EMAIL", "WHATSAPP", "SMS", "NOTIFICATIONS"]
+  },
+  {
+    title: "Infrastructure & Audit",
+    groups: ["DOMAINS", "STORAGE", "AUDIT", "ADVANCED"]
+  }
 ];
 
 export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({ 
@@ -264,30 +286,41 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start font-sans" id="saas-platform-settings-grid">
       {/* 1. LEFT SIDEBAR NAVIGATION GROUPS */}
-      <div className="lg:col-span-1 space-y-1.5" id="settings-sidebar-nav">
-        {SETTING_GROUPS.map(g => {
-          const Icon = g.icon;
-          const isActive = activeGroup === g.id;
-          return (
-            <button
-              key={g.id}
-              onClick={() => setActiveGroup(g.id)}
-              className={`w-full text-left p-4 rounded-xl flex items-center gap-3.5 transition-all duration-150 cursor-pointer border ${
-                isActive 
-                  ? "bg-indigo-600 border-indigo-700 text-white shadow-md font-extrabold" 
-                  : "bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50"
-              }`}
-            >
-              <div className={`p-1.5 rounded-lg shrink-0 ${isActive ? "bg-indigo-500 text-white" : "bg-slate-100 text-slate-500"}`}>
-                <Icon className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-bold leading-normal uppercase tracking-wider">{g.label}</p>
-                <p className={`text-[10px] truncate mt-0.5 ${isActive ? "text-indigo-200" : "text-slate-400"}`}>{g.description}</p>
-              </div>
-            </button>
-          );
-        })}
+      <div className="lg:col-span-1 space-y-5" id="settings-sidebar-nav">
+        {SETTING_CATEGORIES.map(category => (
+          <div key={category.title} className="space-y-1.5">
+            <h4 className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider px-3 mb-1">
+              {category.title}
+            </h4>
+            <div className="space-y-1">
+              {category.groups.map(groupId => {
+                const g = SETTING_GROUPS.find(item => item.id === groupId);
+                if (!g) return null;
+                const Icon = g.icon;
+                const isActive = activeGroup === g.id;
+                return (
+                  <button
+                    key={g.id}
+                    onClick={() => setActiveGroup(g.id)}
+                    className={`w-full text-left px-3.5 py-3 rounded-xl flex items-center gap-3 transition-all duration-150 cursor-pointer border ${
+                      isActive 
+                        ? "bg-indigo-600 border-indigo-700 text-white shadow-xs font-bold" 
+                        : "bg-white border-slate-200 text-slate-655 hover:text-slate-900 hover:bg-slate-50"
+                    }`}
+                  >
+                    <div className={`p-1.5 rounded-lg shrink-0 ${isActive ? "bg-indigo-500 text-white" : "bg-slate-100 text-slate-500"}`}>
+                      <Icon className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[11px] font-extrabold leading-tight uppercase tracking-wide">{g.label}</p>
+                      <p className={`text-[9px] truncate leading-tight mt-0.5 ${isActive ? "text-indigo-200" : "text-slate-400"}`}>{g.description}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* 2. RIGHT FORM EDITOR VIEW */}
@@ -337,6 +370,168 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({
                 onAddAddon={() => {}}
                 onUpdateAddon={() => {}}
               />
+            </div>
+          ) : activeGroup === "BILLING" ? (
+            <div className="space-y-6" id="settings-billing-view">
+              <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-250 text-xs">
+                <p className="font-bold text-slate-800">Billing & Grace Windows Configuration</p>
+                <p className="text-slate-500 mt-1">These settings directly dictate system payment windows and overdue grace extensions.</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {filteredSettings.map(s => {
+                  const info = getSettingLabelAndIcon(s.settingKey);
+                  const RowIcon = info.icon;
+
+                  return (
+                    <div key={s.settingKey} className="p-4 bg-slate-50/50 border border-slate-100 hover:border-slate-200 rounded-xl transition-all space-y-2 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center gap-2.5 mb-2.5">
+                          <div className="p-1.5 rounded-lg bg-indigo-50 text-indigo-650 shrink-0">
+                            <RowIcon className="w-3.5 h-3.5" />
+                          </div>
+                          <label className="block text-xs font-bold text-slate-750 uppercase tracking-wide">
+                            {info.label}
+                          </label>
+                        </div>
+                        <input 
+                          type={s.settingType === "number" ? "number" : "text"}
+                          value={s.settingValue || ""}
+                          onChange={(e) => handleValueChange(s.settingKey, e.target.value)}
+                          placeholder={info.placeholder}
+                          className="w-full px-3.5 py-2 border border-slate-200 bg-white hover:border-slate-350 focus:border-indigo-500 text-xs rounded-lg transition-all focus:ring-1 focus:ring-indigo-500/10 font-sans outline-hidden text-slate-800"
+                        />
+                      </div>
+
+                      <div className="pt-2.5 flex items-center justify-between text-[10px] text-slate-400 font-mono tracking-tight select-none">
+                        <span>Key: {s.settingKey}</span>
+                        <span className="px-1.5 py-0.5 rounded text-[8px] uppercase font-bold tracking-wider bg-slate-100 text-slate-500 border border-slate-200">
+                          Secure Server
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Billing gateway and telemetry logs */}
+              <div className="border-t border-slate-200 pt-6 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                    <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Payment Gateway Provider</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-slate-850">Razorpay Enterprise</span>
+                      <span className="text-[9px] bg-emerald-50 text-emerald-800 border border-emerald-100 font-bold px-1.5 py-0.5 rounded">ONLINE</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500">Auto-recurring cards and corporate net banking mandates active.</p>
+                  </div>
+
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                    <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Billing Recurrence Engine</p>
+                    <p className="text-xs font-black text-slate-850">Next Auto-Run Scheduled</p>
+                    <p className="text-[10px] text-indigo-600 font-mono font-bold">2026-06-28 00:00:00 UTC</p>
+                  </div>
+
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                    <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">GST Invoice Settings</p>
+                    <p className="text-xs font-black text-slate-850">Corporate IGST / CGST 18%</p>
+                    <p className="text-[10px] text-slate-500">Consolidated monthly tax summary logs active.</p>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 p-4 border border-slate-200 rounded-xl space-y-3">
+                  <h4 className="text-[10px] font-extrabold text-slate-900 uppercase tracking-wider">Billing retry sequence logs (Latest 3 runs)</h4>
+                  <div className="overflow-x-auto text-xs">
+                    <table className="w-full text-left text-slate-600">
+                      <tbody className="divide-y divide-slate-150">
+                        {[
+                          { time: "2026-06-27 02:15:20", msg: "Recurring billing cron completed. Processed 42 workspaces, generated 3 invoices, successfully charged 2 credit cards automatically.", level: "INFO" },
+                          { time: "2026-06-26 12:44:02", msg: "Payment collection failed for workspace [IND_MUNICIPAL_01]. Card status: EXPIRED. Grace period initiated (7 days left). Sending automated alerts.", level: "WARNING" },
+                          { time: "2026-06-25 00:00:15", msg: "Razorpay webhook received: Payment ID pay_XYZ987654. Confirmed renewal subscription for [KRN_DEVELOPERS]. Plan: GROWTH_YEARLY.", level: "SUCCESS" }
+                        ].map((row, idx) => (
+                          <tr key={idx} className="hover:bg-slate-100/30 font-mono text-[10px]">
+                            <td className="p-2.5 text-slate-450 font-bold whitespace-nowrap">{row.time}</td>
+                            <td className="p-2.5">
+                              <span className={`inline-block font-extrabold text-[8px] px-1 py-0.5 rounded mr-2 ${
+                                row.level === "SUCCESS" ? "bg-emerald-50 text-emerald-800" :
+                                row.level === "WARNING" ? "bg-red-50 text-red-800" : "bg-blue-50 text-blue-800"
+                              }`}>{row.level}</span>
+                              <span className="text-slate-700 leading-relaxed font-sans">{row.msg}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : activeGroup === "COUPONS" ? (
+            <div className="space-y-6" id="settings-coupons-view">
+              <div className="flex justify-between items-center border-b border-slate-100 pb-3 flex-wrap gap-4">
+                <div>
+                  <h4 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Promo Coupon Codes Catalog</h4>
+                  <p className="text-[11px] text-slate-500">Configure corporate discounts, custom launch percentage coupons, and seasonal price adjustments.</p>
+                </div>
+                <button 
+                  onClick={() => onShowToast("Dynamic Coupon registry creation is available! Modify settings directly to add customized pricing variables.", "success")}
+                  className="bg-indigo-650 hover:bg-indigo-750 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition-all"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Create Coupon Code</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs">
+                {[
+                  { code: "BHOOMI_LAUNCH_25", label: "Early Adopter Promotion", value: "25% OFF", type: "Percentage Recurring", limit: "First 100 Tenants", status: "ACTIVE", color: "text-emerald-700 bg-emerald-50 border border-emerald-100" },
+                  { code: "CORP_IND_ANNUAL", label: "State Government Subsidy", value: "₹15,000 OFF", type: "Flat Rate Deduction", limit: "Municipal Tenants", status: "ACTIVE", color: "text-emerald-700 bg-emerald-50 border border-emerald-100" },
+                  { code: "SPRING_STG_EXPIRED", label: "Historic Spring Campaign", value: "10% OFF", type: "Percentage Base", limit: "No restriction", status: "EXPIRED", color: "text-slate-400 bg-slate-100 border border-slate-200" }
+                ].map((row, idx) => (
+                  <div key={idx} className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-4 hover:shadow-sm transition-all flex flex-col justify-between">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono font-black text-indigo-700 text-xs tracking-wide bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">{row.code}</span>
+                        <span className={`text-[8.5px] font-bold px-2 py-0.5 rounded-full ${row.color}`}>{row.status}</span>
+                      </div>
+                      <p className="font-extrabold text-slate-900 text-xs">{row.label}</p>
+                      <p className="text-slate-500 text-[10px] leading-relaxed">Type: {row.type} • Limit: {row.limit}</p>
+                    </div>
+                    <div className="pt-3 border-t border-slate-150 flex items-center justify-between">
+                      <span className="text-[10px] text-slate-400 uppercase font-bold">Value Multiplier</span>
+                      <span className="text-sm font-black text-indigo-950 font-mono">{row.value}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : activeGroup === "PROMOTIONS" ? (
+            <div className="space-y-6" id="settings-promotions-view">
+              <div className="border-b border-slate-100 pb-3">
+                <h4 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Outreach & Campaigns Marketing Banners</h4>
+                <p className="text-[11px] text-slate-500">Configure active promotions shown inside customer portal dashboards to drive annual plan upgrades.</p>
+              </div>
+
+              <div className="bg-slate-50 p-6 border border-slate-205 rounded-2xl space-y-4">
+                <div className="flex items-start gap-4">
+                  <div className="p-3 bg-indigo-50 text-indigo-650 rounded-xl shrink-0">
+                    <Star className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1 text-xs">
+                    <h4 className="font-extrabold text-slate-900 uppercase tracking-wide">Active Portal Banner: "Upgrade & Save 20%"</h4>
+                    <p className="text-slate-600 leading-normal max-w-2xl">
+                      Displays on the left margin sidebar inside the standard customer workspaces. Urges Starter and Growth tier tenants to upgrade their plan to the annual Professional cycle to receive complimentary DXF integration nodes and custom GIS maps.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-slate-200 flex items-center gap-6 text-[10px] text-slate-450 font-mono uppercase font-bold flex-wrap">
+                  <span>Impressions (30d): <strong className="text-slate-800">12,480 Views</strong></span>
+                  <span>Click-through (CTR): <strong className="text-emerald-700">4.82%</strong></span>
+                  <span>Total Conversions: <strong className="text-indigo-600">32 Upgrades</strong></span>
+                  <span>Status: <strong className="text-emerald-700">LIVE & TARGETING ACTIVE</strong></span>
+                </div>
+              </div>
             </div>
           ) : activeGroup === "ADVANCED" ? (
             /* TECHNICAL GATEWAY INFRASTRUCTURE INFO SCREEN */

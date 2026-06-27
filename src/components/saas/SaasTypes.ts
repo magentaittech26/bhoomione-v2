@@ -40,6 +40,9 @@ export interface SubscriptionPlan {
   amcFee?: number;
   currency?: string;
   gstBehavior?: "INCLUSIVE" | "EXCLUSIVE" | "EXEMPT";
+  internalNotes?: string;
+  renewalBehavior?: "AUTO_RENEW" | "MANUAL_INVOICE" | "TERMINATE";
+  gracePeriodDays?: number;
 }
 
 export interface PlanLimits {

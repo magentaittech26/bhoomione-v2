@@ -1,54 +1,33 @@
-# BhoomiOne v2: Plan Editor Specification
+# Plan Editor Specification
+**BhoomiOne v2 – Phase 1F.13**
 
-This document defines the interface layout and data synchronization requirements for the advanced Plan Editor.
+## 1. Overview
+The Advanced Plan Editor provides platform administrators with character-level control over subscription tier characteristics, commercial pricing slabs, resource limits, and feature availability. 
 
-## 1. Interface Tab Structure
-The Plan Editor utilizes an elegant, single-view 4-tab workflow that consolidates all pricing plan parameters:
+## 2. Tab Structure & Form Fields
 
-| Tab ID | Tab Name | Core Functions | Fields Managed |
-|--------|----------|----------------|----------------|
-| **GENERAL** | General | Basic plan metadata, naming, and status | Name, Plan Code, Description, Sort Order, Status, Trial Period (Days) |
-| **PRICING** | Pricing | Base tier recurrence configuration | Monthly Price (INR), Yearly Price (INR), One-Time Startup Fees (INR) |
-| **LIMITS** | Limits | Upper bounds on resource provisioning | Storage Capacity (GB), Users Limit, Project Count Limit, Custom Map Uploads |
-| **FEATURES** | Features | Toggle individual system module access | GIS Maps, DXF CAD Exporters, Advanced Legal Search, SMS/WhatsApp Gateways |
+### Tab A: General Parameters
+- **Plan Name**: Text input (`name`)
+- **Plan Code / Identifier**: Immutable string (`code`)
+- **Public Description**: Text area for public marketing text (`description`)
+- **Status / Lifecycle state**: Toggle/Select (`status` - ACTIVE, INACTIVE, DRAFT)
+- **Visibility Link Type**: Select (`visibility` - PUBLIC, PRIVATE, INTERNAL)
+- **Sort Order Position**: Numeric priority rating (`sortOrder`)
+- **Most Popular Indicator**: Boolean recommendation badge flag (`isRecommended`)
 
-## 2. Dynamic Data Saving Flow
-All changes made inside the Plan Editor are validated client-side and saved atomically to the database via standard Laravel endpoints.
+### Tab B: Pricing & Licensing
+- **Monthly Subscription Fee**: Base recurring cost (`monthlyPrice`)
+- **Yearly Subscription Fee**: Annual discounted recurring cost (`yearlyPrice`)
+- **One-Time Enterprise License Fee**: Non-recurring upfront setup/capital cost (`oneTimeLicenseFee`)
+- **Annual Maintenance Charge (AMC)**: Base maintenance contract cost (`amcFee`)
+- **Trial Evaluation Days**: Complementary evaluation window duration (`trialDays`)
 
-```
-[ Frontend: PlanEditor ] ──(JSON Payload)──> [ Laravel: SaasController@savePlan ]
-                                                   │
-                                            (Validate Params)
-                                                   ▼
-                                        [ SaasSubscriptionService ]
-                                                   │
-                                      (Atomically updateOrCreate)
-                                                   ▼
-                                         [ PostgreSQL DB Tables ]
-```
+### Tab C: Allocated Capacity Limits
+- **Max Workspace Projects**: Absolute numeric projects cap (`projectsLimit`, or `-1` for unlimited)
+- **Max Design Layouts**: Absolute layouts limit (`layoutsLimit`)
+- **Max GIS Plots**: Allocated plot cap (`plotsLimit`)
+- **Max Users / Accounts**: Maximum corporate accounts (`usersLimit`)
+- **Dedicated Disk Storage**: Allocated workspace file space in GB (`storageLimitGb`)
 
-### Save Payload Contract (JSON Example)
-```json
-{
-  "plan_code": "PRO_YEARLY",
-  "name": "Professional Tier",
-  "monthly_price": 4999.00,
-  "yearly_price": 49990.00,
-  "trial_days": 14,
-  "sort_order": 2,
-  "status": "ACTIVE",
-  "limits": [
-    { "limit_key": "max_storage_gb", "limit_value": 50 },
-    { "limit_key": "max_users", "limit_value": 15 }
-  ],
-  "feature_ids": [
-    "gis_viewer",
-    "dxf_exporter",
-    "advanced_search"
-  ]
-}
-```
-
-## 3. Backward Compatibility Constraints
-- The `plan_code` acts as the unique lookup key to prevent record duplication.
-- Deleting or disabling a feature does not drop existing tenant configurations; instead, it safely disables the corresponding module flag dynamically on next session handshake.
+### Tab D: Feature Capabilities Matrix
+- **Module Enablement Checklist**: Grouped toggle matrix of granular features linked to the plan template (e.g., DXF Ingestion, GIS Overlay, Advanced Map Telemetry). Enables administrators to toggle specific feature swappables on a per-plan basis.

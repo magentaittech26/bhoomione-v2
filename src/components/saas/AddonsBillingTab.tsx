@@ -343,14 +343,22 @@ export default function AddonsBillingTab({
                             {a.status}
                           </button>
                         </div>
-                        {a.feature_code && (
-                          <div className="flex pt-1">
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          <span className="bg-indigo-50 text-indigo-850 border border-indigo-100 text-[9px] font-bold px-2 py-0.5 rounded">
+                            🏷️ Category: Feature Add-on
+                          </span>
+                          {a.feature_code && (
                             <span className="bg-amber-50 text-amber-850 border border-amber-100 text-[9px] font-mono px-2 py-0.5 rounded">
-                              Grants Access: {a.feature_code}
+                              ⚙️ Grants Feature: {a.feature_code}
                             </span>
-                          </div>
-                        )}
-                        <p className="text-[11px] text-slate-400 leading-normal">{a.description}</p>
+                          )}
+                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${
+                            a.status === "ACTIVE" ? "bg-emerald-50 text-emerald-800 border border-emerald-100" : "bg-red-50 text-red-800 border border-red-100"
+                          }`}>
+                            ⚡ Purchase: {a.status === "ACTIVE" ? "🟢 Available for checkout" : "🔴 Suspended"}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 leading-normal pt-1">{a.description}</p>
                       </div>
 
                       <div className="pt-4 border-t border-slate-100 mt-4 flex items-center justify-between text-xs gap-3">
@@ -418,14 +426,22 @@ export default function AddonsBillingTab({
                             {a.status}
                           </button>
                         </div>
-                        {a.limit_key && (
-                          <div className="flex pt-1">
-                            <span className="bg-emerald-50 text-emerald-850 border border-emerald-100 text-[9px] font-mono px-2 py-0.5 rounded">
-                              Increment Limit: +{a.limit_increment} {a.limit_key}
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          <span className="bg-emerald-50 text-emerald-850 border border-emerald-100 text-[9px] font-bold px-2 py-0.5 rounded">
+                            🏷️ Category: Capacity Increment
+                          </span>
+                          {a.limit_key && (
+                            <span className="bg-blue-50 text-blue-850 border border-blue-100 text-[9px] font-mono px-2 py-0.5 rounded">
+                              📈 Limit Boost: +{a.limit_increment} {a.limit_key}
                             </span>
-                          </div>
-                        )}
-                        <p className="text-[11px] text-slate-400 leading-normal">{a.description}</p>
+                          )}
+                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${
+                            a.status === "ACTIVE" ? "bg-emerald-50 text-emerald-800 border border-emerald-100" : "bg-red-50 text-red-800 border border-red-100"
+                          }`}>
+                            ⚡ Purchase: {a.status === "ACTIVE" ? "🟢 Available for checkout" : "🔴 Suspended"}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 leading-normal pt-1">{a.description}</p>
                       </div>
 
                       <div className="pt-4 border-t border-slate-100 mt-4 flex items-center justify-between text-xs gap-3">
@@ -493,7 +509,17 @@ export default function AddonsBillingTab({
                             {a.status}
                           </button>
                         </div>
-                        <p className="text-[11px] text-slate-400 leading-normal">{a.description}</p>
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          <span className="bg-amber-50 text-amber-850 border border-amber-100 text-[9px] font-bold px-2 py-0.5 rounded">
+                            🏷️ Category: Support & Service Add-on
+                          </span>
+                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${
+                            a.status === "ACTIVE" ? "bg-emerald-50 text-emerald-800 border border-emerald-100" : "bg-red-50 text-red-800 border border-red-100"
+                          }`}>
+                            ⚡ Purchase: {a.status === "ACTIVE" ? "🟢 Available for checkout" : "🔴 Suspended"}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 leading-normal pt-1">{a.description}</p>
                       </div>
 
                       <div className="pt-4 border-t border-slate-100 mt-4 flex items-center justify-between text-xs gap-3">

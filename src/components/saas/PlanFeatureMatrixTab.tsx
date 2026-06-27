@@ -33,7 +33,7 @@ export default function PlanFeatureMatrixTab({
   onSaveUsageLimits,
   defaultTab
 }: PlanFeatureMatrixTabProps) {
-  const [activePlanSub, setActivePlanSub] = useState<"tiers" | "matrix" | "limits">(defaultTab || "matrix");
+  const [activePlanSub, setActivePlanSub] = useState<"tiers" | "matrix" | "limits">(defaultTab || "tiers");
 
   React.useEffect(() => {
     if (defaultTab) {
@@ -51,6 +51,7 @@ export default function PlanFeatureMatrixTab({
   const [activeEditPlan, setActiveEditPlan] = useState<SubscriptionPlan | null>(null);
   const [editorTab, setEditorTab] = useState<"general" | "pricing" | "limits" | "features">("general");
   const [featureSearchTerm, setFeatureSearchTerm] = useState("");
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [newLimitKey, setNewLimitKey] = useState("");
   const [newLimitValue, setNewLimitValue] = useState<number>(0);
 
@@ -383,118 +384,99 @@ export default function PlanFeatureMatrixTab({
               });
 
               return (
-                <div key={p.code} className="bg-white border border-slate-200 p-6 rounded-2xl flex flex-col justify-between shadow-xs hover:shadow-md hover:border-slate-350 transition-all space-y-5">
+                <div key={p.code} className={`bg-white border rounded-3xl p-6 flex flex-col justify-between shadow-xs hover:shadow-md transition-all space-y-6 relative overflow-hidden ${
+                  p.isRecommended ? "border-amber-400 ring-2 ring-amber-400/20" : "border-slate-200"
+                }`}>
+                  {p.isRecommended && (
+                    <div className="absolute top-0 right-0 bg-amber-500 text-slate-950 text-[9px] font-black uppercase tracking-wider px-3.5 py-1 rounded-bl-xl flex items-center gap-1 shadow-xs">
+                      <Sparkles className="w-3 h-3 text-slate-950 shrink-0 fill-slate-950" />
+                      <span>Most Popular</span>
+                    </div>
+                  )}
+
                   <div className="space-y-4">
-                    
-                    {/* Header */}
-                    <div className="flex justify-between items-start border-b border-slate-100 pb-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-md font-black text-slate-900">{p.name}</h4>
-                          <span className={`px-2 py-0.5 text-[9px] font-extrabold rounded-full ${
-                            p.status === "ACTIVE" 
-                              ? "bg-emerald-50 text-emerald-850 border border-emerald-150" 
-                              : "bg-red-50 text-red-800 border border-red-150"
-                          }`}>
-                            {p.status}
-                          </span>
-                        </div>
-                        <p className="text-[10px] font-mono text-slate-400 uppercase tracking-wider mt-0.5">plan_code: {p.code}</p>
+                    {/* Header Name & Badges */}
+                    <div className="border-b border-slate-100 pb-4">
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        <h4 className="text-base font-black text-slate-950">{p.name}</h4>
+                        <span className={`px-2 py-0.5 text-[8.5px] font-extrabold rounded-full tracking-wider uppercase ${
+                          p.status === "ACTIVE" 
+                            ? "bg-emerald-50 text-emerald-850 border border-emerald-150" 
+                            : "bg-red-50 text-red-800 border border-red-150"
+                        }`}>
+                          {p.status}
+                        </span>
+                        <span className="bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 text-[8.5px] font-bold rounded-full tracking-wider uppercase flex items-center gap-1">
+                          {p.visibility === "PRIVATE" ? "🔒 Private Link" : p.visibility === "INTERNAL" ? "🏢 Internal Staff" : "🌍 Public"}
+                        </span>
                       </div>
-                      <div className="text-right">
-                        <p className="text-xl font-black text-indigo-950 font-mono">₹{p.monthlyPrice.toLocaleString()}</p>
-                        <p className="text-[9px] text-slate-400 font-bold uppercase">per month</p>
-                      </div>
+                      <p className="text-[10px] font-mono text-slate-400 uppercase tracking-wider mt-1">Template Code: {p.code}</p>
                     </div>
 
-                    <p className="text-xs text-slate-655 leading-relaxed font-sans">{planDesc}</p>
+                    <p className="text-xs text-slate-550 leading-relaxed font-sans">{p.description || planDesc}</p>
 
-                    {/* Inline Config Inputs */}
-                    <div className="bg-slate-50 border border-slate-200/60 p-4 rounded-xl space-y-3.5">
-                      <p className="text-[10px] font-bold uppercase text-slate-500 tracking-wider">Dynamic Pricing Adjustments</p>
-                      
-                      <div className="grid grid-cols-2 gap-3 text-xs">
-                        <div>
-                          <label className="block text-[9px] text-slate-450 font-bold uppercase mb-1">Monthly fee (₹)</label>
-                          <input 
-                            type="number"
-                            value={p.monthlyPrice}
-                            onChange={(e) => onUpdatePlan(p.code, { monthlyPrice: Number(e.target.value) })}
-                            className="w-full bg-white border border-slate-200 rounded-lg p-2 font-bold font-mono text-slate-800 focus:outline-none focus:border-indigo-400 transition-all"
-                          />
+                    {/* Commercial Pricing Grid */}
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-extrabold uppercase text-slate-450 tracking-wider">Commercial Pricing Structure</p>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="bg-indigo-50/45 border border-indigo-100 p-2.5 rounded-xl">
+                          <p className="text-[9px] text-indigo-650 font-bold uppercase tracking-wider">Monthly Recurring</p>
+                          <p className="text-sm font-black text-indigo-950 font-mono mt-0.5">₹{p.monthlyPrice.toLocaleString()}</p>
                         </div>
-                        <div>
-                          <label className="block text-[9px] text-slate-455 font-bold uppercase mb-1">Yearly fee (₹)</label>
-                          <input 
-                            type="number"
-                            value={p.yearlyPrice}
-                            onChange={(e) => onUpdatePlan(p.code, { yearlyPrice: Number(e.target.value) })}
-                            className="w-full bg-white border border-slate-200 rounded-lg p-2 font-bold font-mono text-slate-800 focus:outline-none focus:border-indigo-400 transition-all"
-                          />
+                        <div className="bg-emerald-50/45 border border-emerald-100 p-2.5 rounded-xl">
+                          <p className="text-[9px] text-emerald-700 font-bold uppercase tracking-wider">Yearly Recurring</p>
+                          <p className="text-sm font-black text-emerald-950 font-mono mt-0.5">₹{p.yearlyPrice.toLocaleString()}</p>
                         </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3 text-xs">
-                        <div>
-                          <label className="block text-[9px] text-slate-455 font-bold uppercase mb-1">Trial duration (days)</label>
-                          <input 
-                            type="number"
-                            value={p.trialDays}
-                            onChange={(e) => onUpdatePlan(p.code, { trialDays: Number(e.target.value) })}
-                            className="w-full bg-white border border-slate-200 rounded-lg p-2 font-bold font-mono text-slate-800 focus:outline-none focus:border-indigo-400 transition-all"
-                          />
+                        <div className="bg-slate-50 border border-slate-200/60 p-2.5 rounded-xl">
+                          <p className="text-[9px] text-slate-450 font-bold uppercase tracking-wider">One-Time License</p>
+                          <p className="text-sm font-black text-slate-800 font-mono mt-0.5">₹{(p.oneTimeLicenseFee || 0).toLocaleString()}</p>
                         </div>
-                        <div>
-                          <label className="block text-[9px] text-slate-455 font-bold uppercase mb-1">Sort order position</label>
-                          <input 
-                            type="number"
-                            value={p.sortOrder}
-                            onChange={(e) => onUpdatePlan(p.code, { sortOrder: Number(e.target.value) })}
-                            className="w-full bg-white border border-slate-200 rounded-lg p-2 font-bold font-mono text-slate-800 focus:outline-none focus:border-indigo-400 transition-all"
-                          />
+                        <div className="bg-slate-50 border border-slate-200/60 p-2.5 rounded-xl">
+                          <p className="text-[9px] text-slate-455 font-bold uppercase tracking-wider">Annual Maintenance (AMC)</p>
+                          <p className="text-sm font-black text-slate-800 font-mono mt-0.5">₹{(p.amcFee || 0).toLocaleString()}</p>
                         </div>
                       </div>
                     </div>
 
-                    {/* Allocated Limits (Database-driven) */}
-                    <div className="space-y-1.5 font-sans">
-                      <p className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Allocated Capacity Limits</p>
+                    {/* Resource Caps Limits (Database-driven) */}
+                    <div className="space-y-2 font-sans">
+                      <p className="text-[10px] font-extrabold uppercase text-slate-450 tracking-wider">Allocated Capacity Limits</p>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 font-mono">
-                        <div className="bg-slate-50 border border-slate-100 p-2 rounded-lg text-center">
-                          <p className="text-[8px] text-slate-400 font-bold uppercase">Projects</p>
-                          <p className="text-xs font-bold text-slate-850">{limitsObj.projectsLimit}</p>
+                        <div className="bg-slate-50 border border-slate-150 p-2 rounded-xl text-center">
+                          <p className="text-[8.5px] text-slate-400 font-bold uppercase">Max Projects</p>
+                          <p className="text-[11px] font-black text-slate-850">{limitsObj.projectsLimit === -1 ? "Unlimited" : limitsObj.projectsLimit}</p>
                         </div>
-                        <div className="bg-slate-50 border border-slate-100 p-2 rounded-lg text-center">
-                          <p className="text-[8px] text-slate-400 font-bold uppercase">Layouts</p>
-                          <p className="text-xs font-bold text-slate-850">{limitsObj.layoutsLimit}</p>
+                        <div className="bg-slate-50 border border-slate-150 p-2 rounded-xl text-center">
+                          <p className="text-[8.5px] text-slate-400 font-bold uppercase">Max Layouts</p>
+                          <p className="text-[11px] font-black text-slate-850">{limitsObj.layoutsLimit}</p>
                         </div>
-                        <div className="bg-slate-50 border border-slate-100 p-2 rounded-lg text-center">
-                          <p className="text-[8px] text-slate-400 font-bold uppercase">Plots</p>
-                          <p className="text-xs font-bold text-slate-850">{limitsObj.plotsLimit}</p>
+                        <div className="bg-slate-50 border border-slate-150 p-2 rounded-xl text-center">
+                          <p className="text-[8.5px] text-slate-400 font-bold uppercase">Max Plots</p>
+                          <p className="text-[11px] font-black text-slate-850">{limitsObj.plotsLimit}</p>
                         </div>
-                        <div className="bg-slate-50 border border-slate-100 p-2 rounded-lg text-center">
-                          <p className="text-[8px] text-slate-400 font-bold uppercase">Users</p>
-                          <p className="text-xs font-bold text-slate-850">{limitsObj.usersLimit}</p>
+                        <div className="bg-slate-50 border border-slate-150 p-2 rounded-xl text-center">
+                          <p className="text-[8.5px] text-slate-400 font-bold uppercase">Max Users</p>
+                          <p className="text-[11px] font-black text-slate-850">{limitsObj.usersLimit}</p>
                         </div>
-                        <div className="bg-slate-50 border border-slate-100 p-2 rounded-lg text-center">
-                          <p className="text-[8px] text-slate-400 font-bold uppercase">Storage</p>
-                          <p className="text-xs font-bold text-slate-850">{limitsObj.storageLimitGb} GB</p>
+                        <div className="bg-slate-50 border border-slate-150 p-2 rounded-xl text-center">
+                          <p className="text-[8.5px] text-slate-400 font-bold uppercase">Disk Storage</p>
+                          <p className="text-[11px] font-black text-slate-850">{limitsObj.storageLimitGb} GB</p>
                         </div>
-                        <div className="bg-slate-50 border border-slate-100 p-2 rounded-lg text-center">
-                          <p className="text-[8px] text-slate-400 font-bold uppercase">API limit</p>
-                          <p className="text-xs font-bold text-slate-850">{limitsObj.apiCallsLimit || "N/A"}</p>
+                        <div className="bg-slate-50 border border-slate-150 p-2 rounded-xl text-center">
+                          <p className="text-[8.5px] text-slate-400 font-bold uppercase">Trial evaluation</p>
+                          <p className="text-[11px] font-black text-slate-850">{p.trialDays} Days</p>
                         </div>
                       </div>
                     </div>
 
                     {/* Included Features (Database-driven) */}
                     <div className="space-y-2 font-sans">
-                      <p className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Included Features Matrix</p>
+                      <p className="text-[10px] font-extrabold uppercase text-slate-450 tracking-wider">Included Feature Swappables</p>
                       <div className="flex flex-wrap gap-1.5">
                         {enabledFeatures.length > 0 ? (
                           enabledFeatures.slice(0, 5).map(f => (
-                            <span key={f.code} className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-900 border border-indigo-100/60 rounded px-1.5 py-0.5 text-[9px] font-bold">
-                              <Check className="w-2.5 h-2.5 text-indigo-600" />
+                            <span key={f.code} className="inline-flex items-center gap-1 bg-indigo-50/70 text-indigo-950 border border-indigo-100 rounded px-2 py-0.5 text-[9px] font-bold">
+                              <Check className="w-2.5 h-2.5 text-indigo-650 shrink-0" />
                               {f.name}
                             </span>
                           ))
@@ -772,6 +754,17 @@ export default function PlanFeatureMatrixTab({
                       />
                     </div>
 
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider">Internal Notes (Administrative)</label>
+                      <textarea
+                        rows={2}
+                        value={p.internalNotes || ""}
+                        onChange={(e) => onUpdatePlan(p.code, { internalNotes: e.target.value })}
+                        placeholder="Internal notes for administrators, custom pricing rules contract notes, or audit trail details..."
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-sans focus:bg-white focus:border-indigo-400 focus:outline-none"
+                      />
+                    </div>
+
                     <div className="grid grid-cols-3 gap-4">
                       <div className="space-y-1">
                         <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider">Status</label>
@@ -930,7 +923,7 @@ export default function PlanFeatureMatrixTab({
                       </div>
 
                       <div className="space-y-1">
-                        <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider">GST Behaviour Schema</label>
+                        <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider font-sans">GST Behaviour Schema</label>
                         <select
                           value={p.gstBehavior || "INCLUSIVE"}
                           onChange={(e) => onUpdatePlan(p.code, { gstBehavior: e.target.value as any })}
@@ -940,6 +933,32 @@ export default function PlanFeatureMatrixTab({
                           <option value="EXCLUSIVE">EXCLUSIVE (18% Extra)</option>
                           <option value="EXEMPT">EXEMPT (No Taxes)</option>
                         </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider font-sans">Renewal Behaviour</label>
+                        <select
+                          value={p.renewalBehavior || "AUTO_RENEW"}
+                          onChange={(e) => onUpdatePlan(p.code, { renewalBehavior: e.target.value as any })}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-bold focus:bg-white focus:outline-none"
+                        >
+                          <option value="AUTO_RENEW">🔄 Auto-Renew via credit card / auto-debit</option>
+                          <option value="MANUAL_INVOICE">📄 Manual offline invoice settlement & check</option>
+                          <option value="TERMINATE">🛑 Auto-terminate at period end (No Renewal)</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider font-sans">Overdue Grace Period (Days)</label>
+                        <input
+                          type="number"
+                          value={p.gracePeriodDays || 7}
+                          onChange={(e) => onUpdatePlan(p.code, { gracePeriodDays: Number(e.target.value) })}
+                          placeholder="7"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-black font-mono focus:bg-white focus:outline-none"
+                        />
                       </div>
                     </div>
                   </div>
@@ -1070,67 +1089,79 @@ export default function PlanFeatureMatrixTab({
                         );
 
                         if (filteredList.length === 0) return null;
+                        const isCollapsed = !!collapsedGroups[groupName];
 
                         return (
                           <div key={groupName} className="bg-slate-50 border border-slate-150 p-4 rounded-2xl space-y-2.5">
-                            <h4 className="text-[10px] font-extrabold text-slate-550 uppercase tracking-wider border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
-                              <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-                              {groupName}
-                            </h4>
+                            <div className="flex justify-between items-center border-b border-slate-200 pb-1.5">
+                              <h4 className="text-[10px] font-extrabold text-slate-550 uppercase tracking-wider flex items-center gap-1.5">
+                                <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                                {groupName}
+                              </h4>
+                              <button
+                                type="button"
+                                onClick={() => setCollapsedGroups(prev => ({ ...prev, [groupName]: !prev[groupName] }))}
+                                className="text-[10px] text-indigo-650 hover:text-indigo-800 font-bold px-2.5 py-0.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 transition-colors cursor-pointer"
+                              >
+                                {isCollapsed ? "Expand Group [ + ]" : "Collapse Group [ − ]"}
+                              </button>
+                            </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                              {filteredList.map((f) => {
-                                const isChecked = matrix[p.code]?.[f.code] === "ENABLED";
-                                
-                                // Inheritance detection
-                                let isInherited = false;
-                                const planIndex = plans.findIndex(plan => plan.code === p.code);
-                                if (planIndex > 0) {
-                                  for (let i = 0; i < planIndex; i++) {
-                                    if (matrix[plans[i].code]?.[f.code] === "ENABLED") {
-                                      isInherited = true;
-                                      break;
+                            {!isCollapsed && (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                {filteredList.map((f) => {
+                                  const isChecked = matrix[p.code]?.[f.code] === "ENABLED";
+                                  
+                                  // Inheritance detection
+                                  let isInherited = false;
+                                  const planIndex = plans.findIndex(plan => plan.code === p.code);
+                                  if (planIndex > 0) {
+                                    for (let i = 0; i < planIndex; i++) {
+                                      if (matrix[plans[i].code]?.[f.code] === "ENABLED") {
+                                        isInherited = true;
+                                        break;
+                                      }
                                     }
                                   }
-                                }
 
-                                return (
-                                  <div key={f.code} className="flex items-start gap-2.5 p-2 bg-white rounded-lg border border-slate-150 shadow-3xs">
-                                    <input
-                                      type="checkbox"
-                                      id={`feat-modal-${p.code}-${f.code}`}
-                                      checked={isChecked}
-                                      onChange={(e) => {
-                                        onUpdateMatrixCell(p.code, f.code, e.target.checked ? "ENABLED" : "DISABLED");
-                                      }}
-                                      className="w-4 h-4 rounded text-indigo-650 cursor-pointer mt-0.5"
-                                    />
-                                    <div className="space-y-0.5 flex-1 min-w-0">
-                                      <label htmlFor={`feat-modal-${p.code}-${f.code}`} className="font-extrabold text-slate-900 cursor-pointer block select-none">
-                                        {f.name}
-                                      </label>
-                                      <p className="text-[9px] text-slate-400 font-mono select-none">code: {f.code}</p>
-                                      {f.description && (
-                                        <p className="text-[9.5px] text-slate-500 leading-normal select-none">{f.description}</p>
-                                      )}
-                                      
-                                      <div className="flex gap-1.5 pt-1.5">
-                                        {isInherited && (
-                                          <span className="text-[8.5px] bg-emerald-50 text-emerald-800 border border-emerald-100 font-bold px-1.5 py-0.5 rounded leading-none flex items-center gap-0.5">
-                                            ✓ Inherited
-                                          </span>
+                                  return (
+                                    <div key={f.code} className="flex items-start gap-2.5 p-2 bg-white rounded-lg border border-slate-150 shadow-3xs">
+                                      <input
+                                        type="checkbox"
+                                        id={`feat-modal-${p.code}-${f.code}`}
+                                        checked={isChecked}
+                                        onChange={(e) => {
+                                          onUpdateMatrixCell(p.code, f.code, e.target.checked ? "ENABLED" : "DISABLED");
+                                        }}
+                                        className="w-4 h-4 rounded text-indigo-650 cursor-pointer mt-0.5"
+                                      />
+                                      <div className="space-y-0.5 flex-1 min-w-0">
+                                        <label htmlFor={`feat-modal-${p.code}-${f.code}`} className="font-extrabold text-slate-900 cursor-pointer block select-none">
+                                          {f.name}
+                                        </label>
+                                        <p className="text-[9px] text-slate-400 font-mono select-none">code: {f.code}</p>
+                                        {f.description && (
+                                          <p className="text-[9.5px] text-slate-500 leading-normal select-none">{f.description}</p>
                                         )}
-                                        {isChecked && (
-                                          <span className="text-[8.5px] bg-indigo-50 text-indigo-800 border border-indigo-100 font-bold px-1.5 py-0.5 rounded leading-none flex items-center gap-0.5">
-                                            🔌 Enabled
-                                          </span>
-                                        )}
+                                        
+                                        <div className="flex gap-1.5 pt-1.5">
+                                          {isInherited && (
+                                            <span className="text-[8.5px] bg-emerald-50 text-emerald-800 border border-emerald-100 font-bold px-1.5 py-0.5 rounded leading-none flex items-center gap-0.5">
+                                              ✓ Inherited
+                                            </span>
+                                          )}
+                                          {isChecked && (
+                                            <span className="text-[8.5px] bg-indigo-50 text-indigo-800 border border-indigo-100 font-bold px-1.5 py-0.5 rounded leading-none flex items-center gap-0.5">
+                                              🔌 Enabled
+                                            </span>
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         );
                       })}
