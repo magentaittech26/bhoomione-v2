@@ -48,6 +48,11 @@ class TenantSubscription extends Model
         return $this->hasMany(TenantLimitOverride::class, 'tenant_subscription_id');
     }
 
+    public function moduleOverrides(): HasMany
+    {
+        return $this->hasMany(TenantModuleOverride::class, 'tenant_subscription_id');
+    }
+
     public function billingOverride(): \Illuminate\Database\Eloquent\Relations\HasOne
     {
         return $this->hasOne(TenantBillingOverride::class, 'tenant_subscription_id');

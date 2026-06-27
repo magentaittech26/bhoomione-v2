@@ -274,6 +274,7 @@ class SaasController extends Controller
         $validated = $request->validate([
             'limit_overrides' => 'nullable|array',
             'feature_overrides' => 'nullable|array',
+            'module_overrides' => 'nullable|array',
             'addons' => 'nullable|array',
             'billing_override' => 'nullable|array'
         ]);

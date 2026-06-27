@@ -13,6 +13,7 @@ use App\Models\TenantSubscription;
 use App\Models\TenantAddon;
 use App\Models\TenantFeatureOverride;
 use App\Models\TenantLimitOverride;
+use App\Models\TenantModuleOverride;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 
@@ -345,10 +346,11 @@ class SaasSubscriptionService
             'addons.addon',
             'featureOverrides.feature',
             'limitOverrides',
+            'moduleOverrides.module',
             'billingOverride'
         ])->where('tenant_id', $tenantId)->first();
 
-        // If no active subscription exists, construct a default dynamic trial tier response
+        // If no active subscription exists, construct a default dynamic trial trial tier response
         if (!$sub) {
             $defaultPlan = SubscriptionPlan::where('plan_code', 'STARTER')->first();
             return [
@@ -359,6 +361,7 @@ class SaasSubscriptionService
                 'addons' => [],
                 'feature_overrides' => [],
                 'limit_overrides' => [],
+                'module_overrides' => [],
                 'billing_override' => null
             ];
         }
@@ -377,6 +380,7 @@ class SaasSubscriptionService
             'addons' => $sub->addons,
             'feature_overrides' => $sub->featureOverrides,
             'limit_overrides' => $sub->limitOverrides,
+            'module_overrides' => $sub->moduleOverrides,
             'billing_override' => $sub->billingOverride,
         ];
     }
@@ -480,6 +484,19 @@ class SaasSubscriptionService
                         'id' => (string) Str::uuid(),
                         'tenant_subscription_id' => $sub->id,
                         'feature_id' => $featId,
+                        'override_status' => $overrideStatus, // ENABLED, DISABLED
+                    ]);
+                }
+            }
+
+            // 2b. Process modules overrides
+            if (isset($data['module_overrides'])) {
+                TenantModuleOverride::where('tenant_subscription_id', $sub->id)->delete();
+                foreach ($data['module_overrides'] as $modId => $overrideStatus) {
+                    TenantModuleOverride::create([
+                        'id' => (string) Str::uuid(),
+                        'tenant_subscription_id' => $sub->id,
+                        'module_id' => $modId,
                         'override_status' => $overrideStatus, // ENABLED, DISABLED
                     ]);
                 }

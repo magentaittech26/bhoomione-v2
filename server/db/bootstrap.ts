@@ -316,151 +316,6 @@ export async function bootstrapDatabase() {
       )
     `);
 
-    // 22. Relational saas_modules Table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS saas_modules (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        code VARCHAR(100) UNIQUE NOT NULL,
-        name VARCHAR(255) NOT NULL,
-        "group" VARCHAR(100) NOT NULL,
-        description TEXT,
-        status VARCHAR(50) DEFAULT 'ACTIVE',
-        is_core BOOLEAN DEFAULT FALSE,
-        is_billable BOOLEAN DEFAULT TRUE,
-        sort_order INTEGER DEFAULT 10,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // 23. Relational saas_features Table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS saas_features (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        module_id UUID NOT NULL REFERENCES saas_modules(id) ON DELETE CASCADE,
-        code VARCHAR(100) UNIQUE NOT NULL,
-        name VARCHAR(255) NOT NULL,
-        "group" VARCHAR(100),
-        description TEXT,
-        status VARCHAR(50) DEFAULT 'ACTIVE',
-        default_enabled BOOLEAN DEFAULT TRUE,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // 24. Relational subscription_plan_features Table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS subscription_plan_features (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        plan_id UUID NOT NULL REFERENCES subscription_plans(id) ON DELETE CASCADE,
-        feature_id UUID NOT NULL REFERENCES saas_features(id) ON DELETE CASCADE,
-        access_level VARCHAR(50) DEFAULT 'ENABLED',
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT idx_plan_feature UNIQUE (plan_id, feature_id)
-      )
-    `);
-
-    // 25. Relational subscription_plan_limits Table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS subscription_plan_limits (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        plan_id UUID NOT NULL REFERENCES subscription_plans(id) ON DELETE CASCADE,
-        limit_key VARCHAR(150) NOT NULL,
-        limit_value INTEGER DEFAULT 0,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT idx_plan_limit_key UNIQUE (plan_id, limit_key)
-      )
-    `);
-
-    // 26. Relational subscription_addons Table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS subscription_addons (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        code VARCHAR(100) UNIQUE NOT NULL,
-        name VARCHAR(255) NOT NULL,
-        monthly_price DECIMAL(12,2) DEFAULT 0.00,
-        yearly_price DECIMAL(12,2) DEFAULT 0.00,
-        description TEXT,
-        status VARCHAR(50) DEFAULT 'ACTIVE',
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // 27. Relational subscription_plot_slabs Table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS subscription_plot_slabs (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        min_plots INTEGER DEFAULT 1,
-        max_plots INTEGER DEFAULT 999999,
-        monthly_price DECIMAL(12,2) DEFAULT 0.00,
-        yearly_price DECIMAL(12,2) DEFAULT 0.00,
-        status VARCHAR(50) DEFAULT 'ACTIVE',
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // 28. Support columns for subscription pricing models
-    await client.query(`
-      ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS monthly_price DECIMAL(12,2) NOT NULL DEFAULT 0.00;
-      ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS yearly_price DECIMAL(12,2) NOT NULL DEFAULT 0.00;
-      ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS trial_days INTEGER DEFAULT 14;
-      ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'ACTIVE';
-      ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 1;
-    `);
-
-    // 29. Support columns for subscription lifecycles
-    await client.query(`
-      ALTER TABLE tenant_subscriptions ADD COLUMN IF NOT EXISTS subscription_start_date DATE;
-      ALTER TABLE tenant_subscriptions ADD COLUMN IF NOT EXISTS subscription_expiry_date DATE;
-      ALTER TABLE tenant_subscriptions ADD COLUMN IF NOT EXISTS trial_expiry_date DATE;
-      ALTER TABLE tenant_subscriptions ADD COLUMN IF NOT EXISTS renewal_date DATE;
-    `);
-
-    // 30. Relational tenant_addons Table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS tenant_addons (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_subscription_id UUID NOT NULL REFERENCES tenant_subscriptions(id) ON DELETE CASCADE,
-        addon_id UUID NOT NULL REFERENCES subscription_addons(id) ON DELETE CASCADE,
-        assigned_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT idx_tenant_subscription_addon UNIQUE (tenant_subscription_id, addon_id)
-      )
-    `);
-
-    // 31. Relational tenant_feature_overrides Table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS tenant_feature_overrides (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_subscription_id UUID NOT NULL REFERENCES tenant_subscriptions(id) ON DELETE CASCADE,
-        feature_id UUID NOT NULL REFERENCES saas_features(id) ON DELETE CASCADE,
-        override_status VARCHAR(50) NOT NULL,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT idx_tenant_subscription_feature UNIQUE (tenant_subscription_id, feature_id)
-      )
-    `);
-
-    // 32. Relational tenant_limit_overrides Table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS tenant_limit_overrides (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_subscription_id UUID NOT NULL REFERENCES tenant_subscriptions(id) ON DELETE CASCADE,
-        limit_key VARCHAR(150) NOT NULL,
-        override_value INTEGER NOT NULL,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT idx_tenant_subscription_limit UNIQUE (tenant_subscription_id, limit_key)
-      )
-    `);
-
-    // Drop obsolete violating JSON config table if active
-    await client.query(`DROP TABLE IF EXISTS saas_config CASCADE`);
-
     // PERFORMANCE INDEXES
     await client.query("CREATE INDEX IF NOT EXISTS idx_tenant_domains_domain ON tenant_domains(domain_name)");
     await client.query("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)");
@@ -790,37 +645,65 @@ export async function bootstrapDatabase() {
     try {
       // 1. Seed to saas_modules
       const moduleMap: Record<string, string> = {
-        'SAAS_ADMIN': '99999999-9999-4999-8999-000000000001',
-        'TENANT_WORKSPACE': '99999999-9999-4999-8999-000000000002',
         'PROJECTS': '99999999-9999-4999-8999-000000000003',
         'LAYOUTS': '99999999-9999-4999-8999-000000000004',
         'PLOTS': '99999999-9999-4999-8999-000000000005',
+        'BOOKINGS': '99999999-9999-4999-8999-000000000011',
         'CUSTOMERS': '99999999-9999-4999-8999-000000000006',
-        'AGENTS': '99999999-9999-4999-8999-000000000007',
-        'INTERACTIVE_MAP': '99999999-9999-4999-8999-000000000008',
-        'DXF_ENGINE': '99999999-9999-4999-8999-000000000009',
-        'WHATSAPP': '99999999-9999-4999-8999-000000000010'
+        'CRM': '99999999-9999-4999-8999-000000000012',
+        'COLLECTIONS': '99999999-9999-4999-8999-000000000013',
+        'FINANCE': '99999999-9999-4999-8999-000000000014',
+        'EXPENSES': '99999999-9999-4999-8999-000000000015',
+        'REPORTS': '99999999-9999-4999-8999-000000000016',
+        'MARKETPLACE': '99999999-9999-4999-8999-000000000017',
+        'GIS': '99999999-9999-4999-8999-000000000018',
+        'DXF': '99999999-9999-4999-8999-000000000019',
+        'DOCUMENTS': '99999999-9999-4999-8999-000000000020',
+        'AGENT_PORTAL': '99999999-9999-4999-8999-000000000007',
+        'CUSTOMER_PORTAL': '99999999-9999-4999-8999-000000000021',
+        'NOTIFICATIONS': '99999999-9999-4999-8999-000000000010',
+        'AI': '99999999-9999-4999-8999-000000000022',
+        'SECURITY': '99999999-9999-4999-8999-000000000023',
+        'AUDIT': '99999999-9999-4999-8999-000000000024',
+        'INTEGRATIONS': '99999999-9999-4999-8999-000000000025',
+        'ADMINISTRATION': '99999999-9999-4999-8999-000000000001',
+        'SETTINGS': '99999999-9999-4999-8999-000000000026'
       };
 
       const modulesData = [
-        { id: moduleMap['SAAS_ADMIN'], code: 'SAAS_ADMIN', name: 'SaaS Admin Core', group: 'System', description: 'Global multi-tenant supervisory console and DNS cluster config.', status: 'ACTIVE', isCore: true, isBillable: false, sortOrder: 1 },
-        { id: moduleMap['TENANT_WORKSPACE'], code: 'TENANT_WORKSPACE', name: 'Tenant Workspace', group: 'System', description: 'Self-service tenant environment routing framework.', status: 'ACTIVE', isCore: true, isBillable: false, sortOrder: 2 },
-        { id: moduleMap['PROJECTS'], code: 'PROJECTS', name: 'Projects Catalog', group: 'Core Planning', description: 'Design, catalog, track, and administer township real estate projects.', status: 'ACTIVE', isCore: false, isBillable: true, sortOrder: 3 },
-        { id: moduleMap['LAYOUTS'], code: 'LAYOUTS', name: 'Layout Subdivisions', group: 'Core Planning', description: 'Phased land parcel plans and sector map zoning layouts.', status: 'ACTIVE', isCore: false, isBillable: true, sortOrder: 4 },
-        { id: moduleMap['PLOTS'], code: 'PLOTS', name: 'Plot Parcels Registry', group: 'Core Planning', description: 'Individual tract plots inventory ledger catalog with custom attributes.', status: 'ACTIVE', isCore: false, isBillable: true, sortOrder: 5 },
-        { id: moduleMap['CUSTOMERS'], code: 'CUSTOMERS', name: 'Customer Management', group: 'CRM', description: 'All-inclusive lead nurturing, contact profiles, and buyer records.', status: 'ACTIVE', isCore: false, isBillable: true, sortOrder: 6 },
-        { id: moduleMap['AGENTS'], code: 'AGENTS', name: 'Agent Workspace', group: 'CRM', description: 'Broker network controls, dynamic agent performance, and metrics.', status: 'ACTIVE', isCore: false, isBillable: true, sortOrder: 7 },
-        { id: moduleMap['INTERACTIVE_MAP'], code: 'INTERACTIVE_MAP', name: 'Interactive Map', group: 'Integrations', description: 'Realtime SVG CAD mapper with plot reservation visual indicators.', status: 'ACTIVE', isCore: false, isBillable: true, sortOrder: 8 },
-        { id: moduleMap['DXF_ENGINE'], code: 'DXF_ENGINE', name: 'DXF Engine Parser', group: 'Integrations', description: 'Heavy CAD drawing parser to translate design diagrams into databases.', status: 'ACTIVE', isCore: false, isBillable: true, sortOrder: 9 },
-        { id: moduleMap['WHATSAPP'], code: 'WHATSAPP', name: 'WhatsApp Integrations', group: 'Integrations', description: 'Automated direct trigger alerts on user reservation checkouts.', status: 'ACTIVE', isCore: false, isBillable: true, sortOrder: 10 }
+        { id: moduleMap['PROJECTS'], code: 'PROJECTS', name: 'Projects', group: 'Core Planning', description: 'Design, catalog, track, and administer township real estate projects.', status: 'ACTIVE', isCore: false, isBillable: true, sortOrder: 3, version: '1.2.0', visibility: 'PUBLIC', type: 'OPTIONAL', dependencies: 'None' },
+        { id: moduleMap['LAYOUTS'], code: 'LAYOUTS', name: 'Layouts', group: 'Core Planning', description: 'Phased land parcel plans and sector map zoning layouts.', status: 'ACTIVE', isCore: false, isBillable: true, sortOrder: 4, version: '1.2.0', visibility: 'PUBLIC', type: 'OPTIONAL', dependencies: 'PROJECTS' },
+        { id: moduleMap['PLOTS'], code: 'PLOTS', name: 'Plots', group: 'Core Planning', description: 'Individual tract plots inventory ledger catalog with custom attributes.', status: 'ACTIVE', isCore: false, isBillable: true, sortOrder: 5, version: '1.1.0', visibility: 'PUBLIC', type: 'OPTIONAL', dependencies: 'LAYOUTS' },
+        { id: moduleMap['BOOKINGS'], code: 'BOOKINGS', name: 'Bookings', group: 'Sales & CRM', description: 'Real-time property reservation lockups, cancellations and transfers.', status: 'ACTIVE', isCore: false, isBillable: true, sortOrder: 6, version: '1.0.0', visibility: 'PUBLIC', type: 'OPTIONAL', dependencies: 'PLOTS' },
+        { id: moduleMap['CUSTOMERS'], code: 'CUSTOMERS', name: 'Customers', group: 'Sales & CRM', description: 'All-inclusive lead nurturing, contact profiles, and buyer records.', status: 'ACTIVE', isCore: false, isBillable: true, sortOrder: 7, version: '1.0.0', visibility: 'PUBLIC', type: 'OPTIONAL', dependencies: 'None' },
+        { id: moduleMap['CRM'], code: 'CRM', name: 'CRM', group: 'Sales & CRM', description: 'Advanced pipeline visualizations, client follow-up sequences, and analytics.', status: 'ACTIVE', isCore: false, isBillable: true, sortOrder: 8, version: '1.0.0', visibility: 'PUBLIC', type: 'OPTIONAL', dependencies: 'CUSTOMERS' },
+        { id: moduleMap['COLLECTIONS'], code: 'COLLECTIONS', name: 'Collections', group: 'Finance', description: 'Downpayments, installments, receipts dispatch, and outstanding alerts.', status: 'ACTIVE', isCore: false, isBillable: true, sortOrder: 9, version: '1.0.0', visibility: 'PUBLIC', type: 'OPTIONAL', dependencies: 'BOOKINGS' },
+        { id: moduleMap['FINANCE'], code: 'FINANCE', name: 'Finance', group: 'Finance', description: 'Double-entry accounting, profit center reporting, tax templates.', status: 'ACTIVE', isCore: false, isBillable: true, sortOrder: 10, version: '1.0.0', visibility: 'PUBLIC', type: 'OPTIONAL', dependencies: 'COLLECTIONS' },
+        { id: moduleMap['EXPENSES'], code: 'EXPENSES', name: 'Expenses', group: 'Finance', description: 'Site logistics disbursements, vendor outlays, and budget approvals.', status: 'ACTIVE', isCore: false, isBillable: true, sortOrder: 11, version: '1.0.0', visibility: 'PUBLIC', type: 'OPTIONAL', dependencies: 'None' },
+        { id: moduleMap['REPORTS'], code: 'REPORTS', name: 'Reports', group: 'Analytics', description: 'Comprehensive real-time insights, PDF builder, layout charts, and export.', status: 'ACTIVE', isCore: false, isBillable: true, sortOrder: 12, version: '1.5.0', visibility: 'PUBLIC', type: 'OPTIONAL', dependencies: 'None' },
+        { id: moduleMap['MARKETPLACE'], code: 'MARKETPLACE', name: 'Marketplace', group: 'Integrations', description: 'Public facing broker catalog list to buy, hold or sell plots instantly.', status: 'ACTIVE', isCore: false, isBillable: true, sortOrder: 13, version: '2.0.0', visibility: 'PUBLIC', type: 'OPTIONAL', dependencies: 'PLOTS' },
+        { id: moduleMap['GIS'], code: 'GIS', name: 'GIS', group: 'Integrations', description: 'Map zoning geographic overlays with GPS anchors and satellite visuals.', status: 'ACTIVE', isCore: false, isBillable: true, sortOrder: 14, version: '1.0.0', visibility: 'PUBLIC', type: 'OPTIONAL', dependencies: 'LAYOUTS' },
+        { id: moduleMap['DXF'], code: 'DXF', name: 'DXF', group: 'Integrations', description: 'Industrial CAD drawing blueprints parser to auto-generate databases.', status: 'ACTIVE', isCore: false, isBillable: true, sortOrder: 15, version: '1.0.0', visibility: 'PUBLIC', type: 'OPTIONAL', dependencies: 'LAYOUTS' },
+        { id: moduleMap['DOCUMENTS'], code: 'DOCUMENTS', name: 'Documents', group: 'System', description: 'Secured document management vault with contract e-signatures.', status: 'ACTIVE', isCore: true, isBillable: true, sortOrder: 16, version: '1.0.0', visibility: 'PUBLIC', type: 'CORE', dependencies: 'None' },
+        { id: moduleMap['AGENT_PORTAL'], code: 'AGENT_PORTAL', name: 'Agent Portal', group: 'Portals', description: 'Dedicated external broker portal for checking available plots.', status: 'ACTIVE', isCore: false, isBillable: true, sortOrder: 17, version: '1.0.0', visibility: 'PUBLIC', type: 'OPTIONAL', dependencies: 'BOOKINGS' },
+        { id: moduleMap['CUSTOMER_PORTAL'], code: 'CUSTOMER_PORTAL', name: 'Customer Portal', group: 'Portals', description: 'Buyer workspace for viewing payment milestones, contracts, and receipts.', status: 'ACTIVE', isCore: false, isBillable: true, sortOrder: 18, version: '1.0.0', visibility: 'PUBLIC', type: 'OPTIONAL', dependencies: 'COLLECTIONS' },
+        { id: moduleMap['NOTIFICATIONS'], code: 'NOTIFICATIONS', name: 'Notifications', group: 'System', description: 'Automated SMS, WhatsApp, and Email triggers for payment updates.', status: 'ACTIVE', isCore: true, isBillable: true, sortOrder: 19, version: '2.1.0', visibility: 'PUBLIC', type: 'CORE', dependencies: 'None' },
+        { id: moduleMap['AI'], code: 'AI', name: 'AI', group: 'System', description: 'Generative AI assistant for automatic layout design & contract writing.', status: 'ACTIVE', isCore: false, isBillable: true, sortOrder: 20, version: '1.0.0', visibility: 'PUBLIC', type: 'OPTIONAL', dependencies: 'None' },
+        { id: moduleMap['SECURITY'], code: 'SECURITY', name: 'Security', group: 'System', description: 'Advanced security controls, MFA enforcement, and API access token vault.', status: 'ACTIVE', isCore: true, isBillable: false, sortOrder: 21, version: '1.0.0', visibility: 'INTERNAL', type: 'SYSTEM', dependencies: 'None' },
+        { id: moduleMap['AUDIT'], code: 'AUDIT', name: 'Audit', group: 'System', description: 'Immutable ledger audit trail logs tracking all tenant actions.', status: 'ACTIVE', isCore: true, isBillable: false, sortOrder: 22, version: '1.0.0', visibility: 'INTERNAL', type: 'SYSTEM', dependencies: 'None' },
+        { id: moduleMap['INTEGRATIONS'], code: 'INTEGRATIONS', name: 'Integrations', group: 'System', description: 'External ERP connections, Zapier webhooks, and REST sync endpoints.', status: 'ACTIVE', isCore: false, isBillable: true, sortOrder: 23, version: '1.0.0', visibility: 'PUBLIC', type: 'OPTIONAL', dependencies: 'None' },
+        { id: moduleMap['ADMINISTRATION'], code: 'ADMINISTRATION', name: 'Administration', group: 'System', description: 'Global multi-tenant supervisory console and DNS cluster configurations.', status: 'ACTIVE', isCore: true, isBillable: false, sortOrder: 1, version: '2.0.0', visibility: 'INTERNAL', type: 'SYSTEM', dependencies: 'None' },
+        { id: moduleMap['SETTINGS'], code: 'SETTINGS', name: 'Settings', group: 'System', description: 'Tenant environmental and business parameters customizer panel.', status: 'ACTIVE', isCore: true, isBillable: false, sortOrder: 2, version: '1.0.0', visibility: 'PUBLIC', type: 'SYSTEM', dependencies: 'None' }
       ];
 
       for (const m of modulesData) {
         await client.query(`
-          INSERT INTO saas_modules (id, code, name, "group", description, status, is_core, is_billable, sort_order)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-          ON CONFLICT (code) DO UPDATE SET name = $3, "group" = $4, description = $5, status = $6, is_core = $7, is_billable = $8, sort_order = $9
-        `, [m.id, m.code, m.name, m.group, m.description, m.status, m.isCore, m.isBillable, m.sortOrder]);
+          INSERT INTO saas_modules (id, code, name, "group", description, status, is_core, is_billable, sort_order, version, visibility, type, dependencies)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          ON CONFLICT (code) DO UPDATE SET 
+            name = $3, "group" = $4, description = $5, status = $6, is_core = $7, is_billable = $8, sort_order = $9,
+            version = $10, visibility = $11, type = $12, dependencies = $13
+        `, [m.id, m.code, m.name, m.group, m.description, m.status, m.isCore, m.isBillable, m.sortOrder, m.version, m.visibility, m.type, m.dependencies]);
       }
 
       // 2. Seed to saas_features
@@ -828,33 +711,63 @@ export async function bootstrapDatabase() {
         'PROJECTS': 'faaaaaaa-aaaa-aaaa-aaaa-000000000001',
         'LAYOUTS': 'faaaaaaa-aaaa-aaaa-aaaa-000000000002',
         'PLOTS': 'faaaaaaa-aaaa-aaaa-aaaa-000000000003',
+        'BOOKINGS': 'faaaaaaa-aaaa-aaaa-aaaa-000000000011',
         'CUSTOMERS': 'faaaaaaa-aaaa-aaaa-aaaa-000000000004',
-        'AGENTS': 'faaaaaaa-aaaa-aaaa-aaaa-000000000005',
-        'DXF_UPLOAD': 'faaaaaaa-aaaa-aaaa-aaaa-000000000006',
+        'CRM_PIPELINE': 'faaaaaaa-aaaa-aaaa-aaaa-000000000012',
+        'COLLECTIONS_MANAGEMENT': 'faaaaaaa-aaaa-aaaa-aaaa-000000000013',
+        'FINANCE_CONTROLS': 'faaaaaaa-aaaa-aaaa-aaaa-000000000014',
+        'EXPENSE_TRACKING': 'faaaaaaa-aaaa-aaaa-aaaa-000000000015',
+        'ADVANCED_REPORTS': 'faaaaaaa-aaaa-aaaa-aaaa-000000000016',
+        'MARKETPLACE_LISTINGS': 'faaaaaaa-aaaa-aaaa-aaaa-000000000017',
         'MAP_INTERACTION': 'faaaaaaa-aaaa-aaaa-aaaa-000000000007',
+        'DXF_UPLOAD': 'faaaaaaa-aaaa-aaaa-aaaa-000000000006',
+        'DOCUMENT_VAULT': 'faaaaaaa-aaaa-aaaa-aaaa-000000000020',
+        'AGENTS': 'faaaaaaa-aaaa-aaaa-aaaa-000000000005',
+        'CUSTOMER_DASHBOARD': 'faaaaaaa-aaaa-aaaa-aaaa-000000000021',
         'WHATSAPP_TRIGGERS': 'faaaaaaa-aaaa-aaaa-aaaa-000000000008',
-        'API_ACCESS': 'faaaaaaa-aaaa-aaaa-aaaa-000000000009'
+        'AI_CO_PILOT': 'faaaaaaa-aaaa-aaaa-aaaa-000000000022',
+        'MFA_SECURITY': 'faaaaaaa-aaaa-aaaa-aaaa-000000000023',
+        'AUDIT_LOGS': 'faaaaaaa-aaaa-aaaa-aaaa-000000000024',
+        'WEBHOOKS_ENGINE': 'faaaaaaa-aaaa-aaaa-aaaa-000000000025',
+        'API_ACCESS': 'faaaaaaa-aaaa-aaaa-aaaa-000000000009',
+        'SYSTEM_SETTINGS': 'faaaaaaa-aaaa-aaaa-aaaa-000000000026'
       };
 
       const featuresData = [
-        { id: featureMap['PROJECTS'], moduleCode: 'PROJECTS', code: 'PROJECTS', name: 'Township projects catalog', group: 'Core Planning', description: 'Create and scale township planning models.', status: 'ACTIVE', defaultEnabled: true },
-        { id: featureMap['LAYOUTS'], moduleCode: 'LAYOUTS', code: 'LAYOUTS', name: 'Subdivision planning tool', group: 'Core Planning', description: 'Zoned sector plans and division lines.', status: 'ACTIVE', defaultEnabled: true },
-        { id: featureMap['PLOTS'], moduleCode: 'PLOTS', code: 'PLOTS', name: 'Physical lot registers', group: 'Core Planning', description: 'Assign coordinates, lot numbers and PLC rates.', status: 'ACTIVE', defaultEnabled: true },
-        { id: featureMap['CUSTOMERS'], moduleCode: 'CUSTOMERS', code: 'CUSTOMERS', name: 'Buyer records logs', group: 'CRM', description: 'Manage customer profiles and reservation ledgers.', status: 'ACTIVE', defaultEnabled: true },
-        { id: featureMap['AGENTS'], moduleCode: 'AGENTS', code: 'AGENTS', name: 'Broker agent scorecard', group: 'CRM', description: 'Keep logs on external broker sales targets and payouts.', status: 'ACTIVE', defaultEnabled: true },
-        { id: featureMap['DXF_UPLOAD'], moduleCode: 'DXF_ENGINE', code: 'DXF_UPLOAD', name: 'DXF CAD Drawing upload', group: 'Integrations', description: 'Render canvas lots directly out of dynamic .dxf blueprints.', status: 'ACTIVE', defaultEnabled: true },
-        { id: featureMap['MAP_INTERACTION'], moduleCode: 'INTERACTIVE_MAP', code: 'MAP_INTERACTION', name: 'Interactive property layouts', group: 'Integrations', description: 'Visual parcel lockups on mapping widgets.', status: 'ACTIVE', defaultEnabled: true },
-        { id: featureMap['WHATSAPP_TRIGGERS'], moduleCode: 'WHATSAPP', code: 'WHATSAPP_TRIGGERS', name: 'Automated reservation alerts', group: 'Integrations', description: 'Automatic WhatsApp broadcast warnings on payment locks.', status: 'ACTIVE', defaultEnabled: true },
-        { id: featureMap['API_ACCESS'], moduleCode: 'SAAS_ADMIN', code: 'API_ACCESS', name: 'Custom API client keys', group: 'System', description: 'Export telemetry datasets to external ERP software.', status: 'ACTIVE', defaultEnabled: true }
+        { id: featureMap['PROJECTS'], moduleCode: 'PROJECTS', code: 'PROJECTS', name: 'Township projects catalog', group: 'Core Planning', description: 'Create, scale, and catalog township planning models.', status: 'ACTIVE', defaultEnabled: true, isSystem: false, isDeprecated: false, isUpgradeable: true },
+        { id: featureMap['LAYOUTS'], moduleCode: 'LAYOUTS', code: 'LAYOUTS', name: 'Subdivision planning tool', group: 'Core Planning', description: 'Zoned sector plans and division lines.', status: 'ACTIVE', defaultEnabled: true, isSystem: false, isDeprecated: false, isUpgradeable: true },
+        { id: featureMap['PLOTS'], moduleCode: 'PLOTS', code: 'PLOTS', name: 'Physical lot registers', group: 'Core Planning', description: 'Assign coordinates, lot numbers and PLC rates.', status: 'ACTIVE', defaultEnabled: true, isSystem: false, isDeprecated: false, isUpgradeable: true },
+        { id: featureMap['BOOKINGS'], moduleCode: 'BOOKINGS', code: 'BOOKINGS', name: 'Dynamic Reservations Engine', group: 'Sales & CRM', description: 'Manage and lock property reservation contracts.', status: 'ACTIVE', defaultEnabled: true, isSystem: false, isDeprecated: false, isUpgradeable: true },
+        { id: featureMap['CUSTOMERS'], moduleCode: 'CUSTOMERS', code: 'CUSTOMERS', name: 'Buyer records logs', group: 'CRM', description: 'Manage customer profiles and reservation ledgers.', status: 'ACTIVE', defaultEnabled: true, isSystem: false, isDeprecated: false, isUpgradeable: true },
+        { id: featureMap['CRM_PIPELINE'], moduleCode: 'CRM', code: 'CRM_PIPELINE', name: 'Leads Pipeline Management', group: 'CRM', description: 'Visualize and nurture contacts through sales funnels.', status: 'ACTIVE', defaultEnabled: true, isSystem: false, isDeprecated: false, isUpgradeable: true },
+        { id: featureMap['COLLECTIONS_MANAGEMENT'], moduleCode: 'COLLECTIONS', code: 'COLLECTIONS_MANAGEMENT', name: 'Installment Tracking Ledger', group: 'Finance', description: 'Manage multi-stage customer payments and generate dynamic invoices.', status: 'ACTIVE', defaultEnabled: true, isSystem: false, isDeprecated: false, isUpgradeable: true },
+        { id: featureMap['FINANCE_CONTROLS'], moduleCode: 'FINANCE', code: 'FINANCE_CONTROLS', name: 'Relational Accounting books', group: 'Finance', description: 'Configure custom tax rules, double-entry bookkeeping, and general ledgers.', status: 'ACTIVE', defaultEnabled: true, isSystem: false, isDeprecated: false, isUpgradeable: true },
+        { id: featureMap['EXPENSE_TRACKING'], moduleCode: 'EXPENSES', code: 'EXPENSE_TRACKING', name: 'Company Expense Log', group: 'Finance', description: 'Log disbursements, construction bills, and broker payout structures.', status: 'ACTIVE', defaultEnabled: true, isSystem: false, isDeprecated: false, isUpgradeable: true },
+        { id: featureMap['ADVANCED_REPORTS'], moduleCode: 'REPORTS', code: 'ADVANCED_REPORTS', name: 'Analytical Report Builder', group: 'Analytics', description: 'Compile site analytics, financial velocity statements, and customer sheets.', status: 'ACTIVE', defaultEnabled: true, isSystem: false, isDeprecated: false, isUpgradeable: true },
+        { id: featureMap['MARKETPLACE_LISTINGS'], moduleCode: 'MARKETPLACE', code: 'MARKETPLACE_LISTINGS', name: 'Public Marketplace listings', group: 'Integrations', description: 'Automatically publish available holdings to dynamic public booking directories.', status: 'ACTIVE', defaultEnabled: true, isSystem: false, isDeprecated: false, isUpgradeable: true },
+        { id: featureMap['MAP_INTERACTION'], moduleCode: 'GIS', code: 'MAP_INTERACTION', name: 'Interactive property layouts', group: 'Integrations', description: 'Visual parcel lockups on mapping widgets.', status: 'ACTIVE', defaultEnabled: true, isSystem: false, isDeprecated: false, isUpgradeable: true },
+        { id: featureMap['DXF_UPLOAD'], moduleCode: 'DXF', code: 'DXF_UPLOAD', name: 'DXF CAD Drawing upload', group: 'Integrations', description: 'Render canvas lots directly out of dynamic .dxf blueprints.', status: 'ACTIVE', defaultEnabled: true, isSystem: false, isDeprecated: false, isUpgradeable: true },
+        { id: featureMap['DOCUMENT_VAULT'], moduleCode: 'DOCUMENTS', code: 'DOCUMENT_VAULT', name: 'Cloud Storage Document Vault', group: 'System', description: 'Store blueprints, kyc uploads, contracts, and receipts securely.', status: 'ACTIVE', defaultEnabled: true, isSystem: true, isDeprecated: false, isUpgradeable: false },
+        { id: featureMap['AGENTS'], moduleCode: 'AGENT_PORTAL', code: 'AGENTS', name: 'Broker agent scorecard', group: 'CRM', description: 'Keep logs on external broker sales targets and payouts.', status: 'ACTIVE', defaultEnabled: true, isSystem: false, isDeprecated: false, isUpgradeable: true },
+        { id: featureMap['CUSTOMER_DASHBOARD'], moduleCode: 'CUSTOMER_PORTAL', code: 'CUSTOMER_DASHBOARD', name: 'Buyer Self-Service Portal', group: 'Portals', description: 'Provide customers a dedicated hub for viewing milestones and making payments.', status: 'ACTIVE', defaultEnabled: true, isSystem: false, isDeprecated: false, isUpgradeable: true },
+        { id: featureMap['WHATSAPP_TRIGGERS'], moduleCode: 'NOTIFICATIONS', code: 'WHATSAPP_TRIGGERS', name: 'Automated reservation alerts', group: 'Integrations', description: 'Automatic WhatsApp, SMS, and Email broadcast triggers on transactions.', status: 'ACTIVE', defaultEnabled: true, isSystem: false, isDeprecated: false, isUpgradeable: true },
+        { id: featureMap['AI_CO_PILOT'], moduleCode: 'AI', code: 'AI_CO_PILOT', name: 'GenAI Township Co-Pilot', group: 'System', description: 'Leverage Gemini models to draft custom land parcel summaries and contracts.', status: 'ACTIVE', defaultEnabled: true, isSystem: false, isDeprecated: false, isUpgradeable: true },
+        { id: featureMap['MFA_SECURITY'], moduleCode: 'SECURITY', code: 'MFA_SECURITY', name: 'Advanced Authentication & Multi-factor Locks', group: 'System', description: 'Toggle mandatory secure entry gates, API client token vaults, and login filters.', status: 'ACTIVE', defaultEnabled: true, isSystem: true, isDeprecated: false, isUpgradeable: false },
+        { id: featureMap['AUDIT_LOGS'], moduleCode: 'AUDIT', code: 'AUDIT_LOGS', name: 'Immutable Audit Trail logbook', group: 'System', description: 'Immutable digital trail logging workspace queries and DB mutations.', status: 'ACTIVE', defaultEnabled: true, isSystem: true, isDeprecated: false, isUpgradeable: false },
+        { id: featureMap['WEBHOOKS_ENGINE'], moduleCode: 'INTEGRATIONS', code: 'WEBHOOKS_ENGINE', name: 'Dynamic Webhooks Dispatcher', group: 'System', description: 'Configure live REST triggers to sync transactional databases.', status: 'ACTIVE', defaultEnabled: true, isSystem: false, isDeprecated: false, isUpgradeable: true },
+        { id: featureMap['API_ACCESS'], moduleCode: 'ADMINISTRATION', code: 'API_ACCESS', name: 'Custom API client keys', group: 'System', description: 'Export telemetry datasets to external ERP software.', status: 'ACTIVE', defaultEnabled: true, isSystem: true, isDeprecated: false, isUpgradeable: false },
+        { id: featureMap['SYSTEM_SETTINGS'], moduleCode: 'SETTINGS', code: 'SYSTEM_SETTINGS', name: 'SaaS Control Settings panel', group: 'System', description: 'Configure basic company parameters, metadata, and default variables.', status: 'ACTIVE', defaultEnabled: true, isSystem: true, isDeprecated: false, isUpgradeable: false }
       ];
 
       for (const f of featuresData) {
         const moduleId = moduleMap[f.moduleCode];
         await client.query(`
-          INSERT INTO saas_features (id, module_id, code, name, "group", description, status, default_enabled)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-          ON CONFLICT (code) DO UPDATE SET module_id = $2, name = $4, "group" = $5, description = $6, status = $7, default_enabled = $8
-        `, [f.id, moduleId, f.code, f.name, f.group, f.description, f.status, f.defaultEnabled]);
+          INSERT INTO saas_features (id, module_id, code, name, "group", description, status, default_enabled, is_system, is_deprecated, is_upgradeable)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          ON CONFLICT (code) DO UPDATE SET 
+            module_id = $2, name = $4, "group" = $5, description = $6, status = $7, default_enabled = $8,
+            is_system = $9, is_deprecated = $10, is_upgradeable = $11
+        `, [f.id, moduleId, f.code, f.name, f.group, f.description, f.status, f.defaultEnabled, f.isSystem, f.isDeprecated, f.isUpgradeable]);
       }
 
       // 3. Clear and Seed subscription_plans
@@ -899,12 +812,40 @@ export async function bootstrapDatabase() {
         }
       }
 
-      // 5. Seed subscription_plan_features (Features Matrix)
+      // 5. Seed subscription_plan_features (Features Matrix for Tiers)
       const matrixData: Record<string, Record<string, string>> = {
-        "STARTER": { "PROJECTS": "ENABLED", "LAYOUTS": "ENABLED", "PLOTS": "ENABLED", "CUSTOMERS": "ENABLED", "AGENTS": "DISABLED", "DXF_UPLOAD": "ADDON", "MAP_INTERACTION": "DISABLED", "WHATSAPP_TRIGGERS": "DISABLED", "API_ACCESS": "DISABLED" },
-        "GROWTH": { "PROJECTS": "ENABLED", "LAYOUTS": "ENABLED", "PLOTS": "ENABLED", "CUSTOMERS": "ENABLED", "AGENTS": "ENABLED", "DXF_UPLOAD": "ENABLED", "MAP_INTERACTION": "ADDON", "WHATSAPP_TRIGGERS": "ADDON", "API_ACCESS": "DISABLED" },
-        "PROFESSIONAL": { "PROJECTS": "ENABLED", "LAYOUTS": "ENABLED", "PLOTS": "ENABLED", "CUSTOMERS": "ENABLED", "AGENTS": "ENABLED", "DXF_UPLOAD": "ENABLED", "MAP_INTERACTION": "ENABLED", "WHATSAPP_TRIGGERS": "ENABLED", "API_ACCESS": "ENABLED" },
-        "ENTERPRISE": { "PROJECTS": "ENABLED", "LAYOUTS": "ENABLED", "PLOTS": "ENABLED", "CUSTOMERS": "ENABLED", "AGENTS": "ENABLED", "DXF_UPLOAD": "ENABLED", "MAP_INTERACTION": "ENABLED", "WHATSAPP_TRIGGERS": "ENABLED", "API_ACCESS": "ENABLED" }
+        "STARTER": {
+          "PROJECTS": "ENABLED", "LAYOUTS": "ENABLED", "PLOTS": "ENABLED", "CUSTOMERS": "ENABLED", "BOOKINGS": "ENABLED",
+          "CRM_PIPELINE": "DISABLED", "COLLECTIONS_MANAGEMENT": "DISABLED", "FINANCE_CONTROLS": "DISABLED", "EXPENSE_TRACKING": "DISABLED",
+          "ADVANCED_REPORTS": "DISABLED", "MARKETPLACE_LISTINGS": "DISABLED", "MAP_INTERACTION": "DISABLED", "DXF_UPLOAD": "ADDON",
+          "DOCUMENT_VAULT": "ENABLED", "AGENTS": "DISABLED", "CUSTOMER_DASHBOARD": "DISABLED", "WHATSAPP_TRIGGERS": "DISABLED",
+          "AI_CO_PILOT": "DISABLED", "MFA_SECURITY": "ENABLED", "AUDIT_LOGS": "ENABLED", "WEBHOOKS_ENGINE": "DISABLED",
+          "API_ACCESS": "DISABLED", "SYSTEM_SETTINGS": "ENABLED"
+        },
+        "GROWTH": {
+          "PROJECTS": "ENABLED", "LAYOUTS": "ENABLED", "PLOTS": "ENABLED", "CUSTOMERS": "ENABLED", "BOOKINGS": "ENABLED",
+          "CRM_PIPELINE": "ENABLED", "COLLECTIONS_MANAGEMENT": "ENABLED", "FINANCE_CONTROLS": "DISABLED", "EXPENSE_TRACKING": "ENABLED",
+          "ADVANCED_REPORTS": "ENABLED", "MARKETPLACE_LISTINGS": "DISABLED", "MAP_INTERACTION": "ADDON", "DXF_UPLOAD": "ENABLED",
+          "DOCUMENT_VAULT": "ENABLED", "AGENTS": "DISABLED", "CUSTOMER_DASHBOARD": "ENABLED", "WHATSAPP_TRIGGERS": "ADDON",
+          "AI_CO_PILOT": "DISABLED", "MFA_SECURITY": "ENABLED", "AUDIT_LOGS": "ENABLED", "WEBHOOKS_ENGINE": "DISABLED",
+          "API_ACCESS": "DISABLED", "SYSTEM_SETTINGS": "ENABLED"
+        },
+        "PROFESSIONAL": {
+          "PROJECTS": "ENABLED", "LAYOUTS": "ENABLED", "PLOTS": "ENABLED", "CUSTOMERS": "ENABLED", "BOOKINGS": "ENABLED",
+          "CRM_PIPELINE": "ENABLED", "COLLECTIONS_MANAGEMENT": "ENABLED", "FINANCE_CONTROLS": "ENABLED", "EXPENSE_TRACKING": "ENABLED",
+          "ADVANCED_REPORTS": "ENABLED", "MARKETPLACE_LISTINGS": "ENABLED", "MAP_INTERACTION": "ENABLED", "DXF_UPLOAD": "ENABLED",
+          "DOCUMENT_VAULT": "ENABLED", "AGENTS": "ENABLED", "CUSTOMER_DASHBOARD": "ENABLED", "WHATSAPP_TRIGGERS": "ENABLED",
+          "AI_CO_PILOT": "ADDON", "MFA_SECURITY": "ENABLED", "AUDIT_LOGS": "ENABLED", "WEBHOOKS_ENGINE": "ENABLED",
+          "API_ACCESS": "ENABLED", "SYSTEM_SETTINGS": "ENABLED"
+        },
+        "ENTERPRISE": {
+          "PROJECTS": "ENABLED", "LAYOUTS": "ENABLED", "PLOTS": "ENABLED", "CUSTOMERS": "ENABLED", "BOOKINGS": "ENABLED",
+          "CRM_PIPELINE": "ENABLED", "COLLECTIONS_MANAGEMENT": "ENABLED", "FINANCE_CONTROLS": "ENABLED", "EXPENSE_TRACKING": "ENABLED",
+          "ADVANCED_REPORTS": "ENABLED", "MARKETPLACE_LISTINGS": "ENABLED", "MAP_INTERACTION": "ENABLED", "DXF_UPLOAD": "ENABLED",
+          "DOCUMENT_VAULT": "ENABLED", "AGENTS": "ENABLED", "CUSTOMER_DASHBOARD": "ENABLED", "WHATSAPP_TRIGGERS": "ENABLED",
+          "AI_CO_PILOT": "ENABLED", "MFA_SECURITY": "ENABLED", "AUDIT_LOGS": "ENABLED", "WEBHOOKS_ENGINE": "ENABLED",
+          "API_ACCESS": "ENABLED", "SYSTEM_SETTINGS": "ENABLED"
+        }
       };
 
       for (const [pCode, featureStatus] of Object.entries(matrixData)) {

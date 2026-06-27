@@ -28,6 +28,7 @@ export default function TenantOverridesTab({ showToast }: TenantOverridesTabProp
   const [planFilter, setPlanFilter] = useState<string>("ALL");
 
   // Local Editable Override States
+  const [localModules, setLocalModules] = useState<Record<string, "ENABLED" | "DISABLED" | "DEFAULT">>({});
   const [localFeatures, setLocalFeatures] = useState<Record<string, "ENABLED" | "DISABLED" | "DEFAULT">>({});
   const [localLimits, setLocalLimits] = useState<Record<string, number>>({});
   const [localAddons, setLocalAddons] = useState<string[]>([]); // Array of addon IDs
@@ -91,6 +92,15 @@ export default function TenantOverridesTab({ showToast }: TenantOverridesTabProp
         });
       }
       setLocalFeatures(featMap);
+
+      // Re-map Module Overrides
+      const modMap: Record<string, "ENABLED" | "DISABLED" | "DEFAULT"> = {};
+      if (profile?.module_overrides) {
+        profile.module_overrides.forEach((mo: any) => {
+          modMap[mo.module_id] = mo.override_status;
+        });
+      }
+      setLocalModules(modMap);
 
       // Re-map Limit Overrides
       const limMap: Record<string, number> = {};
@@ -261,11 +271,13 @@ export default function TenantOverridesTab({ showToast }: TenantOverridesTabProp
       // Build Payload to match server.ts overrides endpoint signature:
       // limit_overrides => Record<string, number | null>
       // feature_overrides => Record<string, 'ENABLED' | 'DISABLED'>
+      // module_overrides => Record<string, 'ENABLED' | 'DISABLED'>
       // addons => string[]
       // billing_override => Object
       const payload = {
         limit_overrides: localLimits,
         feature_overrides: localFeatures,
+        module_overrides: localModules,
         addons: localAddons,
         billing_override: {
           custom_monthly_fee: localBilling.custom_monthly_fee ? parseFloat(localBilling.custom_monthly_fee) : null,
@@ -657,6 +669,97 @@ export default function TenantOverridesTab({ showToast }: TenantOverridesTabProp
                 </div>
               ) : (
                 <form onSubmit={handleSaveChanges} className="space-y-6">
+
+                {/* SECTION A.5: MODULE-LEVEL REGISTRY OVERRIDES */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-3xs space-y-4">
+                  <div className="border-b border-slate-100 pb-3">
+                    <h3 className="text-xs font-bold text-slate-800 uppercase flex items-center gap-1.5">
+                      <Layers className="w-4 h-4 text-indigo-650" />
+                      Module-Level Registry Overrides
+                    </h3>
+                    <p className="text-[11px] text-slate-450 mt-1 leading-normal font-sans">
+                      Explicitly force enable or force disable entire workspace modules (independent of features).
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1.5">
+                    {modules.map((m) => {
+                      const overValue = localModules[m.id] || "DEFAULT";
+                      return (
+                        <div key={m.id} className="p-3 border border-slate-150 rounded-xl bg-slate-50/50 flex flex-col justify-between gap-3 hover:border-slate-205 transition-all">
+                          <div className="space-y-1">
+                            <h5 className="font-bold text-slate-800 text-xs flex items-center justify-between gap-1 leading-normal font-sans">
+                              <span>{m.name}</span>
+                              <span className="text-[9px] font-mono text-slate-400">
+                                {m.code} (v{m.version || "1.0"})
+                              </span>
+                            </h5>
+                            <p className="text-[10px] text-slate-450 leading-relaxed font-sans mt-0.5">
+                              {m.description || "Core platform module."}
+                            </p>
+                            <div className="flex gap-2 pt-1 text-[9px] font-mono text-slate-400">
+                              <span>Type: {m.type || "CORE"}</span>
+                              <span>•</span>
+                              <span>System: {m.is_system ? "YES" : "NO"}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between bg-white border border-slate-200/80 p-2 rounded-lg text-[10px] font-mono">
+                            <span className="text-slate-450 shrink-0">
+                              Override: <strong className={`font-extrabold ${overValue === 'ENABLED' ? 'text-emerald-600' : overValue === 'DISABLED' ? 'text-red-650' : 'text-slate-505'}`}>{overValue}</strong>
+                            </span>
+
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setLocalModules(prev => ({ ...prev, [m.id]: "ENABLED" }));
+                                }}
+                                className={`px-2 py-1 rounded font-bold transition-all border ${
+                                  overValue === "ENABLED" 
+                                    ? "bg-emerald-600 border-emerald-600 text-white shadow-3xs" 
+                                    : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                                }`}
+                              >
+                                ENABLE
+                              </button>
+                              
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setLocalModules(prev => ({ ...prev, [m.id]: "DISABLED" }));
+                                }}
+                                className={`px-2 py-1 rounded font-bold transition-all border ${
+                                  overValue === "DISABLED" 
+                                    ? "bg-red-650 border-red-650 text-white shadow-3xs" 
+                                    : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                                }`}
+                              >
+                                DISABLE
+                              </button>
+
+                              {overValue !== "DEFAULT" && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setLocalModules(prev => {
+                                      const next = { ...prev };
+                                      delete next[m.id];
+                                      return next;
+                                    });
+                                  }}
+                                  className="p-1 text-[9px] text-slate-500 hover:text-indigo-600 font-sans font-bold"
+                                >
+                                  RESET
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
 
                 {/* SECTION B: FEATURE OVERRIDES */}
                 <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-3xs space-y-4">
