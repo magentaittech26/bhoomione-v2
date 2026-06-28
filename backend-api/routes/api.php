@@ -60,6 +60,14 @@ Route::prefix('v1')->group(function () {
         ]);
     });
 
+    // PUBLIC DISCOVERY ENDPOINTS (Marketplace Phase 2B)
+    Route::get('/public/marketplace/home', [\App\Http\Controllers\Api\v1\MarketplaceController::class, 'publicMarketplaceHome']);
+    Route::get('/public/marketplace/projects', [\App\Http\Controllers\Api\v1\MarketplaceController::class, 'publicProjects']);
+    Route::get('/public/marketplace/projects/{id}', [\App\Http\Controllers\Api\v1\MarketplaceController::class, 'publicProjectShow']);
+    Route::get('/public/marketplace/developers', [\App\Http\Controllers\Api\v1\MarketplaceController::class, 'publicDevelopers']);
+    Route::get('/public/marketplace/developers/{slug}', [\App\Http\Controllers\Api\v1\MarketplaceController::class, 'publicDeveloperShow']);
+    Route::post('/public/marketplace/leads', [\App\Http\Controllers\Api\v1\MarketplaceController::class, 'publicSubmitLead']);
+
     // -------------------------------------------------------------------------
     // DYNAMIC DATABASE-DRIVEN RBAC PROTECTED ENDPOINTS (Sprint 1C Demo)
     // -------------------------------------------------------------------------
@@ -307,6 +315,12 @@ Route::prefix('v1')->group(function () {
     Route::post('/admin/settings', [SaasController::class, 'savePlatformSettings'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
     Route::get('/admin/dashboard-stats', [SaasController::class, 'getDashboardStats'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
 
+    // Super-Admin Marketplace Moderation (Phase 2B)
+    Route::get('/admin/marketplace/projects', [\App\Http\Controllers\Api\v1\MarketplaceController::class, 'adminProjects'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::post('/admin/marketplace/projects/{id}/moderate', [\App\Http\Controllers\Api\v1\MarketplaceController::class, 'adminModerateProject'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::get('/admin/marketplace/developers', [\App\Http\Controllers\Api\v1\MarketplaceController::class, 'adminDevelopers'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::post('/admin/marketplace/developers/{id}/moderate', [\App\Http\Controllers\Api\v1\MarketplaceController::class, 'adminModerateDeveloper'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+
     // TENANT OPERATIONS & PROVISIONING LIFECYCLE ROUTE MAPS (Phase 1F.2)
     Route::get('/admin/tenants', [TenantProvisioningController::class, 'getTenants'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
     Route::get('/admin/tenants/logs', [TenantProvisioningController::class, 'getLogs'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
@@ -348,6 +362,16 @@ Route::prefix('v1')->group(function () {
     // -------------------------------------------------------------------------
 
     Route::middleware([TenantResolverMiddleware::class])->group(function () {
+        // Tenant Marketplace Settings & Dashboard (Phase 2B)
+        Route::get('/tenant/marketplace/developer-profile', [\App\Http\Controllers\Api\v1\MarketplaceController::class, 'getDeveloperProfile']);
+        Route::post('/tenant/marketplace/developer-profile', [\App\Http\Controllers\Api\v1\MarketplaceController::class, 'updateDeveloperProfile']);
+        Route::post('/tenant/marketplace/projects/{id}/publish', [\App\Http\Controllers\Api\v1\MarketplaceController::class, 'publishProject']);
+        Route::post('/tenant/marketplace/projects/{id}/seo', [\App\Http\Controllers\Api\v1\MarketplaceController::class, 'updateProjectSeo']);
+        Route::post('/tenant/marketplace/layouts/{id}/visibility', [\App\Http\Controllers\Api\v1\MarketplaceController::class, 'updateLayoutVisibility']);
+        Route::post('/tenant/marketplace/plots/{id}/visibility', [\App\Http\Controllers\Api\v1\MarketplaceController::class, 'updatePlotVisibility']);
+        Route::get('/tenant/marketplace/leads', [\App\Http\Controllers\Api\v1\MarketplaceController::class, 'getTenantLeads']);
+        Route::get('/tenant/marketplace/dashboard-stats', [\App\Http\Controllers\Api\v1\MarketplaceController::class, 'getTenantDashboardStats']);
+
         // Projects Group
         Route::get('/projects', [ProjectController::class, 'index'])->middleware([PermissionRequirementMiddleware::class . ':projects.view']);
         Route::get('/projects/{id}', [ProjectController::class, 'show'])->middleware([PermissionRequirementMiddleware::class . ':projects.view']);

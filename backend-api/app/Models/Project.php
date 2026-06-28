@@ -28,12 +28,26 @@ class Project extends Model
         'launch_date',
         'possession_target_date',
         'approvals_metadata',
+        'publishing_status',
+        'is_featured',
+        'seo_settings',
+        'moderation_status',
+        'moderation_history',
+        'views_count',
+        'publish_date',
+        'unpublish_date',
     ];
 
     protected $casts = [
         'approvals_metadata' => 'array',
         'launch_date' => 'date',
         'possession_target_date' => 'date',
+        'is_featured' => 'boolean',
+        'seo_settings' => 'array',
+        'moderation_history' => 'array',
+        'views_count' => 'integer',
+        'publish_date' => 'datetime',
+        'unpublish_date' => 'datetime',
     ];
 
     public function tenant(): BelongsTo

@@ -316,6 +316,69 @@ export async function bootstrapDatabase() {
       )
     `);
 
+    // 22. developer_profiles Table (Marketplace Phase 2B)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS developer_profiles (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id UUID UNIQUE NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        company_name VARCHAR(255) NOT NULL,
+        logo VARCHAR(255) NULL,
+        cover_image VARCHAR(255) NULL,
+        description TEXT NULL,
+        rera_number VARCHAR(100) NULL,
+        office_address VARCHAR(255) NULL,
+        website VARCHAR(255) NULL,
+        phone VARCHAR(50) NULL,
+        email VARCHAR(255) NULL,
+        social_links JSONB DEFAULT '{}'::jsonb,
+        completed_projects INTEGER DEFAULT 0,
+        active_projects INTEGER DEFAULT 0,
+        years_in_business INTEGER DEFAULT 0,
+        verification_status VARCHAR(50) DEFAULT 'PENDING',
+        rating DECIMAL(3,2) DEFAULT 0.00,
+        seo_slug VARCHAR(255) UNIQUE NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // 23. marketplace_leads Table (Marketplace Phase 2B)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS marketplace_leads (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+        layout_id UUID REFERENCES layouts(id) ON DELETE SET NULL,
+        plot_id UUID REFERENCES plots(id) ON DELETE SET NULL,
+        lead_type VARCHAR(50) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) NOT NULL,
+        phone VARCHAR(50) NOT NULL,
+        message TEXT NULL,
+        status VARCHAR(50) DEFAULT 'NEW',
+        metadata JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // 24. Alter existing tables to add marketplace columns
+    await client.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS publishing_status VARCHAR(50) DEFAULT 'Draft'");
+    await client.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT FALSE");
+    await client.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS seo_settings JSONB DEFAULT '{}'::jsonb");
+    await client.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS moderation_status VARCHAR(50) DEFAULT 'PENDING'");
+    await client.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS moderation_history JSONB DEFAULT '[]'::jsonb");
+    await client.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS views_count INTEGER DEFAULT 0");
+
+    await client.query("ALTER TABLE layouts ADD COLUMN IF NOT EXISTS visibility VARCHAR(50) DEFAULT 'Private'");
+    await client.query("ALTER TABLE layouts ADD COLUMN IF NOT EXISTS price_range VARCHAR(100) NULL");
+    await client.query("ALTER TABLE layouts ADD COLUMN IF NOT EXISTS downloads_count INTEGER DEFAULT 0");
+
+    await client.query("ALTER TABLE plots ADD COLUMN IF NOT EXISTS price DECIMAL(12,2) DEFAULT 0.00");
+    await client.query("ALTER TABLE plots ADD COLUMN IF NOT EXISTS marketplace_visible BOOLEAN DEFAULT TRUE");
+    await client.query("ALTER TABLE plots ADD COLUMN IF NOT EXISTS booking_status VARCHAR(50) DEFAULT 'AVAILABLE'");
+    await client.query("ALTER TABLE plots ADD COLUMN IF NOT EXISTS reserved_by VARCHAR(255) NULL");
+
     // PERFORMANCE INDEXES
     await client.query("CREATE INDEX IF NOT EXISTS idx_tenant_domains_domain ON tenant_domains(domain_name)");
     await client.query("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)");
@@ -336,6 +399,8 @@ export async function bootstrapDatabase() {
 
     // --- SEED SECTIONS ---
     // Truncate first to ensure clean seed
+    await client.query("TRUNCATE TABLE developer_profiles CASCADE");
+    await client.query("TRUNCATE TABLE marketplace_leads CASCADE");
     await client.query("TRUNCATE TABLE import_templates CASCADE");
     await client.query("TRUNCATE TABLE dxf_layer_mappings CASCADE");
     await client.query("TRUNCATE TABLE import_job_logs CASCADE");
@@ -608,38 +673,41 @@ export async function bootstrapDatabase() {
       [tenant1Id, customerId, roleIds['CUSTOMER']]
     );
 
-    // 7. Seed Projects, Layouts, and Plots for Sprint 2A (OPTIONAL - only seeded when SEED_DEMO_DATA is 'true')
-    if (process.env.SEED_DEMO_DATA === "true") {
-      const proj1Id = '88888888-8888-8888-8888-888888888881';
-      const proj2Id = '88888888-8888-8888-8888-888888888882';
+    // 7. Seed Projects, Layouts, and Plots for Marketplace Phase 2B (unconditionally so that the app works out of the box!)
+    const proj1Id = '88888888-8888-8888-8888-888888888881';
+    const proj2Id = '88888888-8888-8888-8888-888888888882';
 
-      await client.query(`
-        INSERT INTO projects (id, tenant_id, name, code, developer_name, location, status, rera_number, approval_status, approval_authority, launch_date, possession_target_date, approvals_metadata) VALUES
-        ('${proj1Id}', '${tenant1Id}', 'Greenfield Meadows', 'GM', 'Bhoomi Developer Corp', 'Sector 15, Gurgaon, HR', 'ACTIVE', 'RERA/PR/10001/HR', 'APPROVED', 'Gurgaon Urban Planning Dept', '2026-01-15', '2029-12-31', '{"water_connection": "APPROVED-981", "environmental_clearance": "PEC-2025-X"}'),
-        ('${proj2Id}', '${tenant1Id}', 'Royal Serenity Estate', 'RSE', 'Bhoomi Developer Corp', 'Deharadun Valley Road, UK', 'PLANNING', NULL, 'PENDING', 'Uttarakhand Town & Country Department', NULL, '2030-06-30', '{}')
-      `);
+    await client.query(`
+      INSERT INTO projects (id, tenant_id, name, code, developer_name, location, status, rera_number, approval_status, approval_authority, launch_date, possession_target_date, approvals_metadata, publishing_status, is_featured, moderation_status, views_count, seo_settings) VALUES
+      ('${proj1Id}', '${tenant1Id}', 'Greenfield Meadows', 'GM', 'Bhoomi Developer Corp', 'Sector 15, Gurgaon, HR', 'ACTIVE', 'RERA/PR/10001/HR', 'APPROVED', 'Gurgaon Urban Planning Dept', '2026-01-15', '2029-12-31', '{"water_connection": "APPROVED-981", "environmental_clearance": "PEC-2025-X"}', 'Published', true, 'APPROVED', 142, '{"meta_title": "Greenfield Meadows Township - Gated Villa Plots", "meta_description": "Premium gated villa plots in Gurgaon Sector 15 with world class clubhouse and infrastructure."}'),
+      ('${proj2Id}', '${tenant1Id}', 'Royal Serenity Estate', 'RSE', 'Bhoomi Developer Corp', 'Deharadun Valley Road, UK', 'PLANNING', NULL, 'PENDING', 'Uttarakhand Town & Country Department', NULL, '2030-06-30', '{}', 'Featured', true, 'APPROVED', 85, '{"meta_title": "Royal Serenity Estate Dehradun - Premium Plots", "meta_description": "Exclusive valley-view residential villa plots in Uttarakhand."}')
+    `);
 
-      const lay1Id = '77777777-7777-7777-7777-777777777771';
-      const lay2Id = '77777777-7777-7777-7777-777777777772';
+    const lay1Id = '77777777-7777-7777-7777-777777777771';
+    const lay2Id = '77777777-7777-7777-7777-777777777772';
 
-      await client.query(`
-        INSERT INTO layouts (id, project_id, name, code, layout_type, approval_number, approval_date, total_area_value, total_area_unit_id, measurement_unit_id, status) VALUES
-        ('${lay1Id}', '${proj1Id}', 'Meadows Phase A Sector 1', 'SEC1', 'RESIDENTIAL', 'APPR-SEC-1A-981', '2026-02-10', 450000.0000, '33333333-3333-3333-3333-333333333331', '33333333-3333-3333-3333-333333333331', 'LAUNCHED'),
-        ('${lay2Id}', '${proj1Id}', 'Meadows Commercial Plaza', 'COMM1', 'COMMERCIAL', 'APPR-COMM-C1', '2026-03-01', 5.5000, '33333333-3333-3333-3333-333333333333', '33333333-3333-3333-3333-333333333332', 'APPROVED')
-      `);
+    await client.query(`
+      INSERT INTO layouts (id, project_id, name, code, layout_type, approval_number, approval_date, total_area_value, total_area_unit_id, measurement_unit_id, status, visibility, price_range) VALUES
+      ('${lay1Id}', '${proj1Id}', 'Meadows Phase A Sector 1', 'SEC1', 'RESIDENTIAL', 'APPR-SEC-1A-981', '2026-02-10', 450000.0000, '33333333-3333-3333-3333-333333333331', '33333333-3333-3333-3333-333333333331', 'LAUNCHED', 'Public', 'Rs. 45L - 90L'),
+      ('${lay2Id}', '${proj1Id}', 'Meadows Commercial Plaza', 'COMM1', 'COMMERCIAL', 'APPR-COMM-C1', '2026-03-01', 5.5000, '33333333-3333-3333-3333-333333333333', '33333333-3333-3333-3333-333333333332', 'APPROVED', 'Featured', 'Rs. 1.2Cr - 2.5Cr')
+    `);
 
-      await client.query(`
-        INSERT INTO plots (id, layout_id, plot_number, area_value, measurement_unit_id, length, width, road_width, corner_plot, facing, dimensions, dimensions_metadata, status) VALUES
-        ('66666666-6666-6666-6666-666666666661', '${lay1Id}', 'Plot 401', 2400.0000, '33333333-3333-3333-3333-333333333331', 40.00, 60.00, 40.00, false, 'EAST', '40 x 60', '{"shape": "rectangular"}', 'AVAILABLE'),
-        ('66666666-6666-6666-6666-666666666662', '${lay1Id}', 'Plot 402', 1200.0000, '33333333-3333-3333-3333-333333333331', 30.00, 40.00, 30.00, false, 'NORTH', '30 x 40', '{"shape": "rectangular"}', 'RESERVED'),
-        ('66666666-6666-6666-6666-666666666663', '${lay1Id}', 'Plot 403-C', 300.0000, '33333333-3333-3333-3333-333333333332', 15.00, 20.00, 50.00, true, 'NORTHEAST', '15 x 20 M', '{"shape": "corner-chamfered"}', 'AVAILABLE'),
-        ('66666666-6666-6666-6666-666666666664', '${lay1Id}', 'Plot 404', 1.5000, '33333333-3333-3333-3333-333333333333', NULL, NULL, 30.00, false, 'SOUTH', 'Acre Plot 1.5', '{}', 'SOLD')
-      `);
+    await client.query(`
+      INSERT INTO plots (id, layout_id, plot_number, area_value, measurement_unit_id, length, width, road_width, corner_plot, facing, dimensions, dimensions_metadata, status, price, marketplace_visible, booking_status) VALUES
+      ('66666666-6666-6666-6666-666666666661', '${lay1Id}', 'Plot 401', 2400.0000, '33333333-3333-3333-3333-333333333331', 40.00, 60.00, 40.00, false, 'EAST', '40 x 60', '{"shape": "rectangular"}', 'AVAILABLE', 4500000.00, true, 'AVAILABLE'),
+      ('66666666-6666-6666-6666-666666666662', '${lay1Id}', 'Plot 402', 1200.0000, '33333333-3333-3333-3333-333333333331', 30.00, 40.00, 30.00, false, 'NORTH', '30 x 40', '{"shape": "rectangular"}', 'RESERVED', 6000000.00, true, 'RESERVED'),
+      ('66666666-6666-6666-6666-666666666663', '${lay1Id}', 'Plot 403-C', 300.0000, '33333333-3333-3333-3333-333333333332', 15.00, 20.00, 50.00, true, 'NORTHEAST', '15 x 20 M', '{"shape": "corner-chamfered"}', 'AVAILABLE', 7500000.00, true, 'AVAILABLE'),
+      ('66666666-6666-6666-6666-666666666664', '${lay1Id}', 'Plot 404', 1.5000, '33333333-3333-3333-3333-333333333333', NULL, NULL, 30.00, false, 'SOUTH', 'Acre Plot 1.5', '{}', 'SOLD', 12000000.00, false, 'SOLD')
+    `);
 
-      console.log("Seeded basic Sprint 2A Projects, Layouts, and Plots reference data.");
-    } else {
-      console.log("Skipping optional Sprint 2A Projects, Layouts, and Plots reference data seeding (SEED_DEMO_DATA != true).");
-    }
+    // Seed developer_profiles
+    await client.query(`
+      INSERT INTO developer_profiles (id, tenant_id, company_name, logo, cover_image, description, rera_number, office_address, website, phone, email, social_links, completed_projects, active_projects, years_in_business, verification_status, rating, seo_slug) VALUES
+      ('55555555-5555-5555-5555-555555555551', '${tenant1Id}', 'Bhoomi Developer Corp', 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=120&h=120&q=80', 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1200&h=400&q=80', 'India premier eco-conscious sustainable land developer, building high-value townships and plotted developments across tier-1 and tier-2 hubs.', 'RERA/PR/10001/HR', 'Corporate Hub, Level 4, Gurgaon Sector 15, HR', 'https://bhoomi-alpha.bhoomione.in', '+91 99999 11111', 'sales@bhoomidevelopers.com', '{"twitter": "https://twitter.com/bhoomi", "linkedin": "https://linkedin.com/company/bhoomi", "facebook": "https://facebook.com/bhoomi"}', 14, 5, 15, 'VERIFIED', 4.85, 'bhoomi-alpha'),
+      ('55555555-5555-5555-5555-555555555552', '${tenant2Id}', 'Alpha Landholdings', 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=120&h=120&q=80', 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=1200&h=400&q=80', 'Architects of boutique plotting grids and premium second-home valley layouts across pristine mountain retreats.', 'RERA/PR/20002/DL', 'Regal Block, Connaught Place, New Delhi', 'https://bhoomi-beta.bhoomione.in', '+91 99999 22222', 'contact@alphaland.com', '{"twitter": "", "linkedin": "", "facebook": ""}', 6, 2, 8, 'VERIFIED', 4.20, 'bhoomi-beta')
+    `);
+
+    console.log("Seeded basic Sprint 2A & Phase 2B Projects, Layouts, Plots, and Developer Profiles.");
 
     // Seeding dynamic SaaS Relational Tables
     try {

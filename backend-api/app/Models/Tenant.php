@@ -73,4 +73,20 @@ class Tenant extends Model
     {
         return $this->hasMany(AuditLog::class, 'tenant_id');
     }
+
+    /**
+     * Public developer profile.
+     */
+    public function developerProfile()
+    {
+        return $this->hasOne(DeveloperProfile::class, 'tenant_id');
+    }
+
+    /**
+     * Leads received from public marketplace.
+     */
+    public function marketplaceLeads(): HasMany
+    {
+        return $this->hasMany(MarketplaceLead::class, 'tenant_id');
+    }
 }

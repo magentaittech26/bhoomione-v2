@@ -60,9 +60,31 @@ const tryParseJSON = (val: any, fallback: any = {}) => {
 };
 
 export default function InventoryManager({ user, onAuditLogged }: InventoryManagerProps) {
-  const [activeTab, setActiveTab] = useState<"projects" | "layouts" | "plots" | "cad" | "viewer">("projects");
+  const [activeTab, setActiveTab] = useState<"projects" | "layouts" | "plots" | "cad" | "viewer" | "marketplace">("projects");
   const [plotDisplayMode, setPlotDisplayMode] = useState<"spreadsheet" | "card">("spreadsheet");
   const hasSetInitialTab = React.useRef(false);
+
+  // --- MARKETPLACE STATES (Phase 2B) ---
+  const [developerProfile, setDeveloperProfile] = useState<any>({
+    company_name: "",
+    logo: "",
+    cover_image: "",
+    description: "",
+    rera_number: "",
+    office_address: "",
+    website: "",
+    phone: "",
+    email: "",
+    social_links: "{}",
+    completed_projects: 0,
+    active_projects: 0,
+    years_in_business: 0,
+    verification_status: "PENDING",
+    rating: "4.5"
+  });
+  const [marketplaceLeads, setMarketplaceLeads] = useState<any[]>([]);
+  const [mStats, setMStats] = useState<any>(null);
+  const [seoForm, setSeoForm] = useState<{ id: string; name: string; title: string; desc: string; keywords: string } | null>(null);
   
   // Dynamic Datasets
   const [projects, setProjects] = useState<any[]>([]);
@@ -434,6 +456,31 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
       fetchPlotsPage();
     }
   }, [activeTab, plotPage, debouncedSearch, filterPlotStatus, filterPlotFacing, filterPlotCorner, filterPlotLayoutId, filterPlotRoadWidth, filterPlotMinArea, filterPlotMaxArea, plotSortBy, plotSortDir]);
+
+  const fetchMarketplaceTenantData = async () => {
+    setLoading(true);
+    try {
+      const profile = await api.fetchDeveloperProfile();
+      if (profile) {
+        setDeveloperProfile(profile);
+      }
+      const leads = await api.fetchTenantLeads();
+      setMarketplaceLeads(leads || []);
+
+      const stats = await api.fetchTenantMarketplaceStats();
+      setMStats(stats || null);
+    } catch (err) {
+      console.error("Error loading tenant marketplace data:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "marketplace") {
+      fetchMarketplaceTenantData();
+    }
+  }, [activeTab]);
 
   // Alert notifier timer helper
   const displaySuccess = (msg: string) => {
@@ -1027,6 +1074,18 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
               <span>CAD Imports</span>
             </button>
           )}
+          {enabledFeatures.includes("marketplace_publish") && (
+            <button
+              onClick={() => { setActiveTab("marketplace"); setErrorMess(null); }}
+              className={`flex-1 lg:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                activeTab === "marketplace" ? "bg-white text-indigo-700 border border-indigo-200 shadow-xs font-bold" : "text-slate-500 hover:text-slate-900"
+              }`}
+              id="tab-marketplace"
+            >
+              <Grid className="w-3.5 h-3.5 text-indigo-650" />
+              <span>Marketplace & Leads</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1063,7 +1122,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
       </div>
 
       {/* Two-Column split Workspace (Main List Ledger & Technical Spec drawer) */}
-      {activeTab !== "cad" && activeTab !== "viewer" && (
+      {activeTab !== "cad" && activeTab !== "viewer" && activeTab !== "marketplace" && (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 p-6" id="inv-main-workspace">
         
         {/* LEFT COMPONENT - GRID & ACTIONS LEDGER */}

@@ -696,6 +696,124 @@ class ApiClient {
       method: "GET",
     });
   }
+
+  // ==========================================
+  // PHASE 2B MARKETPLACE ENDPOINTS
+  // ==========================================
+
+  async fetchPublicProjects(params?: Record<string, any>): Promise<any[]> {
+    let endpoint = "/public/marketplace/projects";
+    if (params) {
+      const query = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== "") {
+          query.append(k, String(v));
+        }
+      });
+      const qStr = query.toString();
+      if (qStr) endpoint += `?${qStr}`;
+    }
+    return this.request<any[]>(endpoint, { method: "GET" });
+  }
+
+  async fetchPublicProject(id: string): Promise<any> {
+    return this.request<any>(`/public/marketplace/projects/${id}`, { method: "GET" });
+  }
+
+  async fetchPublicDevelopers(): Promise<any[]> {
+    return this.request<any[]>("/public/marketplace/developers", { method: "GET" });
+  }
+
+  async fetchPublicDeveloper(slug: string): Promise<any> {
+    return this.request<any>(`/public/marketplace/developers/${slug}`, { method: "GET" });
+  }
+
+  async submitPublicLead(payload: {
+    tenant_id: string;
+    project_id?: string;
+    layout_id?: string;
+    plot_id?: string;
+    lead_type: string;
+    name: string;
+    email: string;
+    phone: string;
+    message?: string;
+    metadata?: any;
+  }): Promise<any> {
+    return this.request<any>("/public/marketplace/leads", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async fetchDeveloperProfile(): Promise<any> {
+    return this.request<any>("/tenant/marketplace/developer-profile", { method: "GET" });
+  }
+
+  async updateDeveloperProfile(payload: any): Promise<any> {
+    return this.request<any>("/tenant/marketplace/developer-profile", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async publishProject(id: string, status: string): Promise<any> {
+    return this.request<any>(`/tenant/marketplace/projects/${id}/publish`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    });
+  }
+
+  async updateProjectSeo(id: string, payload: any): Promise<any> {
+    return this.request<any>(`/tenant/marketplace/projects/${id}/seo`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async updateLayoutVisibility(id: string, payload: { visibility: string; price_range?: string }): Promise<any> {
+    return this.request<any>(`/tenant/marketplace/layouts/${id}/visibility`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async updatePlotVisibility(id: string, payload: { marketplace_visible: boolean; price?: number }): Promise<any> {
+    return this.request<any>(`/tenant/marketplace/plots/${id}/visibility`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async fetchTenantLeads(): Promise<any[]> {
+    return this.request<any[]>("/tenant/marketplace/leads", { method: "GET" });
+  }
+
+  async fetchTenantMarketplaceStats(): Promise<any> {
+    return this.request<any>("/tenant/marketplace/dashboard-stats", { method: "GET" });
+  }
+
+  async fetchAdminMarketplaceProjects(): Promise<any[]> {
+    return this.request<any[]>("/admin/marketplace/projects", { method: "GET" });
+  }
+
+  async moderateMarketplaceProject(id: string, payload: { status: string; reason: string }): Promise<any> {
+    return this.request<any>(`/admin/marketplace/projects/${id}/moderate`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async fetchAdminMarketplaceDevelopers(): Promise<any[]> {
+    return this.request<any[]>("/admin/marketplace/developers", { method: "GET" });
+  }
+
+  async moderateMarketplaceDeveloper(id: string, payload: { status: string }): Promise<any> {
+    return this.request<any>(`/admin/marketplace/developers/${id}/moderate`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
 }
 
 export const api = new ApiClient();
