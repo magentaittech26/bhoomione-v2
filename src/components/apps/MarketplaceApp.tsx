@@ -29,6 +29,26 @@ import {
   Award
 } from "lucide-react";
 
+// Safe array normalization helper
+function normalizeArray(value: any): any[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === "object") {
+    if (Array.isArray(value.data)) return value.data;
+    if (Array.isArray(value.items)) return value.items;
+  }
+  return [];
+}
+
+// Safe object normalization helper to strip { data: ... } wrappers
+function normalizeObject(value: any): any {
+  if (!value) return null;
+  if (value && typeof value === "object" && value.data && !Array.isArray(value.data)) {
+    return value.data;
+  }
+  return value;
+}
+
 export default function MarketplaceApp() {
   const [activeTab, setActiveTab] = useState<"projects" | "developers">("projects");
   const [searchTerm, setSearchTerm] = useState("");
@@ -75,10 +95,10 @@ export default function MarketplaceApp() {
     setLoading(true);
     try {
       const projData = await api.fetchPublicProjects();
-      setProjects(projData || []);
+      setProjects(normalizeArray(projData));
 
       const devData = await api.fetchPublicDevelopers();
-      setDevelopers(devData || []);
+      setDevelopers(normalizeArray(devData));
     } catch (err) {
       console.error("Error fetching marketplace data:", err);
     } finally {
@@ -146,7 +166,7 @@ export default function MarketplaceApp() {
     setLoading(true);
     try {
       const devDetail = await api.fetchPublicDeveloper(slug);
-      setSelectedDeveloper(devDetail);
+      setSelectedDeveloper(normalizeObject(devDetail));
     } catch (err) {
       console.error("Error loading developer details:", err);
     } finally {
@@ -158,7 +178,7 @@ export default function MarketplaceApp() {
     setLoading(true);
     try {
       const projDetail = await api.fetchPublicProject(id);
-      setSelectedProject(projDetail);
+      setSelectedProject(normalizeObject(projDetail));
     } catch (err) {
       console.error("Error loading project details:", err);
     } finally {
@@ -167,11 +187,13 @@ export default function MarketplaceApp() {
   };
 
   // Filter listings
-  const filteredProjects = projects.filter((p) => {
+  const normalizedProjects = normalizeArray(projects);
+
+  const filteredProjects = normalizedProjects.filter((p) => {
     const matchesSearch = 
-      p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      p.developer_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      p.location.toLowerCase().includes(searchTerm.toLowerCase());
+      (p.name || "").toLowerCase().includes(searchTerm.toLowerCase()) || 
+      (p.developer_name || "").toLowerCase().includes(searchTerm.toLowerCase()) || 
+      (p.location || "").toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesLocation = filterLocation === "ALL" || p.location === filterLocation;
     const matchesDev = filterDeveloper === "ALL" || p.developer_name === filterDeveloper;
@@ -179,12 +201,12 @@ export default function MarketplaceApp() {
     return matchesSearch && matchesLocation && matchesDev;
   });
 
-  const locationsList = Array.from(new Set(projects.map((p) => p.location)));
-  const developersList = Array.from(new Set(projects.map((p) => p.developer_name)));
+  const locationsList = Array.from(new Set(normalizedProjects.map((p) => p.location).filter(Boolean)));
+  const developersList = Array.from(new Set(normalizedProjects.map((p) => p.developer_name).filter(Boolean)));
 
   // Featured and Latest classifications for Marketplace Home
-  const featuredProjects = projects.filter((p) => p.is_featured);
-  const latestProjects = projects.slice(0, 3); // top 3
+  const featuredProjects = normalizedProjects.filter((p) => p.is_featured);
+  const latestProjects = normalizedProjects.slice(0, 3); // top 3
 
   return (
     <div className="bg-slate-50 min-h-screen text-slate-800" id="marketplace-root-container">
@@ -395,15 +417,15 @@ export default function MarketplaceApp() {
                     <div className="space-y-4">
                       <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
                         <Layers className="w-5 h-5 text-indigo-600" />
-                        Available Subdivisions & Layout Plans ({selectedProject.layouts?.length || 0})
+                        Available Subdivisions & Layout Plans ({normalizeArray(selectedProject.layouts).length})
                       </h3>
 
-                      {(!selectedProject.layouts || selectedProject.layouts.length === 0) ? (
+                      {(normalizeArray(selectedProject.layouts).length === 0) ? (
                         <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-xs text-slate-450">
                           No public layouts are currently visible on the marketplace for this project.
                         </div>
                       ) : (
-                        selectedProject.layouts.map((lay: any) => (
+                        normalizeArray(selectedProject.layouts).map((lay: any) => (
                           <div key={lay.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs space-y-4">
                             <div className="bg-slate-50 px-5 py-4 border-b border-slate-150 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                               <div>
@@ -483,7 +505,7 @@ export default function MarketplaceApp() {
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-slate-100 text-[11px] font-medium text-slate-700">
-                                    {(lay.plots || [])
+                                    {normalizeArray(lay.plots)
                                       .filter((pl: any) => {
                                         if (plotFacingFilter !== "ALL" && pl.facing !== plotFacingFilter) return false;
                                         if (plotCornerFilter === "Yes" && !pl.corner_plot) return false;
@@ -543,7 +565,7 @@ export default function MarketplaceApp() {
                                           </td>
                                         </tr>
                                       ))}
-                                    {(!lay.plots || lay.plots.length === 0) && (
+                                    {(normalizeArray(lay.plots).length === 0) && (
                                       <tr>
                                         <td colSpan={7} className="py-8 text-center text-slate-400 text-xs">
                                           No Plots currently registered in database for this layout.
@@ -753,11 +775,11 @@ export default function MarketplaceApp() {
                   {/* Published layout project listings */}
                   <div className="lg:col-span-2 space-y-4">
                     <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-500">
-                      Active Publications By This Developer ({selectedDeveloper.projects?.length || 0})
+                      Active Publications By This Developer ({normalizeArray(selectedDeveloper.projects).length})
                     </h3>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {(selectedDeveloper.projects || []).map((p: any) => (
+                      {normalizeArray(selectedDeveloper.projects).map((p: any) => (
                         <div key={p.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
                           <div className="p-4 space-y-2">
                             <span className="bg-slate-100 text-slate-800 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
@@ -770,7 +792,7 @@ export default function MarketplaceApp() {
                             </p>
                           </div>
                           <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
-                            <span className="text-[10px] text-slate-400">{p.layouts?.length || 1} Available Layout Grid</span>
+                            <span className="text-[10px] text-slate-400">{normalizeArray(p.layouts).length || 1} Available Layout Grid</span>
                             <button
                               onClick={() => loadProjectDetail(p.id)}
                               className="text-[10px] bg-slate-900 text-white font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 hover:bg-slate-800 transition-colors cursor-pointer"
@@ -782,7 +804,7 @@ export default function MarketplaceApp() {
                         </div>
                       ))}
 
-                      {(!selectedDeveloper.projects || selectedDeveloper.projects.length === 0) && (
+                      {(normalizeArray(selectedDeveloper.projects).length === 0) && (
                         <div className="col-span-2 bg-white border border-slate-200 rounded-xl p-8 text-center text-xs text-slate-450">
                           This developer has not published any plot layouts on the public board yet.
                         </div>
@@ -935,7 +957,7 @@ export default function MarketplaceApp() {
                 {/* Tab: DEVELOPERS */}
                 {activeTab === "developers" && (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {developers.map((dev) => (
+                    {normalizeArray(developers).map((dev) => (
                       <div 
                         key={dev.id} 
                         className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
@@ -1000,7 +1022,7 @@ export default function MarketplaceApp() {
                       </div>
                     ))}
 
-                    {developers.length === 0 && (
+                    {normalizeArray(developers).length === 0 && (
                       <div className="col-span-full bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-400 text-xs">
                         No verified real estate developer profiles are registered in central database.
                       </div>

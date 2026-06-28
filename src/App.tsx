@@ -6,6 +6,7 @@ import SaaSAdminApp from "./components/apps/SaaSAdminApp.tsx";
 import TenantWorkspaceApp from "./components/apps/TenantWorkspaceApp.tsx";
 import CustomerPortalApp from "./components/apps/CustomerPortalApp.tsx";
 import AgentPortalApp from "./components/apps/AgentPortalApp.tsx";
+import { MarketplaceErrorBoundary } from "./components/MarketplaceErrorBoundary.tsx";
 import { Server, ShieldCheck, Globe, Sliders, Info, Cpu, CheckCircle } from "lucide-react";
 
 export default function App() {
@@ -282,7 +283,11 @@ export default function App() {
 
       {/* 3. Render Resolved Target Workspace Panel */}
       <main className="flex-1" id="main-resolution-viewport">
-        {activeApp === "marketplace" && <MarketplaceApp />}
+        {activeApp === "marketplace" && (
+          <MarketplaceErrorBoundary>
+            <MarketplaceApp />
+          </MarketplaceErrorBoundary>
+        )}
         {activeApp === "saas-admin" && <SaaSAdminApp />}
         {activeApp === "tenant-workspace" && <TenantWorkspaceApp tenantCode={activeTenant} />}
         {activeApp === "customer-portal" && <CustomerPortalApp tenantCode={activeTenant} />}
