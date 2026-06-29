@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\v1\PlotController;
 use App\Http\Controllers\Api\v1\DxfController;
 use App\Http\Controllers\Api\v1\SaasController;
 use App\Http\Controllers\Api\v1\TenantProvisioningController;
+use App\Http\Controllers\Api\v1\TenantLifecycleController;
 use App\Http\Middleware\TenantResolverMiddleware;
 use App\Http\Middleware\PermissionRequirementMiddleware;
 
@@ -335,6 +336,18 @@ Route::prefix('v1')->group(function () {
     Route::post('/admin/tenants/{id}/remove-addon', [TenantProvisioningController::class, 'removeAddon'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
     Route::post('/admin/tenants/{id}/domains', [TenantProvisioningController::class, 'attachDomain'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
     Route::get('/admin/tenants/{id}/domains', [TenantProvisioningController::class, 'getDomains'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+
+    // TENANT ENTERPRISE LIFECYCLE MANAGEMENT MODULE ENDPOINTS
+    Route::get('/admin/lifecycle/health', [TenantLifecycleController::class, 'healthCheck'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::get('/admin/lifecycle/queue', [TenantLifecycleController::class, 'queueStatus'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::post('/admin/lifecycle/{tenant_code}/reset', [TenantLifecycleController::class, 'resetDemo'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/lifecycle/{tenant_code}/reprovision', [TenantLifecycleController::class, 'reprovision'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/lifecycle/{tenant_code}/verify', [TenantLifecycleController::class, 'verifyProvisioning'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::post('/admin/lifecycle/{tenant_code}/reset-domain', [TenantLifecycleController::class, 'resetDomain'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/lifecycle/{tenant_code}/generate-demo', [TenantLifecycleController::class, 'generateDemo'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/lifecycle/{tenant_code}/archive', [TenantLifecycleController::class, 'archive'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/lifecycle/{tenant_code}/delete', [TenantLifecycleController::class, 'deleteDemo'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/lifecycle/{tenant_code}/dns-verify', [TenantLifecycleController::class, 'dnsVerify'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
 
     Route::get('/admin/tenants/{id}/subscription', [SaasController::class, 'getTenantSubscriptionProfile'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
     Route::get('/admin/tenants/{id}/subscription-summary', [SaasController::class, 'getTenantSubscriptionSummary'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);

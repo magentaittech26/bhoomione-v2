@@ -7,9 +7,10 @@ import {
 } from "lucide-react";
 import api from "../../lib/api.ts";
 import { formatCurrency } from "../../lib/currency.ts";
+import TenantLifecycleManager from "./TenantLifecycleManager.tsx";
 
 interface TenantManagementTabProps {
-  initialSubTab?: "directory" | "profiles" | "domains" | "logs";
+  initialSubTab?: "directory" | "profiles" | "domains" | "logs" | "lifecycle";
   showToast: (msg: string, type: "success" | "error") => void;
 }
 
@@ -17,7 +18,7 @@ export default function TenantManagementTab({
   initialSubTab = "directory",
   showToast 
 }: TenantManagementTabProps) {
-  const [subTab, setSubTab] = useState<"directory" | "profiles" | "domains" | "logs">(initialSubTab);
+  const [subTab, setSubTab] = useState<"directory" | "profiles" | "domains" | "logs" | "lifecycle">(initialSubTab);
   
   // Data State
   const [tenants, setTenants] = useState<any[]>([]);
@@ -330,6 +331,15 @@ export default function TenantManagementTab({
           >
             <Terminal className="w-3.5 h-3.5" />
             Provisioning Logs
+          </button>
+          <button
+            onClick={() => setSubTab("lifecycle")}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+              subTab === "lifecycle" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <Activity className="w-3.5 h-3.5" />
+            Lifecycle Actions
           </button>
         </div>
 
@@ -991,6 +1001,16 @@ export default function TenantManagementTab({
                   </table>
                 )}
               </div>
+            </div>
+          )}
+
+          {subTab === "lifecycle" && (
+            <div className="animate-fade">
+              <TenantLifecycleManager 
+                tenants={tenants} 
+                showToast={showToast} 
+                onRefreshData={loadAllData} 
+              />
             </div>
           )}
         </>

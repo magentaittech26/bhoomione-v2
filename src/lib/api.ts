@@ -814,6 +814,47 @@ class ApiClient {
       body: JSON.stringify(payload),
     });
   }
+
+  // TENANT LIFECYCLE ACTIONS ENTERPRISE API MODULE
+  async fetchLifecycleHealth(): Promise<any> {
+    return this.request<any>("/admin/lifecycle/health", { method: "GET" });
+  }
+
+  async fetchQueueStatus(): Promise<any> {
+    return this.request<any>("/admin/lifecycle/queue", { method: "GET" });
+  }
+
+  async resetDemoTenant(tenantCode: string): Promise<any> {
+    return this.request<any>(`/admin/lifecycle/${tenantCode}/reset`, { method: "POST" });
+  }
+
+  async reprovisionTenant(tenantCode: string): Promise<any> {
+    return this.request<any>(`/admin/lifecycle/${tenantCode}/reprovision`, { method: "POST" });
+  }
+
+  async verifyTenantProvisioning(tenantCode: string): Promise<any> {
+    return this.request<any>(`/admin/lifecycle/${tenantCode}/verify`, { method: "POST" });
+  }
+
+  async resetTenantDomain(tenantCode: string): Promise<any> {
+    return this.request<any>(`/admin/lifecycle/${tenantCode}/reset-domain`, { method: "POST" });
+  }
+
+  async generateDemoData(tenantCode: string): Promise<any> {
+    return this.request<any>(`/admin/lifecycle/${tenantCode}/generate-demo`, { method: "POST" });
+  }
+
+  async archiveTenant(tenantCode: string): Promise<any> {
+    return this.request<any>(`/admin/lifecycle/${tenantCode}/archive`, { method: "POST" });
+  }
+
+  async deleteDemoTenant(tenantCode: string): Promise<any> {
+    return this.request<any>(`/admin/lifecycle/${tenantCode}/delete`, { method: "POST" });
+  }
+
+  async verifyTenantDns(tenantCode: string): Promise<any> {
+    return this.request<any>(`/admin/lifecycle/${tenantCode}/dns-verify`, { method: "POST" });
+  }
 }
 
 export const api = new ApiClient();
