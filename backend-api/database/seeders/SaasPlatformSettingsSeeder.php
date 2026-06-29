@@ -9,6 +9,30 @@ use Illuminate\Support\Str;
 class SaasPlatformSettingsSeeder extends Seeder
 {
     /**
+     * Safely seeds a master record.
+     * Updates mutable columns only if the record exists; inserts a new record if missing.
+     * NEVER regenerates UUIDs or updates immutable columns/keys.
+     */
+    private function safeSeedComposite($modelClass, array $lookupConditions, array $mutableData, array $immutableData = [])
+    {
+        $record = $modelClass::where($lookupConditions)->first();
+
+        if ($record) {
+            $record->fill($mutableData);
+            if ($record->isDirty()) {
+                $record->save();
+            }
+            return $record;
+        }
+
+        $newRecordData = array_merge([
+            'id' => (string) Str::uuid(),
+        ], $lookupConditions, $immutableData, $mutableData);
+
+        return $modelClass::create($newRecordData);
+    }
+
+    /**
      * Run the database seeds.
      */
     public function run(): void
@@ -324,10 +348,10 @@ class SaasPlatformSettingsSeeder extends Seeder
         ];
 
         foreach ($settings as $setting) {
-            SaasPlatformSetting::updateOrCreate(
+            $this->safeSeedComposite(
+                SaasPlatformSetting::class,
                 ['setting_key' => $setting['setting_key']],
                 [
-                    'id' => SaasPlatformSetting::where('setting_key', $setting['setting_key'])->value('id') ?? (string) Str::uuid(),
                     'setting_group' => $setting['setting_group'],
                     'setting_value' => $setting['setting_value'],
                     'setting_type' => $setting['setting_type'],

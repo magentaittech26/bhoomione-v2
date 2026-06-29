@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
+use Illuminate\Database\Eloquent\Model;
 use App\Models\SaasModule;
 use App\Models\SaasFeature;
 use App\Models\SubscriptionPlan;
@@ -14,6 +15,32 @@ use App\Models\SubscriptionPlotSlab;
 
 class SaasSubscriptionSeeder extends Seeder
 {
+    /**
+     * Safely seeds a master record with single or composite lookup keys.
+     * Updates mutable columns only if the record exists; inserts a new record if missing.
+     * NEVER regenerates UUIDs, deletes records, or updates immutable columns/keys.
+     */
+    private function safeSeedComposite($modelClass, array $lookupConditions, array $mutableData, array $immutableData = [])
+    {
+        $record = $modelClass::where($lookupConditions)->first();
+
+        if ($record) {
+            // Update mutable columns only
+            $record->fill($mutableData);
+            if ($record->isDirty()) {
+                $record->save();
+            }
+            return $record;
+        }
+
+        // Insert new record with a fresh UUID
+        $newRecordData = array_merge([
+            'id' => (string) Str::uuid(),
+        ], $lookupConditions, $immutableData, $mutableData);
+
+        return $modelClass::create($newRecordData);
+    }
+
     /**
      * Run the seeder.
      */
@@ -40,10 +67,10 @@ class SaasSubscriptionSeeder extends Seeder
         $featureModels = [];
 
         foreach ($modulesData as $index => $m) {
-            $module = SaasModule::updateOrCreate(
+            $module = $this->safeSeedComposite(
+                SaasModule::class,
                 ['code' => $m['code']],
                 [
-                    'id' => SaasModule::where('code', $m['code'])->value('id') ?? (string) Str::uuid(),
                     'name' => $m['name'],
                     'group' => $m['group'],
                     'description' => $m['description'],
@@ -57,30 +84,34 @@ class SaasSubscriptionSeeder extends Seeder
 
             // Seed 2 child features per module (View and Manage)
             $fViewCode = strtolower($m['code']) . '.view';
-            $fView = SaasFeature::updateOrCreate(
+            $fView = $this->safeSeedComposite(
+                SaasFeature::class,
                 ['code' => $fViewCode],
                 [
-                    'id' => SaasFeature::where('code', $fViewCode)->value('id') ?? (string) Str::uuid(),
-                    'module_id' => $module->id,
                     'name' => 'View ' . $m['name'],
                     'group' => $m['group'],
                     'description' => 'Authorize viewing records for module ' . $m['code'],
                     'status' => 'ACTIVE',
                     'default_enabled' => true
+                ],
+                [
+                    'module_id' => $module->id
                 ]
             );
             
             $fManageCode = strtolower($m['code']) . '.manage';
-            $fManage = SaasFeature::updateOrCreate(
+            $fManage = $this->safeSeedComposite(
+                SaasFeature::class,
                 ['code' => $fManageCode],
                 [
-                    'id' => SaasFeature::where('code', $fManageCode)->value('id') ?? (string) Str::uuid(),
-                    'module_id' => $module->id,
                     'name' => 'Manage ' . $m['name'],
                     'group' => $m['group'],
                     'description' => 'Authorize writing/updating records for module ' . $m['code'],
                     'status' => 'ACTIVE',
                     'default_enabled' => !($m['is_core'] === false) // non-core starts off-limit for sub tiers
+                ],
+                [
+                    'module_id' => $module->id
                 ]
             );
 
@@ -184,10 +215,10 @@ class SaasSubscriptionSeeder extends Seeder
         ];
 
         foreach ($plansData as $p) {
-            $plan = SubscriptionPlan::updateOrCreate(
+            $plan = $this->safeSeedComposite(
+                SubscriptionPlan::class,
                 ['plan_code' => $p['plan_code']],
                 [
-                    'id' => SubscriptionPlan::where('plan_code', $p['plan_code'])->value('id') ?? (string) Str::uuid(),
                     'name' => $p['name'],
                     'monthly_price' => $p['monthly_price'],
                     'yearly_price' => $p['yearly_price'],
@@ -199,10 +230,10 @@ class SaasSubscriptionSeeder extends Seeder
 
             // Connect Plan limits
             foreach ($p['limits'] as $key => $val) {
-                SubscriptionPlanLimit::updateOrCreate(
+                $this->safeSeedComposite(
+                    SubscriptionPlanLimit::class,
                     ['plan_id' => $plan->id, 'limit_key' => $key],
                     [
-                        'id' => SubscriptionPlanLimit::where(['plan_id' => $plan->id, 'limit_key' => $key])->value('id') ?? (string) Str::uuid(),
                         'limit_value' => $val
                     ]
                 );
@@ -212,10 +243,10 @@ class SaasSubscriptionSeeder extends Seeder
             foreach ($p['enabled_features'] as $fName) {
                 if (isset($featureModels[$fName])) {
                     $featId = $featureModels[$fName]->id;
-                    SubscriptionPlanFeature::updateOrCreate(
+                    $this->safeSeedComposite(
+                        SubscriptionPlanFeature::class,
                         ['plan_id' => $plan->id, 'feature_id' => $featId],
                         [
-                            'id' => SubscriptionPlanFeature::where(['plan_id' => $plan->id, 'feature_id' => $featId])->value('id') ?? (string) Str::uuid(),
                             'access_level' => 'ENABLED'
                         ]
                     );
@@ -276,10 +307,10 @@ class SaasSubscriptionSeeder extends Seeder
         ];
 
         foreach ($addonsData as $add) {
-            SubscriptionAddon::updateOrCreate(
+            $this->safeSeedComposite(
+                SubscriptionAddon::class,
                 ['code' => $add['code']],
                 [
-                    'id' => SubscriptionAddon::where('code', $add['code'])->value('id') ?? (string) Str::uuid(),
                     'name' => $add['name'],
                     'addon_type' => $add['addon_type'],
                     'monthly_price' => $add['monthly'],
@@ -303,10 +334,10 @@ class SaasSubscriptionSeeder extends Seeder
         ];
 
         foreach ($slabsData as $slab) {
-            SubscriptionPlotSlab::updateOrCreate(
+            $this->safeSeedComposite(
+                SubscriptionPlotSlab::class,
                 ['min_plots' => $slab['min'], 'max_plots' => $slab['max']],
                 [
-                    'id' => SubscriptionPlotSlab::where(['min_plots' => $slab['min'], 'max_plots' => $slab['max']])->value('id') ?? (string) Str::uuid(),
                     'monthly_price' => $slab['monthly'],
                     'yearly_price' => $slab['yearly'],
                     'status' => 'ACTIVE'
@@ -315,3 +346,4 @@ class SaasSubscriptionSeeder extends Seeder
         }
     }
 }
+
