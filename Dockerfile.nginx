@@ -28,6 +28,9 @@ RUN rm -rf /usr/share/nginx/html/*
 # Copy the compiled production assets from Stage 1 to Nginx static assets path
 COPY --from=builder /app/dist /usr/share/nginx/html
 
+# Copy custom Nginx configuration file containing API forwarding rules
+COPY nginx.staging.conf /etc/nginx/nginx.conf
+
 # Expose HTTP port
 EXPOSE 80
 
