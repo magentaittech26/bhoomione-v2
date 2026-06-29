@@ -53,6 +53,10 @@ RUN if [ -f "composer.json" ]; then \
 # Copy all application files to the container
 COPY . /var/www/html/
 
+# Copy the entrypoint script to /usr/local/bin so it remains unaffected by host volume mounts over /var/www/html
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # Create appropriate Laravel storage and bootstrap folders and set correct user/group permissions
 RUN mkdir -p /var/www/html/storage/framework/cache/data \
              /var/www/html/storage/framework/sessions \
@@ -60,12 +64,11 @@ RUN mkdir -p /var/www/html/storage/framework/cache/data \
              /var/www/html/storage/logs \
              /var/www/html/bootstrap/cache && \
     chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache && \
-    chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache && \
-    chmod +x /var/www/html/docker-entrypoint.sh
+    chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
 
 # Expose PHP-FPM default port
 EXPOSE 9000
 
 # Set entrypoint and default execution command
-ENTRYPOINT ["/var/www/html/docker-entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["php-fpm"]

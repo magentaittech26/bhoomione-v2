@@ -13,9 +13,12 @@ During deployments using Docker volumes or bind mounts (e.g., `- ./backend-api:/
 ---
 
 ## 2. Dynamic Initialization & Startup Entrypoint
-Rather than relying on manual shell operations (like `chmod` or `chown`) on the target server, we implemented a self-healing startup entrypoint script:
+Rather than relying on manual shell operations (like `chmod` or `chown`) on the target server, we implemented a self-healing startup entrypoint script.
 
-**File Path:** `/backend-api/docker-entrypoint.sh`
+**Original Source File Path:** `/backend-api/docker-entrypoint.sh`  
+**Container Target Path:** `/usr/local/bin/docker-entrypoint.sh`
+
+During build-time, this script is explicitly copied to `/usr/local/bin/docker-entrypoint.sh` and given execution privileges (`RUN chmod +x`). This isolates it completely from the `/var/www/html` volume bind mount, ensuring that even if host permissions or mount options are highly restrictive, the container's executable bit remains fully intact.
 
 This script executes automatically as the container boot-wrapper prior to starting the PHP-FPM daemon:
 1.  **Dynamically creates** all critical folders if missing.
