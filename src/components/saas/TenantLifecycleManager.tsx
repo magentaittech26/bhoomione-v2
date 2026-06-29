@@ -10,16 +10,25 @@ interface TenantLifecycleManagerProps {
   tenants: any[];
   showToast: (msg: string, type: "success" | "error") => void;
   onRefreshData?: () => void;
+  initialSelectedTenantCode?: string;
 }
 
 export default function TenantLifecycleManager({ 
   tenants, 
   showToast,
-  onRefreshData
+  onRefreshData,
+  initialSelectedTenantCode = ""
 }: TenantLifecycleManagerProps) {
   // Component State
-  const [selectedTenantCode, setSelectedTenantCode] = useState<string>("");
+  const [selectedTenantCode, setSelectedTenantCode] = useState<string>(initialSelectedTenantCode);
   const [selectedTenant, setSelectedTenant] = useState<any | null>(null);
+
+  // Sync prop changes to state
+  useEffect(() => {
+    if (initialSelectedTenantCode) {
+      setSelectedTenantCode(initialSelectedTenantCode);
+    }
+  }, [initialSelectedTenantCode]);
   
   // Health & Queue diagnostics state
   const [healthLoading, setHealthLoading] = useState<boolean>(false);
@@ -37,7 +46,7 @@ export default function TenantLifecycleManager({
 
   // Custom Modal confirm triggers
   const [confirmAction, setConfirmAction] = useState<{
-    type: "RESET_DATA" | "DELETE_TENANT" | "REPROVISION" | "VERIFY_PROVISION" | "RESET_DOMAIN" | "GENERATE_DEMO" | "ARCHIVE" | "DNS_VERIFY";
+    type: "RESET_DATA" | "DELETE_TENANT" | "REPROVISION" | "VERIFY_PROVISION" | "RESET_DOMAIN" | "GENERATE_DEMO" | "ARCHIVE" | "DNS_VERIFY" | "SUSPEND" | "PENDING_DELETION" | "DELETE_REAL" | "SYNC_NON_RENEWAL";
     title: string;
     description: string;
     warning?: string;
@@ -46,6 +55,11 @@ export default function TenantLifecycleManager({
 
   // Double verification typing check
   const [deleteVerificationText, setDeleteVerificationText] = useState<string>("");
+
+  // Input states for custom forms
+  const [actionReason, setActionReason] = useState<string>("");
+  const [retentionDays, setRetentionDays] = useState<number>(14);
+  const [backupReference, setBackupReference] = useState<string>("");
 
   // Hook to pull initial diagnostics
   useEffect(() => {
@@ -126,6 +140,11 @@ export default function TenantLifecycleManager({
       return;
     }
 
+    if (actionType === "DELETE_REAL" && deleteVerificationText !== code) {
+      showToast("Validation Error: Please type the correct tenant workspace code to confirm deletion.", "error");
+      return;
+    }
+
     setIsExecuting(true);
     addLog(`[LIFECYCLE REQUEST] Initiating action: ${actionType} on tenant workspace '${code}'`);
     setConfirmAction(null);
@@ -140,7 +159,7 @@ export default function TenantLifecycleManager({
           break;
 
         case "DELETE_TENANT":
-          res = await api.deleteDemoTenant(code);
+          res = await api.deleteDemoTenant(code, { confirm_text: deleteVerificationText });
           addLog(`[STDOUT - PURGE] ${res.message}`);
           if (res.output) {
             addLog(`[ARTISAN OUTPUT]\n${res.output}`);
@@ -148,6 +167,38 @@ export default function TenantLifecycleManager({
           showToast("Demo tenant completely deleted from cloud database.", "success");
           setSelectedTenantCode("");
           setSelectedTenant(null);
+          break;
+
+        case "SUSPEND":
+          res = await api.suspendTenantLifecycle(code, { reason: actionReason });
+          addLog(`[STDOUT - SUSPEND] ${res.message}`);
+          showToast("Tenant workspace has been suspended successfully.", "success");
+          setActionReason("");
+          break;
+
+        case "PENDING_DELETION":
+          res = await api.markPendingDeletion(code, { reason: actionReason, retention_days: retentionDays });
+          addLog(`[STDOUT - PENDING_DELETION] ${res.message}`);
+          showToast("Tenant marked pending deletion successfully.", "success");
+          setActionReason("");
+          break;
+
+        case "DELETE_REAL":
+          res = await api.deleteRealTenantPermanently(code, { confirm_text: deleteVerificationText, backup_reference: backupReference });
+          addLog(`[STDOUT - PURGE_REAL] ${res.message}`);
+          showToast("Real tenant permanently and irreversibly purged from databases.", "success");
+          setBackupReference("");
+          setSelectedTenantCode("");
+          setSelectedTenant(null);
+          break;
+
+        case "SYNC_NON_RENEWAL":
+          res = await api.syncNonRenewalAutomation();
+          addLog(`[STDOUT - SYNC] ${res.message}`);
+          if (res.output) {
+            addLog(`[ARTISAN OUTPUT]\n${res.output}`);
+          }
+          showToast("Automated non-renewal checks synchronized.", "success");
           break;
 
         case "REPROVISION":
@@ -621,6 +672,116 @@ export default function TenantLifecycleManager({
                   </button>
                 </div>
 
+                {/* 9. SUSPEND TENANT */}
+                <div className="bg-white border border-slate-200 hover:border-amber-300 rounded-xl p-4 shadow-2xs flex flex-col justify-between hover:shadow-xs transition-all">
+                  <div className="space-y-1.5 mb-3">
+                    <div className="flex items-center gap-1.5 text-amber-600">
+                      <ShieldAlert className="w-4 h-4" />
+                      <h5 className="text-xs font-bold uppercase tracking-tight">Suspend Tenant</h5>
+                    </div>
+                    <p className="text-[11px] text-slate-450 leading-relaxed">
+                      Temporarily disables all workspace logins while fully preserving all business data and subscription records.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setActionReason("");
+                      setConfirmAction({
+                        type: "SUSPEND",
+                        title: "Suspend Tenant Workspace",
+                        description: `This locks user access and disables all platform logins for tenant '${selectedTenant.tenant_code}'. Internal data arrays are fully preserved.`,
+                        warning: "Login services will be immediately suspended. Enter justification below."
+                      });
+                    }}
+                    disabled={isExecuting}
+                    className="w-full py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-[11px] font-extrabold rounded-lg transition-all cursor-pointer border border-amber-100/50"
+                  >
+                    Suspend Workspace
+                  </button>
+                </div>
+
+                {/* 10. MARK PENDING DELETION */}
+                <div className="bg-white border border-slate-200 hover:border-orange-300 rounded-xl p-4 shadow-2xs flex flex-col justify-between hover:shadow-xs transition-all">
+                  <div className="space-y-1.5 mb-3">
+                    <div className="flex items-center gap-1.5 text-orange-600">
+                      <AlertTriangle className="w-4 h-4" />
+                      <h5 className="text-xs font-bold uppercase tracking-tight">Mark Pending Deletion</h5>
+                    </div>
+                    <p className="text-[11px] text-slate-450 leading-relaxed">
+                      Schedules the tenant for permanent purge after a safe retention cooling-off period.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setActionReason("");
+                      setRetentionDays(14);
+                      setConfirmAction({
+                        type: "PENDING_DELETION",
+                        title: "Mark Tenant Pending Deletion",
+                        description: `Schedules a destructive purge routine. Sets deletion timestamps for workspace '${selectedTenant.tenant_code}'.`,
+                        warning: "All client and CAD plot features will be permanently queued for erasure."
+                      });
+                    }}
+                    disabled={isExecuting}
+                    className="w-full py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 text-[11px] font-extrabold rounded-lg transition-all cursor-pointer border border-orange-100/50"
+                  >
+                    Mark Pending Deletion
+                  </button>
+                </div>
+
+                {/* 11. DELETE REAL TENANT PERMANENTLY */}
+                <div className="bg-white border border-rose-200 hover:border-rose-400 rounded-xl p-4 shadow-2xs flex flex-col justify-between hover:shadow-xs transition-all">
+                  <div className="space-y-1.5 mb-3">
+                    <div className="flex items-center gap-1.5 text-rose-700">
+                      <ShieldAlert className="w-4 h-4" />
+                      <h5 className="text-xs font-bold uppercase tracking-tight text-rose-700">Delete Real Tenant</h5>
+                    </div>
+                    <p className="text-[11px] text-rose-600 font-semibold bg-rose-50 px-2 py-1.5 rounded-lg border border-rose-150 leading-relaxed">
+                      Allowed ONLY after Archive + Pending Deletion + Retention. Requires secure backup reference.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setBackupReference("");
+                      setConfirmAction({
+                        type: "DELETE_REAL",
+                        title: "PERMANENT DESTRUCTION OF PRODUCTION CLIENT WORKSPACE",
+                        description: `Irreversibly vaporizes all databases, users, subscriptions, domains, and core records for '${selectedTenant.tenant_code}'.`,
+                        warning: "THIS IS DESTRUCTIVE, NOT RECOVERABLE, AND ENFORCED BY ENCRYPTION HANDSHAKES.",
+                        isCritical: true
+                      });
+                    }}
+                    disabled={isExecuting || isDemoTenant(selectedTenant)}
+                    className="w-full py-1.5 bg-rose-700 hover:bg-rose-800 text-white disabled:bg-slate-100 disabled:text-slate-350 text-[11px] font-black rounded-lg transition-all cursor-pointer border border-rose-800"
+                  >
+                    {isDemoTenant(selectedTenant) ? "Blocked (Use Demo Purge)" : "PERMANENT DELETE REAL"}
+                  </button>
+                </div>
+
+                {/* 12. TRIGGER NON-RENEWAL SYNC */}
+                <div className="bg-white border border-slate-200 hover:border-indigo-300 rounded-xl p-4 shadow-2xs flex flex-col justify-between hover:shadow-xs transition-all">
+                  <div className="space-y-1.5 mb-3">
+                    <div className="flex items-center gap-1.5 text-indigo-600">
+                      <RefreshCw className="w-4 h-4" />
+                      <h5 className="text-xs font-bold uppercase tracking-tight">Sync Non-renewals</h5>
+                    </div>
+                    <p className="text-[11px] text-slate-450 leading-relaxed">
+                      Triggers automated checks to suspend expired contracts after grace period or mark pending deletion after retention.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setConfirmAction({
+                      type: "SYNC_NON_RENEWAL",
+                      title: "Synchronize Tenant Non-renewals",
+                      description: "Runs automated scheduling checks across all active sub-contracts in the database. Suspends delinquent grace periods & marks retention defaults.",
+                    })}
+                    disabled={isExecuting}
+                    className="w-full py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-extrabold rounded-lg transition-all cursor-pointer border border-indigo-100/50"
+                  >
+                    Run Non-renewal Sync
+                  </button>
+                </div>
+
               </div>
             </div>
 
@@ -737,6 +898,73 @@ export default function TenantLifecycleManager({
               </div>
             )}
 
+            {/* Reason input for Suspend and Pending Deletion */}
+            {["SUSPEND", "PENDING_DELETION"].includes(confirmAction.type) && (
+              <div className="space-y-2">
+                <label className="text-[10px] uppercase font-black text-slate-400">
+                  Justification explanation / audit reason (Required):
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  placeholder="e.g., Delinquent invoice billing or tenant requested teardown..."
+                  value={actionReason}
+                  onChange={(e) => setActionReason(e.target.value)}
+                  className="w-full text-xs border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-slate-700 font-semibold"
+                />
+              </div>
+            )}
+
+            {/* Retention days for Pending Deletion */}
+            {confirmAction.type === "PENDING_DELETION" && (
+              <div className="space-y-2">
+                <label className="text-[10px] uppercase font-black text-slate-400">
+                  Safe Retention Period (Days):
+                </label>
+                <select
+                  value={retentionDays}
+                  onChange={(e) => setRetentionDays(Number(e.target.value))}
+                  className="w-full text-xs border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-slate-700 font-bold"
+                >
+                  <option value={7}>7 Days (Fast Teardown)</option>
+                  <option value={14}>14 Days (Standard Grace Period)</option>
+                  <option value={30}>30 Days (Extended Archive Hold)</option>
+                  <option value={90}>90 Days (Enterprise Legal Wait)</option>
+                </select>
+              </div>
+            )}
+
+            {/* Backup reference and double check verification for DELETE_REAL */}
+            {confirmAction.type === "DELETE_REAL" && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] uppercase font-black text-slate-400">
+                    Secure Backup S3/GCS Reference Hash (Required):
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. s3://bhoomi-backups/prod-backup-2026-06-29-hash"
+                    value={backupReference}
+                    onChange={(e) => setBackupReference(e.target.value)}
+                    className="w-full text-xs font-mono font-bold border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-rose-100 focus:border-rose-500 rounded-xl px-3.5 py-2.5 text-rose-700"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] uppercase font-black text-slate-400">
+                    Please type the tenant code <span className="font-mono text-rose-600 font-extrabold select-all">{selectedTenant.tenant_code}</span> to authorize absolute permanent deletion:
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. client-beta"
+                    value={deleteVerificationText}
+                    onChange={(e) => setDeleteVerificationText(e.target.value)}
+                    className="w-full text-xs font-mono font-bold border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-rose-100 focus:border-rose-500 rounded-xl px-3.5 py-2.5 text-rose-700"
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-4">
               <button
                 type="button"
@@ -749,7 +977,12 @@ export default function TenantLifecycleManager({
               <button
                 type="button"
                 onClick={executeAction}
-                disabled={isExecuting || (confirmAction.type === "DELETE_TENANT" && deleteVerificationText !== selectedTenant?.tenant_code)}
+                disabled={
+                  isExecuting || 
+                  (confirmAction.type === "DELETE_TENANT" && deleteVerificationText !== selectedTenant?.tenant_code) ||
+                  (confirmAction.type === "DELETE_REAL" && (deleteVerificationText !== selectedTenant?.tenant_code || !backupReference)) ||
+                  (["SUSPEND", "PENDING_DELETION"].includes(confirmAction.type) && !actionReason)
+                }
                 className={`px-5 py-2 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-sm ${
                   confirmAction.isCritical 
                     ? "bg-rose-600 hover:bg-rose-700 border border-rose-700" 

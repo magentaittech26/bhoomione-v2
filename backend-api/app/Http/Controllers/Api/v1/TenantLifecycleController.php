@@ -430,7 +430,11 @@ class TenantLifecycleController extends Controller
         $context = $this->getContextAndUser($request);
 
         DB::transaction(function () use ($tenant) {
+            $oldStatus = $tenant->status;
+            
             $tenant->status = 'ARCHIVED';
+            $tenant->lifecycle_status = 'ARCHIVED';
+            $tenant->archived_at = now();
             $tenant->save();
 
             $sub = TenantSubscription::where('tenant_id', $tenant->id)->first();
@@ -439,12 +443,21 @@ class TenantLifecycleController extends Controller
                 $sub->save();
             }
 
+            // Disable domain access
+            DB::table('tenant_domains')
+                ->where('tenant_id', $tenant->id)
+                ->update([
+                    'is_primary' => false,
+                    'dns_status' => 'INACTIVE',
+                    'ssl_status' => 'INACTIVE'
+                ]);
+
             DB::table('tenant_lifecycle_events')->insert([
                 'id' => (string) Str::uuid(),
                 'tenant_id' => $tenant->id,
-                'old_status' => $tenant->getOriginal('status') ?? 'ACTIVE',
+                'old_status' => $oldStatus,
                 'new_status' => 'ARCHIVED',
-                'reason' => 'Tenant workspace environment moved to deep archive storage.',
+                'reason' => 'Tenant workspace environment moved to deep archive storage. Ingress domains disabled.',
                 'created_at' => now(),
                 'updated_at' => now()
             ]);
@@ -463,7 +476,240 @@ class TenantLifecycleController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => "Workspace cluster for '{$tenant_code}' has been successfully archived. Deep storage preserved, live routing disabled."
+            'message' => "Workspace cluster for '{$tenant_code}' has been successfully archived. Deep storage preserved, live routing and custom domains disabled."
+        ]);
+    }
+
+    /**
+     * POST /api/v1/admin/lifecycle/{tenant_code}/suspend
+     * Suspend Tenant.
+     */
+    public function suspendTenant(Request $request, $tenant_code)
+    {
+        $tenant = Tenant::where('tenant_code', $tenant_code)->firstOrFail();
+        $context = $this->getContextAndUser($request);
+        
+        $validated = $request->validate([
+            'reason' => 'required|string|max:1000'
+        ]);
+
+        DB::transaction(function () use ($tenant, $validated) {
+            $oldStatus = $tenant->status;
+            
+            $tenant->status = 'SUSPENDED';
+            $tenant->lifecycle_status = 'SUSPENDED';
+            $tenant->suspended_at = now();
+            $tenant->deleted_reason = $validated['reason'];
+            $tenant->save();
+
+            DB::table('tenant_lifecycle_events')->insert([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenant->id,
+                'old_status' => $oldStatus,
+                'new_status' => 'SUSPENDED',
+                'reason' => 'Suspended: ' . $validated['reason'],
+                'created_at' => now(),
+                'updated_at' => now()
+            ]);
+        });
+
+        AuditLogService::log([
+            'tenantId' => $tenant->id,
+            'userId' => $context['userId'],
+            'entityName' => 'tenant',
+            'entityId' => $tenant->id,
+            'action' => 'TENANT_SUSPENDED',
+            'ipAddress' => $context['ip'],
+            'userAgent' => $context['userAgent'],
+            'newValues' => json_encode(['status' => 'SUSPENDED', 'reason' => $validated['reason']])
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Tenant '{$tenant_code}' has been suspended successfully. Logins disabled, data and subscription preserved."
+        ]);
+    }
+
+    /**
+     * POST /api/v1/admin/lifecycle/{tenant_code}/pending-deletion
+     * Mark Tenant Pending Deletion.
+     */
+    public function markPendingDeletion(Request $request, $tenant_code)
+    {
+        $tenant = Tenant::where('tenant_code', $tenant_code)->firstOrFail();
+        $context = $this->getContextAndUser($request);
+        
+        $validated = $request->validate([
+            'reason' => 'required|string|max:1000',
+            'retention_days' => 'nullable|integer|min:1|max:365'
+        ]);
+
+        $retentionDays = $validated['retention_days'] ?? 14;
+
+        DB::transaction(function () use ($tenant, $validated, $retentionDays) {
+            $oldStatus = $tenant->status;
+            
+            $tenant->status = 'PENDING_DELETION';
+            $tenant->lifecycle_status = 'PENDING_DELETION';
+            $tenant->deletion_requested_at = now();
+            $tenant->deletion_scheduled_at = now()->addDays($retentionDays);
+            $tenant->deleted_reason = $validated['reason'];
+            $tenant->save();
+
+            DB::table('tenant_lifecycle_events')->insert([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenant->id,
+                'old_status' => $oldStatus,
+                'new_status' => 'PENDING_DELETION',
+                'reason' => 'Marked pending deletion. Scheduled on ' . $tenant->deletion_scheduled_at->toDateString() . ' due to: ' . $validated['reason'],
+                'created_at' => now(),
+                'updated_at' => now()
+            ]);
+        });
+
+        AuditLogService::log([
+            'tenantId' => $tenant->id,
+            'userId' => $context['userId'],
+            'entityName' => 'tenant',
+            'entityId' => $tenant->id,
+            'action' => 'TENANT_PENDING_DELETION',
+            'ipAddress' => $context['ip'],
+            'userAgent' => $context['userAgent'],
+            'newValues' => json_encode([
+                'status' => 'PENDING_DELETION',
+                'scheduled_at' => $tenant->deletion_scheduled_at->toIso8601String(),
+                'reason' => $validated['reason']
+            ])
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Tenant '{$tenant_code}' successfully marked pending deletion. Scheduled for permanent purge on " . $tenant->deletion_scheduled_at->toDateString() . "."
+        ]);
+    }
+
+    /**
+     * POST /api/v1/admin/lifecycle/{tenant_code}/delete-real
+     * Delete Real Tenant Permanently.
+     */
+    public function deleteRealTenantPermanently(Request $request, $tenant_code)
+    {
+        $tenant = Tenant::where('tenant_code', $tenant_code)->firstOrFail();
+        $context = $this->getContextAndUser($request);
+
+        $validated = $request->validate([
+            'confirm_text' => 'required|string',
+            'backup_reference' => 'required|string|max:255'
+        ]);
+
+        if (strtolower($validated['confirm_text']) !== strtolower($tenant_code)) {
+            return response()->json(['error' => 'Confirmation text must exactly match the tenant code to execute this action.'], 422);
+        }
+
+        // Safety verification checks
+        if (!$tenant->archived_at && $tenant->status !== 'ARCHIVED' && $tenant->lifecycle_status !== 'ARCHIVED' && $tenant->status !== 'PENDING_DELETION') {
+            return response()->json(['error' => 'Pre-condition violation: Tenant must be archived before permanent deletion.'], 422);
+        }
+
+        if (!$tenant->deletion_requested_at || ($tenant->status !== 'PENDING_DELETION' && $tenant->lifecycle_status !== 'PENDING_DELETION')) {
+            return response()->json(['error' => 'Pre-condition violation: Tenant must be marked pending deletion before permanent purge.'], 422);
+        }
+
+        if ($tenant->deletion_scheduled_at && now()->lt($tenant->deletion_scheduled_at)) {
+            $diff = now()->diffInDays($tenant->deletion_scheduled_at, false);
+            if ($diff > 0) {
+                return response()->json([
+                    'error' => "Pre-condition violation: Retention period has not elapsed. Deletion scheduled in {$diff} days (on " . $tenant->deletion_scheduled_at->toDateString() . ")."
+                ], 422);
+            }
+        }
+
+        DB::transaction(function () use ($tenant, $validated) {
+            $projectIds = DB::table('projects')->where('tenant_id', $tenant->id)->pluck('id')->toArray();
+            if (count($projectIds) > 0) {
+                $layoutIds = DB::table('layouts')->whereIn('project_id', $projectIds)->pluck('id')->toArray();
+                if (count($layoutIds) > 0) {
+                    DB::table('plots')->whereIn('layout_id', $layoutIds)->delete();
+                    DB::table('roads')->whereIn('layout_id', $layoutIds)->delete();
+                    DB::table('amenities')->whereIn('layout_id', $layoutIds)->delete();
+                    DB::table('layouts')->whereIn('id', $layoutIds)->delete();
+                }
+                DB::table('projects')->whereIn('id', $projectIds)->delete();
+            }
+
+            DB::table('import_templates')->where('tenant_id', $tenant->id)->delete();
+            DB::table('dxf_layer_mappings')->where('tenant_id', $tenant->id)->delete();
+            
+            $importJobIds = DB::table('import_jobs')->where('tenant_id', $tenant->id)->pluck('id')->toArray();
+            if (count($importJobIds) > 0) {
+                DB::table('import_job_logs')->whereIn('import_job_id', $importJobIds)->delete();
+                DB::table('geometry_entities')->whereIn('import_job_id', $importJobIds)->delete();
+                DB::table('import_jobs')->whereIn('id', $importJobIds)->delete();
+            }
+            DB::table('dxf_files')->where('tenant_id', $tenant->id)->delete();
+
+            DB::table('generation_batches')->where('tenant_id', $tenant->id)->delete();
+            DB::table('svg_documents')->where('tenant_id', $tenant->id)->delete();
+            DB::table('svg_style_profiles')->where('tenant_id', $tenant->id)->delete();
+
+            $sub = TenantSubscription::where('tenant_id', $tenant->id)->first();
+            if ($sub) {
+                DB::table('tenant_limit_overrides')->where('tenant_subscription_id', $sub->id)->delete();
+                DB::table('tenant_feature_overrides')->where('tenant_subscription_id', $sub->id)->delete();
+                DB::table('tenant_billing_overrides')->where('tenant_subscription_id', $sub->id)->delete();
+                DB::table('tenant_module_overrides')->where('tenant_subscription_id', $sub->id)->delete();
+                DB::table('tenant_addons')->where('tenant_subscription_id', $sub->id)->delete();
+                $sub->delete();
+            }
+
+            DB::table('tenant_domains')->where('tenant_id', $tenant->id)->delete();
+            DB::table('tenant_lifecycle_events')->where('tenant_id', $tenant->id)->delete();
+            DB::table('tenant_users')->where('tenant_id', $tenant->id)->delete();
+            DB::table('developer_profiles')->where('tenant_id', $tenant->id)->delete();
+            DB::table('marketplace_leads')->where('tenant_id', $tenant->id)->delete();
+
+            // Store backup reference in tenant model to pass to logger
+            $tenant->backup_reference = $validated['backup_reference'];
+            $tenant->delete();
+        });
+
+        AuditLogService::log([
+            'tenantId' => null,
+            'userId' => $context['userId'],
+            'entityName' => 'tenant',
+            'entityId' => $tenant->id,
+            'action' => 'TENANT_PERMANENTLY_DELETED',
+            'ipAddress' => $context['ip'],
+            'userAgent' => $context['userAgent'],
+            'newValues' => json_encode([
+                'tenant_code' => $tenant_code,
+                'company_name' => $tenant->company_name,
+                'backup_reference' => $validated['backup_reference'],
+                'deleted_at' => now()->toIso8601String()
+            ])
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Real tenant '{$tenant_code}' has been permanently and irreversibly deleted. Secure backup reference: {$validated['backup_reference']}."
+        ]);
+    }
+
+    /**
+     * POST /api/v1/admin/lifecycle/sync-non-renewal
+     * Involves non-renewal synchronization routines.
+     */
+    public function syncNonRenewalAutomation(Request $request)
+    {
+        $context = $this->getContextAndUser($request);
+
+        Artisan::call('tenant:sync-lifecycle');
+        $output = Artisan::output();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Automated non-renewal check triggered successfully.',
+            'output' => $output
         ]);
     }
 
@@ -477,6 +723,14 @@ class TenantLifecycleController extends Controller
         $this->validateIsDemoTenant($tenant);
 
         $context = $this->getContextAndUser($request);
+
+        $validated = $request->validate([
+            'confirm_text' => 'required|string'
+        ]);
+
+        if (strtolower($validated['confirm_text']) !== strtolower($tenant_code)) {
+            return response()->json(['error' => 'Confirmation text must match the tenant code.'], 422);
+        }
 
         // Run reset-demo Command
         Artisan::call('tenant:reset-demo', [

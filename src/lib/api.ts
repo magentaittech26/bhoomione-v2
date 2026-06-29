@@ -848,8 +848,38 @@ class ApiClient {
     return this.request<any>(`/admin/lifecycle/${tenantCode}/archive`, { method: "POST" });
   }
 
-  async deleteDemoTenant(tenantCode: string): Promise<any> {
-    return this.request<any>(`/admin/lifecycle/${tenantCode}/delete`, { method: "POST" });
+  async deleteDemoTenant(tenantCode: string, payload: { confirm_text: string }): Promise<any> {
+    return this.request<any>(`/admin/lifecycle/${tenantCode}/delete`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async suspendTenantLifecycle(tenantCode: string, payload: { reason: string }): Promise<any> {
+    return this.request<any>(`/admin/lifecycle/${tenantCode}/suspend`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async markPendingDeletion(tenantCode: string, payload: { reason: string; retention_days?: number }): Promise<any> {
+    return this.request<any>(`/admin/lifecycle/${tenantCode}/pending-deletion`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async deleteRealTenantPermanently(tenantCode: string, payload: { confirm_text: string; backup_reference: string }): Promise<any> {
+    return this.request<any>(`/admin/lifecycle/${tenantCode}/delete-real`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async syncNonRenewalAutomation(): Promise<any> {
+    return this.request<any>("/admin/lifecycle/sync-non-renewal", {
+      method: "POST",
+    });
   }
 
   async verifyTenantDns(tenantCode: string): Promise<any> {

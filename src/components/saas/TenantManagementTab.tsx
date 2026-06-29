@@ -34,6 +34,7 @@ export default function TenantManagementTab({
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [lifecycleTenantCode, setLifecycleTenantCode] = useState<string>("");
 
   // Modals Trigger State
   const [showProvisionModal, setShowProvisionModal] = useState<boolean>(false);
@@ -728,6 +729,73 @@ export default function TenantManagementTab({
                           </button>
                         )}
                       </div>
+
+                      {/* Advanced Enterprise Lifecycle Actions */}
+                      <div className="border-t border-slate-100/80 pt-3 mt-1.5 space-y-2">
+                        <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Tenant Lifecycle Controls</span>
+                        <div className="grid grid-cols-2 gap-2">
+                          {/* Suspend */}
+                          <button
+                            onClick={() => {
+                              setLifecycleTenantCode(selectedTenant.tenant_code);
+                              setSubTab("lifecycle");
+                            }}
+                            className="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/80 py-2 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <ShieldAlert className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                            Suspend
+                          </button>
+
+                          {/* Archive */}
+                          <button
+                            onClick={() => {
+                              setLifecycleTenantCode(selectedTenant.tenant_code);
+                              setSubTab("lifecycle");
+                            }}
+                            className="bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-205 py-2 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <AlertOctagon className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                            Archive
+                          </button>
+
+                          {/* Pending Deletion */}
+                          <button
+                            onClick={() => {
+                              setLifecycleTenantCode(selectedTenant.tenant_code);
+                              setSubTab("lifecycle");
+                            }}
+                            className="bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200/80 py-2 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <AlertTriangle className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                            Pending Del
+                          </button>
+
+                          {/* Delete Demo vs Delete Real */}
+                          {["DEMO", "DEVELOPER", "TRIAL"].includes(selectedTenant.infrastructure_tier) ? (
+                            <button
+                              onClick={() => {
+                                setLifecycleTenantCode(selectedTenant.tenant_code);
+                                setSubTab("lifecycle");
+                              }}
+                              className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 py-2 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                              Delete Demo
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setLifecycleTenantCode(selectedTenant.tenant_code);
+                                setSubTab("lifecycle");
+                              }}
+                              className="bg-rose-600 hover:bg-rose-700 text-white border border-rose-700 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                              <ShieldAlert className="w-3.5 h-3.5 text-white shrink-0" />
+                              Delete Permanently
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
 
                     {/* Historical transition log */}
@@ -1010,6 +1078,7 @@ export default function TenantManagementTab({
                 tenants={tenants} 
                 showToast={showToast} 
                 onRefreshData={loadAllData} 
+                initialSelectedTenantCode={lifecycleTenantCode}
               />
             </div>
           )}

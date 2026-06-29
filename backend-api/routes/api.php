@@ -346,6 +346,10 @@ Route::prefix('v1')->group(function () {
     Route::post('/admin/lifecycle/{tenant_code}/reset-domain', [TenantLifecycleController::class, 'resetDomain'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
     Route::post('/admin/lifecycle/{tenant_code}/generate-demo', [TenantLifecycleController::class, 'generateDemo'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
     Route::post('/admin/lifecycle/{tenant_code}/archive', [TenantLifecycleController::class, 'archive'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/lifecycle/{tenant_code}/suspend', [TenantLifecycleController::class, 'suspendTenant'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/lifecycle/{tenant_code}/pending-deletion', [TenantLifecycleController::class, 'markPendingDeletion'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/lifecycle/{tenant_code}/delete-real', [TenantLifecycleController::class, 'deleteRealTenantPermanently'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/lifecycle/sync-non-renewal', [TenantLifecycleController::class, 'syncNonRenewalAutomation'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
     Route::post('/admin/lifecycle/{tenant_code}/delete', [TenantLifecycleController::class, 'deleteDemo'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
     Route::post('/admin/lifecycle/{tenant_code}/dns-verify', [TenantLifecycleController::class, 'dnsVerify'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
 

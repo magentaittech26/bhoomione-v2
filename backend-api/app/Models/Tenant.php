@@ -22,6 +22,13 @@ class Tenant extends Model
         'database_host',
         'database_name',
         'database_port',
+        'lifecycle_status',
+        'suspended_at',
+        'archived_at',
+        'deletion_requested_at',
+        'deletion_scheduled_at',
+        'deleted_reason',
+        'backup_reference',
     ];
 
     /**
