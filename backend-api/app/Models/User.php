@@ -26,6 +26,7 @@ class User extends Authenticatable
         'password_hash',
         'kyc_status',
         'status',
+        'must_change_password',
     ];
 
     protected $hidden = [

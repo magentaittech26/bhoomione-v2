@@ -154,16 +154,29 @@ class TenantProvisioningController extends Controller
             'domain_type' => 'nullable|string|in:SUBDOMAIN,CUSTOM',
             'infrastructure_tier' => 'nullable|string|in:SHARED,DEDICATED,ENTERPRISE',
             'initial_status' => 'nullable|string|in:TRIAL,ACTIVE',
+            'admin_name' => 'required|string|max:255',
+            'admin_email' => 'required|email|max:255',
+            'admin_phone' => 'nullable|string|max:50',
         ]);
 
         $context = $this->getContextAndUser($request);
 
         try {
             $tenant = TenantProvisioningService::createTenant($validated, $context);
+            
+            $tempPassword = $tenant->temp_password ?? null;
+            $adminEmail = $tenant->admin_email ?? null;
+            
+            // Unset these temporary virtual attributes to prevent them from persisting/exposing unexpectedly in other arrays
+            unset($tenant->temp_password);
+            unset($tenant->admin_email);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Tenant successfully provisioned!',
-                'tenant' => $tenant
+                'tenant' => $tenant,
+                'temp_password' => $tempPassword,
+                'admin_email' => $adminEmail,
             ], 201);
         } catch (\Exception $e) {
             return response()->json([

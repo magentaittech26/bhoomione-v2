@@ -8,8 +8,12 @@ use App\Models\TenantSubscription;
 use App\Models\TenantAddon;
 use App\Models\TenantProvisioningJob;
 use App\Models\TenantLifecycleEvent;
+use App\Models\User;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use App\Services\AuditLogService;
 
 class TenantProvisioningService
@@ -78,6 +82,33 @@ class TenantProvisioningService
                 'renewal_date' => now()->addDays(14),
             ]);
 
+            // Generate secure temporary password
+            $tempPassword = Str::random(12);
+
+            // Create the tenant admin user
+            $userId = (string) Str::uuid();
+            $user = User::create([
+                'id' => $userId,
+                'name' => $data['admin_name'],
+                'email' => strtolower($data['admin_email']),
+                'phone' => $data['admin_phone'] ?? null,
+                'password_hash' => Hash::make($tempPassword),
+                'must_change_password' => true,
+                'status' => 'ACTIVE',
+            ]);
+
+            // Link the user with DEVELOPER_OWNER role in tenant_users
+            $ownerRole = DB::table('roles')->where('code', 'DEVELOPER_OWNER')->first();
+            if ($ownerRole) {
+                DB::table('tenant_users')->insert([
+                    'tenant_id' => $tenantId,
+                    'user_id' => $userId,
+                    'role_id' => $ownerRole->id,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+
             // Log Provisioning Job
             TenantProvisioningJob::create([
                 'id' => (string) Str::uuid(),
@@ -100,17 +131,109 @@ class TenantProvisioningService
                 'created_at' => now(),
             ]);
 
-            // Audit
+            // Task 9: Add provisioning audit logs
+            // 1. tenant_created
             AuditLogService::log([
                 'tenantId' => $tenantId,
                 'userId' => $context['userId'] ?? null,
                 'entityName' => 'Tenant',
                 'entityId' => $tenantId,
-                'action' => 'TENANT_CREATED',
+                'action' => 'tenant_created',
                 'newValues' => $tenant->toArray(),
                 'ipAddress' => $context['ip'] ?? null,
                 'userAgent' => $context['userAgent'] ?? null,
             ]);
+
+            // 2. domain_created
+            AuditLogService::log([
+                'tenantId' => $tenantId,
+                'userId' => $context['userId'] ?? null,
+                'entityName' => 'TenantDomain',
+                'entityId' => $domain->id,
+                'action' => 'domain_created',
+                'newValues' => $domain->toArray(),
+                'ipAddress' => $context['ip'] ?? null,
+                'userAgent' => $context['userAgent'] ?? null,
+            ]);
+
+            // 3. subscription_created
+            AuditLogService::log([
+                'tenantId' => $tenantId,
+                'userId' => $context['userId'] ?? null,
+                'entityName' => 'TenantSubscription',
+                'entityId' => $subscription->id,
+                'action' => 'subscription_created',
+                'newValues' => $subscription->toArray(),
+                'ipAddress' => $context['ip'] ?? null,
+                'userAgent' => $context['userAgent'] ?? null,
+            ]);
+
+            // 4. admin_user_created
+            AuditLogService::log([
+                'tenantId' => $tenantId,
+                'userId' => $context['userId'] ?? null,
+                'entityName' => 'User',
+                'entityId' => $user->id,
+                'action' => 'admin_user_created',
+                'newValues' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'phone' => $user->phone,
+                    'status' => $user->status,
+                ],
+                'ipAddress' => $context['ip'] ?? null,
+                'userAgent' => $context['userAgent'] ?? null,
+            ]);
+
+            // 5. credentials_generated
+            AuditLogService::log([
+                'tenantId' => $tenantId,
+                'userId' => $context['userId'] ?? null,
+                'entityName' => 'User',
+                'entityId' => $user->id,
+                'action' => 'credentials_generated',
+                'newValues' => [
+                    'userId' => $user->id,
+                    'email' => $user->email,
+                    'must_change_password' => true,
+                ],
+                'ipAddress' => $context['ip'] ?? null,
+                'userAgent' => $context['userAgent'] ?? null,
+            ]);
+
+            // Tasks 13, 14, 15: Prepare and handle email delivery
+            $emailSubject = "Welcome to BhoomiOne - Workspace Provisioned Successfully";
+            $emailBody = "Hello {$user->name},\n\n"
+                       . "Your organization workspace '{$tenant->company_name}' is ready!\n\n"
+                       . "Workspace URL: http://{$domain->domain}\n"
+                       . "Admin Email: {$user->email}\n"
+                       . "Temporary Password: {$tempPassword}\n\n"
+                       . "Please change your password immediately upon your first login.\n\n"
+                       . "Thank you,\n"
+                       . "The BhoomiOne Platform Team";
+
+            try {
+                $mailHost = config('mail.mailers.smtp.host');
+                $mailFrom = config('mail.from.address');
+                $hasMailConfig = $mailHost && $mailHost !== '127.0.0.1' && $mailHost !== 'localhost' && $mailFrom;
+
+                if ($hasMailConfig) {
+                    Mail::raw($emailBody, function ($message) use ($user, $emailSubject) {
+                        $message->to($user->email)
+                                ->subject($emailSubject);
+                    });
+                } else {
+                    Log::info("Welcome email logged (SMTP not configured or set to local/empty):\nTo: {$user->email}\nSubject: {$emailSubject}\nBody:\n{$emailBody}");
+                }
+            } catch (\Exception $mailEx) {
+                Log::error("Failed to send welcome email via SMTP: " . $mailEx->getMessage());
+                Log::info("Fallback email logging:\nTo: {$user->email}\nSubject: {$emailSubject}\nBody:\n{$emailBody}");
+            }
+
+            // Attach temporary password and admin email so controller can retrieve them
+            $tenant->temp_password = $tempPassword;
+            $tenant->admin_email = $user->email;
 
             return $tenant;
         });

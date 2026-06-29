@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import api from "../lib/api.ts";
 import { UserProfile } from "../types/auth.ts";
-import { Building2, Mail, Lock, LogIn, ChevronRight, Hash } from "lucide-react";
+import { Building2, Mail, Lock, LogIn, ChevronRight, Hash, Info } from "lucide-react";
 
 interface TenantLoginProps {
   onLoginSuccess: (user: UserProfile) => void;
@@ -39,12 +39,6 @@ export default function TenantLogin({ onLoginSuccess, onForgotPassword, defaultT
     }
   };
 
-  const handlePreFill = () => {
-    setTenantCode("bhoomi-alpha");
-    setEmail("owner@developer1.com");
-    setPassword("password123");
-  };
-
   return (
     <div className="w-full max-w-md mx-auto bg-white border border-slate-200 rounded-xl shadow-sm p-8" id="tenant-login-card">
       <div className="flex justify-center mb-6" id="tenant-login-hdr">
@@ -67,23 +61,13 @@ export default function TenantLogin({ onLoginSuccess, onForgotPassword, defaultT
         </div>
       )}
 
-      {/* Helpful Pre-fill Assistant */}
-      <button
-        type="button"
-        onClick={handlePreFill}
-        className="w-full mb-6 p-3 bg-zinc-50 hover:bg-zinc-100 border border-slate-200 rounded-lg text-left transition-colors flex items-center justify-between"
-        id="autofill-tenant-btn"
-      >
-        <div>
-          <p className="text-[11px] font-semibold text-amber-700 uppercase tracking-wider mb-0.5">
-            Seed Developer Account
-          </p>
-          <p className="text-xs text-slate-600 font-mono">
-            bhoomi-alpha / owner@developer1.com / password123
-          </p>
-        </div>
-        <ChevronRight className="w-4 h-4 text-slate-400" />
-      </button>
+      {/* Info message for credentials source */}
+      <div className="mb-6 p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 flex gap-2.5 items-start">
+        <Info className="w-4 h-4 text-indigo-650 shrink-0 mt-0.5" />
+        <p className="leading-relaxed">
+          Use credentials provided by your platform administrator.
+        </p>
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-4" id="tenant-login-form">
         <div>
@@ -97,7 +81,7 @@ export default function TenantLogin({ onLoginSuccess, onForgotPassword, defaultT
             <input
               type="text"
               required
-              placeholder="e.g. bhoomi-alpha"
+              placeholder="e.g. workspace-code"
               value={tenantCode}
               onChange={(e) => setTenantCode(e.target.value)}
               className="block w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900 font-medium text-slate-900"
@@ -116,7 +100,7 @@ export default function TenantLogin({ onLoginSuccess, onForgotPassword, defaultT
             <input
               type="email"
               required
-              placeholder="e.g. owner@developer1.com"
+              placeholder="e.g. admin@yourcompany.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="block w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900"

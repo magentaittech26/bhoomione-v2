@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from "motion/react";
 import { 
   Users, Server, Globe, Terminal, Plus, Shield, ShieldAlert, Check, RefreshCw, 
   Trash2, Sliders, Calendar, Zap, Play, X, AlertTriangle, ArrowRight, HelpCircle,
-  Activity, Key, CheckCircle, Info, ExternalLink, RefreshCw as RotateCcw, AlertOctagon
+  Activity, Key, CheckCircle, Info, ExternalLink, RefreshCw as RotateCcw, AlertOctagon,
+  Copy
 } from "lucide-react";
 import api from "../../lib/api.ts";
 import { formatCurrency } from "../../lib/currency.ts";
@@ -55,7 +56,18 @@ export default function TenantManagementTab({
   const [provType, setProvType] = useState<string>("SUBDOMAIN");
   const [provTier, setProvTier] = useState<string>("SHARED");
   const [provStatus, setProvStatus] = useState<string>("TRIAL");
+  const [provAdminName, setProvAdminName] = useState<string>("");
+  const [provAdminEmail, setProvAdminEmail] = useState<string>("");
+  const [provAdminPhone, setProvAdminPhone] = useState<string>("");
   const [submittingProv, setSubmittingProv] = useState<boolean>(false);
+
+  // 1.5. Provisioning Success State
+  const [provisionSuccessDetails, setProvisionSuccessDetails] = useState<{
+    workspaceUrl: string;
+    adminEmail: string;
+    tempPassword: string;
+    companyName: string;
+  } | null>(null);
 
   // 2. Change Plan Form
   const [targetPlanId, setTargetPlanId] = useState<string>("");
@@ -135,29 +147,51 @@ export default function TenantManagementTab({
   // 1. Provision Workspace
   const handleProvisionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!provCode || !provName || !provPlanId || !provDomain) {
-      showToast("Please fill in all mandatory parameters.", "error");
+    if (!provCode || !provName || !provPlanId || !provDomain || !provAdminName || !provAdminEmail) {
+      showToast("Please fill in all mandatory parameters, including administrator details.", "error");
       return;
     }
     try {
       setSubmittingProv(true);
-      await api.provisionTenant({
+      const res = await api.provisionTenant({
         tenant_code: provCode,
         company_name: provName,
         plan_id: provPlanId,
         domain: provDomain,
         domain_type: provType,
         infrastructure_tier: provTier,
-        initial_status: provStatus
+        initial_status: provStatus,
+        admin_name: provAdminName,
+        admin_email: provAdminEmail,
+        admin_phone: provAdminPhone || undefined
       });
-      showToast(`Workspace '${provName}' successfully provisioned!`, "success");
-      setShowProvisionModal(false);
-      // Reset
-      setProvCode("");
-      setProvName("");
-      setProvPlanId("");
-      setProvDomain("");
-      await loadAllData();
+
+      if (res && res.success) {
+        showToast(`Workspace '${provName}' successfully provisioned!`, "success");
+        setShowProvisionModal(false);
+        
+        // Populate credentials success screen
+        setProvisionSuccessDetails({
+          workspaceUrl: res.tenant?.domains?.[0]?.domain_name 
+            || res.tenant?.domains?.[0]?.domain 
+            || `http://${provDomain}`,
+          adminEmail: res.admin_email || provAdminEmail,
+          tempPassword: res.temp_password || "",
+          companyName: provName
+        });
+
+        // Reset
+        setProvCode("");
+        setProvName("");
+        setProvPlanId("");
+        setProvDomain("");
+        setProvAdminName("");
+        setProvAdminEmail("");
+        setProvAdminPhone("");
+        await loadAllData();
+      } else {
+        throw new Error(res?.error || "Unknown error during provisioning.");
+      }
     } catch (err: any) {
       showToast(err.message || "Failed to provision workspace. Check code duplication.", "error");
     } finally {
@@ -1213,6 +1247,47 @@ export default function TenantManagementTab({
 
                 </div>
 
+                {/* Primary Administrator details section */}
+                <div className="border-t border-slate-100 pt-3 mt-2">
+                  <h4 className="text-xs font-extrabold text-indigo-600 mb-2.5 uppercase tracking-wider">
+                    Primary Workspace Administrator Details
+                  </h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block mb-1 text-slate-600">Admin Full Name *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Rahul Sharma"
+                        value={provAdminName}
+                        onChange={(e) => setProvAdminName(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-205 rounded-xl px-3 py-2 focus:bg-white focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block mb-1 text-slate-600">Admin Email Address *</label>
+                      <input
+                        type="email"
+                        required
+                        placeholder="e.g. rahul@company.com"
+                        value={provAdminEmail}
+                        onChange={(e) => setProvAdminEmail(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-205 rounded-xl px-3 py-2 focus:bg-white focus:outline-none"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block mb-1 text-slate-600">Admin Phone Number (Optional)</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. +91 98765 43210"
+                        value={provAdminPhone}
+                        onChange={(e) => setProvAdminPhone(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-205 rounded-xl px-3 py-2 focus:bg-white focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
                   <button
                     type="button"
@@ -1230,6 +1305,154 @@ export default function TenantManagementTab({
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ===================================================== */}
+      {/* MODAL: PROVISIONING SUCCESS CREDENTIALS DISPLAY        */}
+      {/* ===================================================== */}
+      <AnimatePresence>
+        {provisionSuccessDetails && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setProvisionSuccessDetails(null)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs"
+            />
+            {/* Window */}
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl max-w-md w-full p-6 relative shadow-2xl z-10 space-y-5"
+            >
+              <div className="text-center space-y-2">
+                <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-emerald-50">
+                  <CheckCircle className="h-6 w-6 text-emerald-650" />
+                </div>
+                <h3 className="text-base font-extrabold text-slate-900">
+                  Workspace Provisioned Successfully!
+                </h3>
+                <p className="text-xs text-slate-505">
+                  Tenant workspace '<span className="font-extrabold text-slate-800">{provisionSuccessDetails.companyName}</span>' and database namespaces are fully initialized.
+                </p>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-205 rounded-2xl p-4 space-y-3 text-xs">
+                
+                {/* Workspace URL */}
+                <div>
+                  <p className="text-[10px] text-slate-450 uppercase font-bold tracking-wider">Workspace Access URL</p>
+                  <div className="flex items-center justify-between gap-2 mt-1">
+                    <span className="font-semibold text-slate-800 break-all select-all">
+                      {provisionSuccessDetails.workspaceUrl}
+                    </span>
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(provisionSuccessDetails.workspaceUrl);
+                        showToast("Workspace URL copied to clipboard!", "success");
+                      }}
+                      className="text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 shrink-0"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      Copy
+                    </button>
+                  </div>
+                </div>
+
+                {/* Admin Email */}
+                <div className="border-t border-slate-150 pt-2.5">
+                  <p className="text-[10px] text-slate-450 uppercase font-bold tracking-wider">Admin Login Email</p>
+                  <div className="flex items-center justify-between gap-2 mt-1">
+                    <span className="font-semibold text-slate-800 break-all select-all">
+                      {provisionSuccessDetails.adminEmail}
+                    </span>
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(provisionSuccessDetails.adminEmail);
+                        showToast("Admin Email copied to clipboard!", "success");
+                      }}
+                      className="text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 shrink-0"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      Copy
+                    </button>
+                  </div>
+                </div>
+
+                {/* Temporary Password */}
+                <div className="border-t border-slate-150 pt-2.5">
+                  <p className="text-[10px] text-slate-450 uppercase font-bold tracking-wider">Temporary Password</p>
+                  <div className="flex items-center justify-between gap-2 mt-1">
+                    <span className="font-mono font-bold text-indigo-750 bg-indigo-50 px-2 py-1 rounded text-sm break-all select-all">
+                      {provisionSuccessDetails.tempPassword}
+                    </span>
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(provisionSuccessDetails.tempPassword);
+                        showToast("Temporary Password copied!", "success");
+                      }}
+                      className="text-indigo-650 hover:text-indigo-800 font-bold flex items-center gap-1 shrink-0"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      Copy
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Warning Notice */}
+              <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-xl p-3 flex gap-2.5 text-xs">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-bold">Security Notice</p>
+                  <p className="text-[11px] leading-relaxed text-amber-850">
+                    This temporary password is shown <strong>only once</strong> and cannot be displayed again. Please copy and deliver these credentials to the workspace administrator securely.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const creds = `Workspace URL: ${provisionSuccessDetails.workspaceUrl}\nAdmin Email: ${provisionSuccessDetails.adminEmail}\nTemporary Password: ${provisionSuccessDetails.tempPassword}`;
+                    navigator.clipboard.writeText(creds);
+                    showToast("All credentials copied to clipboard!", "success");
+                  }}
+                  className="flex-1 border border-slate-205 hover:bg-slate-50 text-slate-700 rounded-xl py-2 px-3 text-xs font-extrabold flex items-center justify-center gap-1.5"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  Copy All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.open(provisionSuccessDetails.workspaceUrl, "_blank");
+                  }}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl py-2 px-3 text-xs font-extrabold flex items-center justify-center gap-1.5 shadow"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Open Workspace
+                </button>
+              </div>
+
+              <div className="text-center pt-1">
+                <button
+                  type="button"
+                  onClick={() => setProvisionSuccessDetails(null)}
+                  className="text-slate-500 hover:text-slate-800 text-[11px] font-bold underline"
+                >
+                  I have saved the credentials, close window
+                </button>
+              </div>
+
             </motion.div>
           </div>
         )}
