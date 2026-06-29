@@ -224,11 +224,22 @@ class TenantProvisioningService
                                 ->subject($emailSubject);
                     });
                 } else {
-                    Log::info("Welcome email logged (SMTP not configured or set to local/empty):\nTo: {$user->email}\nSubject: {$emailSubject}\nBody:\n{$emailBody}");
+                    // Try Laravel logging
+                    try {
+                        Log::info("Welcome email logged (SMTP not configured or set to local/empty):\nTo: {$user->email}\nSubject: {$emailSubject}\nBody:\n{$emailBody}");
+                    } catch (\Throwable $logEx) {
+                        // Fallback to PHP system/stderr log if Laravel logging fails due to permissions
+                        error_log("BhoomiOne Welcome Email Fallback (Storage permission issue prevented Laravel logging):\nTo: {$user->email}\nSubject: {$emailSubject}\nBody:\n{$emailBody}");
+                    }
                 }
-            } catch (\Exception $mailEx) {
-                Log::error("Failed to send welcome email via SMTP: " . $mailEx->getMessage());
-                Log::info("Fallback email logging:\nTo: {$user->email}\nSubject: {$emailSubject}\nBody:\n{$emailBody}");
+            } catch (\Throwable $mailEx) {
+                try {
+                    Log::error("Failed to send welcome email via SMTP: " . $mailEx->getMessage());
+                    Log::info("Fallback email logging:\nTo: {$user->email}\nSubject: {$emailSubject}\nBody:\n{$emailBody}");
+                } catch (\Throwable $logEx) {
+                    error_log("Failed to send welcome email via SMTP and Laravel logging failed: " . $mailEx->getMessage());
+                    error_log("Fallback email logging:\nTo: {$user->email}\nSubject: {$emailSubject}\nBody:\n{$emailBody}");
+                }
             }
 
             // Attach temporary password and admin email so controller can retrieve them

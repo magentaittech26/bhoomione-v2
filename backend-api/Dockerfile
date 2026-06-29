@@ -60,10 +60,12 @@ RUN mkdir -p /var/www/html/storage/framework/cache/data \
              /var/www/html/storage/logs \
              /var/www/html/bootstrap/cache && \
     chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache && \
-    chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
+    chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache && \
+    chmod +x /var/www/html/docker-entrypoint.sh
 
 # Expose PHP-FPM default port
 EXPOSE 9000
 
-# Set default execution command
+# Set entrypoint and default execution command
+ENTRYPOINT ["/var/www/html/docker-entrypoint.sh"]
 CMD ["php-fpm"]
