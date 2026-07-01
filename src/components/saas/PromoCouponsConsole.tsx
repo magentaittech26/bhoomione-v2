@@ -62,25 +62,90 @@ const INITIAL_COUPONS: PromoCoupon[] = [
   { id: "C-7", code: "FESTIVE10K", type: "FIXED", value: 10000, expiryDate: "2026-05-01", maxUses: 150, currentUses: 112, status: "EXPIRED", createdAt: "2026-04-01" }
 ];
 
-export const PromoCouponsConsole: React.FC<PromoCouponsConsoleProps> = ({ onShowToast }) => {
+class LocalErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: any }> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("PromoCouponsConsole Error caught:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-6 bg-rose-50 border border-rose-200 rounded-3xl text-center space-y-4 max-w-xl mx-auto my-12 shadow-xs">
+          <div className="w-12 h-12 bg-rose-100 rounded-full flex items-center justify-center mx-auto text-rose-600">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+          <h3 className="text-sm font-black text-rose-900 uppercase tracking-wide">Promo Console Runtime Error</h3>
+          <p className="text-xs text-rose-700 leading-relaxed max-w-md mx-auto">
+            An unexpected error occurred while processing or rendering the promotional registries:
+          </p>
+          <pre className="text-[10px] font-mono bg-rose-100/60 text-rose-800 p-3.5 rounded-xl overflow-x-auto text-left max-h-40">
+            {this.state.error?.toString() || "Unknown rendering exception"}
+          </pre>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl cursor-pointer transition-all"
+          >
+            Reload Interface
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function normalizeArray<T>(res: any): T[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (res.data && Array.isArray(res.data)) return res.data;
+  if (res.items && Array.isArray(res.items)) return res.items;
+  // Deep pagination support (e.g., Laravel's double nested data structure)
+  if (res.data && typeof res.data === "object" && Array.isArray(res.data.data)) {
+    return res.data.data;
+  }
+  return [];
+}
+
+export const PromoCouponsConsole: React.FC<PromoCouponsConsoleProps> = (props) => {
+  return (
+    <LocalErrorBoundary>
+      <PromoCouponsConsoleInner {...props} />
+    </LocalErrorBoundary>
+  );
+};
+
+const PromoCouponsConsoleInner: React.FC<PromoCouponsConsoleProps> = ({ onShowToast }) => {
   const [activeSubTab, setActiveSubTab] = useState<"coupons" | "campaigns" | "simulator" | "reports">("coupons");
   
   // State for coupons and campaigns
   const [coupons, setCoupons] = useState<PromoCoupon[]>([]);
   const [campaigns, setCampaigns] = useState<PromoCampaign[]>([]);
   const [loading, setLoading] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   
   const loadData = async () => {
     setLoading(true);
+    setFetchError(null);
     try {
       const [fetchedCoupons, fetchedCampaigns] = await Promise.all([
         api.fetchCoupons(),
         api.fetchCampaigns()
       ]);
-      setCoupons(fetchedCoupons);
-      setCampaigns(fetchedCampaigns);
+      setCoupons(normalizeArray<PromoCoupon>(fetchedCoupons));
+      setCampaigns(normalizeArray<PromoCampaign>(fetchedCampaigns));
     } catch (err: any) {
-      onShowToast("Failed to fetch promo/coupon registries: " + (err.message || err), "error");
+      const errMsg = err.message || err || "Failed to fetch registry lists from service endpoint";
+      setFetchError(errMsg);
+      onShowToast("Failed to fetch promo/coupon registries: " + errMsg, "error");
     } finally {
       setLoading(false);
     }
@@ -336,6 +401,32 @@ export const PromoCouponsConsole: React.FC<PromoCouponsConsoleProps> = ({ onShow
   const handleExportCSV = () => {
     onShowToast("Compiling redemption logs... Downloaded Promo_Coupons_Audit_Report.csv successfully.", "success");
   };
+
+  if (fetchError) {
+    return (
+      <div className="p-8 bg-slate-50 border border-slate-200 rounded-3xl text-center space-y-4 max-w-xl mx-auto my-12 shadow-2xs">
+        <div className="w-12 h-12 bg-rose-100 rounded-full flex items-center justify-center mx-auto text-rose-600">
+          <AlertCircle className="w-6 h-6" />
+        </div>
+        <h4 className="text-sm font-black text-slate-800 uppercase tracking-wide">Registry Synchronization Failed</h4>
+        <p className="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
+          The console was unable to retrieve active promo codes or marketing campaigns from the backend API:
+        </p>
+        <pre className="text-[10px] font-mono bg-slate-100 text-slate-600 p-3.5 rounded-xl overflow-x-auto text-left max-h-36">
+          {fetchError}
+        </pre>
+        <div className="pt-2 flex justify-center gap-3">
+          <button
+            onClick={() => loadData()}
+            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl cursor-pointer transition-all flex items-center gap-1.5 shadow-2xs"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Retry Connection</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6" id="promo-coupons-console-root">

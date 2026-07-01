@@ -159,33 +159,98 @@ const INITIAL_CAMPAIGNS: ActiveCampaign[] = [
   }
 ];
 
-export const ActiveCampaignsConsole: React.FC<ActiveCampaignsConsoleProps> = ({ onShowToast }) => {
+class LocalErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: any }> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("ActiveCampaignsConsole Error caught:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-6 bg-rose-50 border border-rose-200 rounded-3xl text-center space-y-4 max-w-xl mx-auto my-12 shadow-xs">
+          <div className="w-12 h-12 bg-rose-100 rounded-full flex items-center justify-center mx-auto text-rose-600">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+          <h3 className="text-sm font-black text-rose-900 uppercase tracking-wide">Promotions Console Runtime Error</h3>
+          <p className="text-xs text-rose-700 leading-relaxed max-w-md mx-auto">
+            An unexpected error occurred while processing or rendering the promotional campaign registries:
+          </p>
+          <pre className="text-[10px] font-mono bg-rose-100/60 text-rose-800 p-3.5 rounded-xl overflow-x-auto text-left max-h-40">
+            {this.state.error?.toString() || "Unknown rendering exception"}
+          </pre>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl cursor-pointer transition-all"
+          >
+            Reload Interface
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function normalizeArray<T>(res: any): T[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (res.data && Array.isArray(res.data)) return res.data;
+  if (res.items && Array.isArray(res.items)) return res.items;
+  if (res.data && typeof res.data === "object" && Array.isArray(res.data.data)) {
+    return res.data.data;
+  }
+  return [];
+}
+
+export const ActiveCampaignsConsole: React.FC<ActiveCampaignsConsoleProps> = (props) => {
+  return (
+    <LocalErrorBoundary>
+      <ActiveCampaignsConsoleInner {...props} />
+    </LocalErrorBoundary>
+  );
+};
+
+const ActiveCampaignsConsoleInner: React.FC<ActiveCampaignsConsoleProps> = ({ onShowToast }) => {
   const [activeSubTab, setActiveSubTab] = useState<"campaigns" | "roi" | "analytics" | "docs">("campaigns");
   const [campaigns, setCampaigns] = useState<ActiveCampaign[]>([]);
   const [loading, setLoading] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const loadData = async () => {
     setLoading(true);
+    setFetchError(null);
     try {
       const data = await api.fetchCampaigns();
+      const normalizedData = normalizeArray<any>(data);
       // Map API fields if case or formatting is different
-      const mapped = data.map((item: any) => ({
+      const mapped = normalizedData.map((item: any) => ({
         id: item.id,
         name: item.name,
         type: item.type as CampaignType,
-        status: item.status as ActiveCampaign["status"],
-        startDate: item.startDate,
-        endDate: item.endDate,
+        status: (item.status === "RUNNING" ? "ACTIVE" : item.status) as ActiveCampaign["status"],
+        startDate: item.startDate || item.start_date || "",
+        endDate: item.endDate || item.end_date || "",
         spend: Number(item.spend) || 0,
         revenue: Number(item.revenue) || 0,
         leads: Number(item.leads) || 0,
         conversions: Number(item.conversions) || 0,
-        targetAudience: item.targetAudience,
-        timezone: item.timezone
+        targetAudience: item.targetAudience || item.target_audience || "",
+        timezone: item.timezone || "Asia/Kolkata"
       }));
       setCampaigns(mapped);
     } catch (err: any) {
-      onShowToast("Failed to load active marketing campaigns: " + (err.message || err), "error");
+      const errMsg = err.message || err || "Failed to load active marketing campaigns";
+      setFetchError(errMsg);
+      onShowToast("Failed to load active marketing campaigns: " + errMsg, "error");
     } finally {
       setLoading(false);
     }
@@ -418,6 +483,32 @@ export const ActiveCampaignsConsole: React.FC<ActiveCampaignsConsoleProps> = ({ 
     { name: "Push Alert", Spend: campaigns.filter(c => c.type === "PUSH").reduce((s, c) => s + c.spend, 0), Revenue: campaigns.filter(c => c.type === "PUSH").reduce((s, c) => s + c.revenue, 0) },
     { name: "Lead Summit", Spend: campaigns.filter(c => c.type === "LEAD").reduce((s, c) => s + c.spend, 0), Revenue: campaigns.filter(c => c.type === "LEAD").reduce((s, c) => s + c.revenue, 0) },
   ];
+
+  if (fetchError) {
+    return (
+      <div className="p-8 bg-slate-50 border border-slate-200 rounded-3xl text-center space-y-4 max-w-xl mx-auto my-12 shadow-2xs">
+        <div className="w-12 h-12 bg-rose-100 rounded-full flex items-center justify-center mx-auto text-rose-600">
+          <AlertCircle className="w-6 h-6" />
+        </div>
+        <h4 className="text-sm font-black text-slate-800 uppercase tracking-wide">Promotions Sync Failed</h4>
+        <p className="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
+          The console was unable to retrieve active marketing campaigns from the backend service:
+        </p>
+        <pre className="text-[10px] font-mono bg-slate-100 text-slate-600 p-3.5 rounded-xl overflow-x-auto text-left max-h-36">
+          {fetchError}
+        </pre>
+        <div className="pt-2 flex justify-center gap-3">
+          <button
+            onClick={() => loadData()}
+            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl cursor-pointer transition-all flex items-center gap-1.5 shadow-2xs"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Retry Connection</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6" id="active-campaigns-console-root">
