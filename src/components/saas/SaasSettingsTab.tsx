@@ -2,10 +2,14 @@ import React, { useState, useEffect } from "react";
 import { 
   Globe, Shield, CreditCard, Mail, HardDrive, Sliders, Server, 
   Save, AlertCircle, RefreshCw, CheckCircle2, Info, Building2, Phone, FileText, Lock,
-  Star, Tag, Terminal, Activity, Zap, Plus
+  Star, Tag, Terminal, Activity, Zap, Plus, Play, Send, Check, X, Key
 } from "lucide-react";
 import { api } from "../../lib/api";
-import AddonsBillingTab from "./AddonsBillingTab.tsx";
+import { EnterpriseTaxConsole } from "./EnterpriseTaxConsole";
+import { EmailServiceConsole } from "./EmailServiceConsole";
+import { NotificationEngineConsole } from "./NotificationEngineConsole";
+import { PromoCouponsConsole } from "./PromoCouponsConsole";
+import { ActiveCampaignsConsole } from "./ActiveCampaignsConsole";
 
 interface Setting {
   id?: string;
@@ -32,9 +36,8 @@ const SETTING_GROUPS = [
   { id: "BRANDING", label: "Portal Branding", icon: Sliders, description: "Configure logos and color values." },
   { id: "LOCALIZATION", label: "Localization Info", icon: Globe, description: "Configure timezones and formatting conventions." },
   { id: "CURRENCY", label: "Currency Configuration", icon: CreditCard, description: "Verify INR base currency symbols." },
-  { id: "GST", label: "GST Taxes Schema", icon: FileText, description: "Setup tax parameters and GST details." },
-  { id: "BILLING", label: "Billing & Gateway", icon: CreditCard, description: "Configure payment gateway, logs, and billing intervals." },
-  { id: "PRICING_RULES", label: "Internal Pricing Rules", icon: CreditCard, description: "Manage plot billing slabs and internal pricing rules." },
+  { id: "GST", label: "GST & Tax Configuration", icon: FileText, description: "Manage central GST, TDS, stamp duties, and builder overrides." },
+  { id: "BILLING", label: "Billing & Gateway", icon: CreditCard, description: "Configure payment gateways, test credentials, and logs." },
   { id: "COUPONS", label: "Promo Coupons", icon: Tag, description: "Configure corporate discounts and promotional coupons." },
   { id: "PROMOTIONS", label: "Active Campaigns", icon: Star, description: "Manage active upgrade campaigns and banner views." },
   { id: "DOMAINS", label: "Domains & Routing", icon: Globe, description: "Configure custom hostname proxy parameters." },
@@ -125,7 +128,7 @@ const SETTING_CATEGORIES = [
   },
   {
     title: "Commercial Engine",
-    groups: ["BILLING", "PRICING_RULES", "COUPONS", "PROMOTIONS", "CURRENCY", "GST"]
+    groups: ["BILLING", "COUPONS", "PROMOTIONS", "CURRENCY", "GST"]
   },
   {
     title: "Communications",
@@ -139,12 +142,6 @@ const SETTING_CATEGORIES = [
 
 export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({ 
   onShowToast,
-  slabs = [],
-  addons = [],
-  onAddSlab,
-  onUpdateSlab,
-  onDeleteSlab,
-  onReorderSlabs
 }) => {
   const [activeGroup, setActiveGroup] = useState<string>("GENERAL");
   const [settings, setSettings] = useState<Setting[]>([]);
@@ -152,16 +149,38 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Gateway related state
+  const [gateways, setGateways] = useState<any[]>([]);
+  const [activeGatewayCode, setActiveGatewayCode] = useState<string>("RAZORPAY");
+  const [paymentLogs, setPaymentLogs] = useState<any[]>([]);
+  const [webhookLogs, setWebhookLogs] = useState<any[]>([]);
+  const [subTab, setSubTab] = useState<"gateways" | "transactions" | "webhooks">("gateways");
+  const [gatewaysLoading, setGatewaysLoading] = useState<boolean>(false);
+
+  // Modal simulation inputs
+  const [showTestPaymentModal, setShowTestPaymentModal] = useState<boolean>(false);
+  const [testAmount, setTestAmount] = useState<number>(2490);
+  const [testEmail, setTestEmail] = useState<string>("owner@developer1.com");
+  
+  const [showWebhookModal, setShowWebhookModal] = useState<boolean>(false);
+  const [webhookEvent, setWebhookEvent] = useState<string>("payment.authorized");
+  const [webhookPayload, setWebhookPayload] = useState<string>('{"event": "payment.authorized", "id": "pay_test_99"}');
+
   useEffect(() => {
     loadSettings();
   }, []);
+
+  useEffect(() => {
+    if (activeGroup === "BILLING") {
+      loadGatewaysData();
+    }
+  }, [activeGroup]);
 
   const loadSettings = async () => {
     setLoading(true);
     setError(null);
     try {
       const data = await api.fetchSaasSettings();
-      // Ensure camelCase fields are parsed cleanly (if database returned snake_case due to different drivers)
       const formatted = data.map((item: any) => ({
         id: item.id,
         settingGroup: item.settingGroup || item.setting_group || "GENERAL",
@@ -171,7 +190,6 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({
         isPublic: item.isPublic !== undefined ? !!item.isPublic : (item.is_public !== undefined ? !!item.is_public : false)
       }));
 
-      // Dynamically auto-create/initialize missing template configuration keys, keeping all real existing values
       const merged = [...formatted];
       DEFAULT_PLATFORM_SETTINGS.forEach(def => {
         const exists = formatted.some(f => f.settingKey.toLowerCase() === def.settingKey.toLowerCase());
@@ -196,6 +214,24 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({
     }
   };
 
+  const loadGatewaysData = async () => {
+    setGatewaysLoading(true);
+    try {
+      const gList = await api.fetchGateways();
+      setGateways(gList);
+      
+      const pLogs = await api.fetchPaymentLogs();
+      setPaymentLogs(pLogs);
+      
+      const wLogs = await api.fetchWebhookLogs();
+      setWebhookLogs(wLogs);
+    } catch (err) {
+      console.error("Failed to load gateway details:", err);
+    } finally {
+      setGatewaysLoading(false);
+    }
+  };
+
   const handleValueChange = (key: string, val: string) => {
     setSettings(prev => prev.map(s => {
       if (s.settingKey === key) {
@@ -208,7 +244,6 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({
   const handleSave = async () => {
     setSaving(true);
     try {
-      // Map to payload matching Laravel model keys
       const payload = settings.map(s => ({
         setting_group: s.settingGroup,
         setting_key: s.settingKey,
@@ -227,49 +262,120 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({
     }
   };
 
+  // Gateway Field Changes
+  const handleGatewayFieldChange = (field: string, value: any) => {
+    setGateways(prev => prev.map(g => {
+      if (g.gatewayCode === activeGatewayCode) {
+        return { ...g, [field]: value };
+      }
+      return g;
+    }));
+  };
+
+  const handleSaveGateways = async () => {
+    setSaving(true);
+    try {
+      await api.saveGateways(gateways);
+      onShowToast("Payment gateways configuration saved successfully.", "success");
+      await loadGatewaysData();
+    } catch (err: any) {
+      onShowToast(err.message || "Failed to save payment gateway settings.", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleTestConnection = async (code: string) => {
+    try {
+      const res = await api.testConnection(code);
+      if (res.success) {
+        onShowToast(res.message, "success");
+      } else {
+        onShowToast(res.message, "error");
+      }
+      await loadGatewaysData();
+    } catch (err: any) {
+      onShowToast(err.message || "Failed to test credentials.", "error");
+    }
+  };
+
+  const handleExecuteTestPayment = async () => {
+    try {
+      const res = await api.testPayment(activeGatewayCode, testAmount, testEmail);
+      if (res.success) {
+        onShowToast(res.message, "success");
+        setShowTestPaymentModal(false);
+      } else {
+        onShowToast(res.message, "error");
+      }
+      await loadGatewaysData();
+    } catch (err: any) {
+      onShowToast(err.message || "Failed to submit test charge.", "error");
+    }
+  };
+
+  const handleSimulateWebhook = async () => {
+    try {
+      const res = await api.webhookVerify(activeGatewayCode, webhookEvent, webhookPayload);
+      if (res.success) {
+        onShowToast(res.message, "success");
+        setShowWebhookModal(false);
+      } else {
+        onShowToast(res.message, "error");
+      }
+      await loadGatewaysData();
+    } catch (err: any) {
+      onShowToast(err.message || "Failed to dispatch test webhook.", "error");
+    }
+  };
+
+  const handleRetryPayment = async (id: string) => {
+    try {
+      const res = await api.retryPayment(id);
+      onShowToast(res.message, "success");
+      await loadGatewaysData();
+    } catch (err: any) {
+      onShowToast(err.message || "Failed to clear transaction error.", "error");
+    }
+  };
+
   // Filter settings for currently active group
   const filteredSettings = settings.filter(s => s.settingGroup === activeGroup);
 
   const getSettingLabelAndIcon = (key: string) => {
     switch(key) {
-      // General
       case "platform_name": return { label: "Platform Branding Name", placeholder: "e.g., BhoomiOne", icon: Sliders };
       case "support_email": return { label: "System Support Email Address", placeholder: "e.g., support@bhoomione.in", icon: Mail };
       case "support_phone": return { label: "System Support Phone Line", placeholder: "e.g., +91 98765 43210", icon: Phone };
       case "company_name": return { label: "Registered Corporate Entity", placeholder: "e.g., BhoomiOne Technologies Pvt Ltd", icon: Building2 };
       case "gst_number": return { label: "GST Identification Number (GSTIN)", placeholder: "e.g., 29AAAAA1111A1Z1", icon: FileText };
-      case "address": return { label: "Registered Corporate Address", placeholder: "Full corporate address details", icon: Building2 };
-      // Domains
+      case "corporate_address": return { label: "Registered Corporate Address", placeholder: "Full corporate address details", icon: Building2 };
       case "base_domain": return { label: "Core Workspace Base Domain", placeholder: "e.g., bhoomione.in", icon: Globe };
       case "admin_domain": return { label: "Super Admin Supervision Domain", placeholder: "e.g., admin.bhoomione.in", icon: Lock };
-      case "marketplace_domain": return { label: "Townships Open Marketplace Domain", placeholder: "e.g., market.bhoomione.in", icon: Globe };
       case "customer_portal_pattern": return { label: "Customer Portal Route Schema Pattern", placeholder: "e.g., {{tenant}}.bhoomione.in/portal", icon: Globe };
-      case "agent_portal_pattern": return { label: "Agent Portal Route Schema Pattern", placeholder: "e.g., {{tenant}}.bhoomione.in/agent", icon: Globe };
-      case "custom_domain_policy": return { label: "Custom Domain Mapping SSL Policy", placeholder: "e.g., REWRITE_SSL_CNAME", icon: Shield };
-      // Billing
       case "currency": return { label: "System Base Transaction Currency Code", placeholder: "e.g., INR", icon: CreditCard };
+      case "currency_symbol": return { label: "Currency Prefix Symbol", placeholder: "e.g., ₹", icon: CreditCard };
       case "gst_percentage": return { label: "Default Service GST percentage (%)", placeholder: "18", icon: CreditCard };
       case "invoice_prefix": return { label: "Automated Invoice Prefix Code", placeholder: "BO-INV-", icon: FileText };
       case "default_trial_days": return { label: "Default Trial Span (Days)", placeholder: "14", icon: Sliders };
       case "grace_period_days": return { label: "Payment Overdue Grace Extension (Days)", placeholder: "7", icon: Sliders };
-      case "auto_suspend_after_due_days": return { label: "Auto Suspend Workspace After (Days Overdue)", placeholder: "5", icon: Sliders };
-      case "auto_expire_after_days": return { label: "Auto Archive Cancelled Workspaces After (Days)", placeholder: "30", icon: Sliders };
-      // Notifications
-      case "email_provider": return { label: "Primary SMTP/Email Gateway Engine", placeholder: "e.g., SES, SendGrid", icon: Mail };
+      case "smtp_host": return { label: "Primary SMTP Relaying Host", placeholder: "e.g., smtp.mailgun.org", icon: Mail };
+      case "smtp_port": return { label: "SMTP Communication Port", placeholder: "e.g., 587", icon: Mail };
+      case "smtp_user": return { label: "SMTP Username Access ID", placeholder: "postmaster@bhoomione.in", icon: Mail };
       case "whatsapp_provider": return { label: "Primary WhatsApp Business API Gateway", placeholder: "e.g., Twilio", icon: Phone };
+      case "whatsapp_auth_token": return { label: "WhatsApp Token Signature Key", placeholder: "Authentication token key", icon: Lock };
       case "sms_provider": return { label: "Primary Transactional SMS Provider", placeholder: "e.g., Twilio, Plivo", icon: Phone };
+      case "sms_sender_id": return { label: "SMS Broadcast Sender Identification (6 chars)", placeholder: "BHOOMI", icon: Phone };
       case "reminder_days_before_renewal": return { label: "First Renewal Reminder Alert (Days Before Due)", placeholder: "7", icon: Sliders };
-      // Security
+      case "overdue_reminder_days": return { label: "Overdue Reminder Frequency (Days)", placeholder: "3", icon: Sliders };
       case "session_timeout": return { label: "Idle Administrator Session Expiry (Minutes)", placeholder: "120", icon: Sliders };
       case "password_policy": return { label: "Minimum Passphrase Policy Grade", placeholder: "STRONG", icon: Shield };
       case "mfa_required": return { label: "Enforce Multi-Factor Authentication (MFA)", placeholder: "false", icon: Lock };
       case "audit_retention_days": return { label: "System Compliance Logs Retention Span (Days)", placeholder: "365", icon: FileText };
-      // Storage
       case "default_storage_gb": return { label: "Default Plan Disk Allocation Quota (GB)", placeholder: "10", icon: HardDrive };
       case "max_upload_size_mb": return { label: "Max Raw File Attachment Multi-part Limit (MB)", placeholder: "100", icon: HardDrive };
-      case "dxf_upload_limit_mb": return { label: "Heavy AutoCAD DXF Parser Upload Limits (MB)", placeholder: "50", icon: HardDrive };
-      case "image_upload_limit_mb": return { label: "Layout Layout Overlay Image Limit (MB)", placeholder: "20", icon: HardDrive };
-
+      case "database_engine": return { label: "Target SaaS Relational Database", placeholder: "PostgreSQL", icon: Server };
+      case "cache_driver": return { label: "SaaS Caching Microservice", placeholder: "Redis", icon: Server };
       default: return { label: key.replace(/_/g, " ").toUpperCase(), placeholder: "", icon: Sliders };
     }
   };
@@ -283,8 +389,10 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({
     );
   }
 
+  const activeGateway = gateways.find(g => g.gatewayCode === activeGatewayCode) || gateways[0];
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start font-sans" id="saas-platform-settings-grid">
+    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start font-sans animate-fade-in" id="saas-platform-settings-grid">
       {/* 1. LEFT SIDEBAR NAVIGATION GROUPS */}
       <div className="lg:col-span-1 space-y-5" id="settings-sidebar-nav">
         {SETTING_CATEGORIES.map(category => (
@@ -298,6 +406,7 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({
                 if (!g) return null;
                 const Icon = g.icon;
                 const isActive = activeGroup === g.id;
+
                 return (
                   <button
                     key={g.id}
@@ -305,7 +414,7 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({
                     className={`w-full text-left px-3.5 py-3 rounded-xl flex items-center gap-3 transition-all duration-150 cursor-pointer border ${
                       isActive 
                         ? "bg-indigo-600 border-indigo-700 text-white shadow-xs font-bold" 
-                        : "bg-white border-slate-200 text-slate-655 hover:text-slate-900 hover:bg-slate-50"
+                        : "bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50"
                     }`}
                   >
                     <div className={`p-1.5 rounded-lg shrink-0 ${isActive ? "bg-indigo-500 text-white" : "bg-slate-100 text-slate-500"}`}>
@@ -336,11 +445,11 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({
               {SETTING_GROUPS.find(g => g.id === activeGroup)?.description}
             </p>
           </div>
-          {activeGroup !== "ADVANCED" && activeGroup !== "PRICING_RULES" && (
+          {activeGroup !== "ADVANCED" && activeGroup !== "BILLING" && activeGroup !== "GST" && activeGroup !== "EMAIL" && activeGroup !== "NOTIFICATIONS" && activeGroup !== "WHATSAPP" && activeGroup !== "SMS" && activeGroup !== "COUPONS" && activeGroup !== "PROMOTIONS" && (
             <button
               onClick={handleSave}
               disabled={saving}
-              className="bg-indigo-650 hover:bg-indigo-750 text-white text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               <span>{saving ? "Replicating..." : "Save Settings"}</span>
@@ -357,233 +466,412 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({
             </div>
           )}
 
-          {activeGroup === "PRICING_RULES" ? (
-            <div className="space-y-6" id="pricing-rules-view">
-              <AddonsBillingTab 
-                defaultTab="slabs"
-                slabs={slabs}
-                addons={addons}
-                onAddSlab={onAddSlab || (() => {})}
-                onUpdateSlab={onUpdateSlab || (() => {})}
-                onDeleteSlab={onDeleteSlab || (() => {})}
-                onReorderSlabs={onReorderSlabs || (() => {})}
-                onAddAddon={() => {}}
-                onUpdateAddon={() => {}}
-              />
-            </div>
+          {activeGroup === "GST" ? (
+            <EnterpriseTaxConsole onShowToast={onShowToast} />
+          ) : activeGroup === "EMAIL" ? (
+            <EmailServiceConsole onShowToast={onShowToast} />
+          ) : activeGroup === "COUPONS" ? (
+            <PromoCouponsConsole onShowToast={onShowToast} />
+          ) : activeGroup === "PROMOTIONS" ? (
+            <ActiveCampaignsConsole onShowToast={onShowToast} />
+          ) : (activeGroup === "NOTIFICATIONS" || activeGroup === "WHATSAPP" || activeGroup === "SMS") ? (
+            <NotificationEngineConsole onShowToast={onShowToast} />
           ) : activeGroup === "BILLING" ? (
             <div className="space-y-6" id="settings-billing-view">
-              <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-250 text-xs">
-                <p className="font-bold text-slate-800">Billing & Grace Windows Configuration</p>
-                <p className="text-slate-500 mt-1">These settings directly dictate system payment windows and overdue grace extensions.</p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {filteredSettings.map(s => {
-                  const info = getSettingLabelAndIcon(s.settingKey);
-                  const RowIcon = info.icon;
-
-                  return (
-                    <div key={s.settingKey} className="p-4 bg-slate-50/50 border border-slate-100 hover:border-slate-200 rounded-xl transition-all space-y-2 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center gap-2.5 mb-2.5">
-                          <div className="p-1.5 rounded-lg bg-indigo-50 text-indigo-650 shrink-0">
-                            <RowIcon className="w-3.5 h-3.5" />
-                          </div>
-                          <label className="block text-xs font-bold text-slate-750 uppercase tracking-wide">
-                            {info.label}
-                          </label>
-                        </div>
-                        <input 
-                          type={s.settingType === "number" ? "number" : "text"}
-                          value={s.settingValue || ""}
-                          onChange={(e) => handleValueChange(s.settingKey, e.target.value)}
-                          placeholder={info.placeholder}
-                          className="w-full px-3.5 py-2 border border-slate-200 bg-white hover:border-slate-350 focus:border-indigo-500 text-xs rounded-lg transition-all focus:ring-1 focus:ring-indigo-500/10 font-sans outline-hidden text-slate-800"
-                        />
-                      </div>
-
-                      <div className="pt-2.5 flex items-center justify-between text-[10px] text-slate-400 font-mono tracking-tight select-none">
-                        <span>Key: {s.settingKey}</span>
-                        <span className="px-1.5 py-0.5 rounded text-[8px] uppercase font-bold tracking-wider bg-slate-100 text-slate-500 border border-slate-200">
-                          Secure Server
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Billing gateway and telemetry logs */}
-              <div className="border-t border-slate-200 pt-6 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                    <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Payment Gateway Provider</p>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-black text-slate-850">Razorpay Enterprise</span>
-                      <span className="text-[9px] bg-emerald-50 text-emerald-800 border border-emerald-100 font-bold px-1.5 py-0.5 rounded">ONLINE</span>
-                    </div>
-                    <p className="text-[10px] text-slate-500">Auto-recurring cards and corporate net banking mandates active.</p>
-                  </div>
-
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                    <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Billing Recurrence Engine</p>
-                    <p className="text-xs font-black text-slate-850">Next Auto-Run Scheduled</p>
-                    <p className="text-[10px] text-indigo-600 font-mono font-bold">2026-06-28 00:00:00 UTC</p>
-                  </div>
-
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                    <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">GST Invoice Settings</p>
-                    <p className="text-xs font-black text-slate-850">Corporate IGST / CGST 18%</p>
-                    <p className="text-[10px] text-slate-500">Consolidated monthly tax summary logs active.</p>
-                  </div>
-                </div>
-
-                <div className="bg-slate-50 p-4 border border-slate-200 rounded-xl space-y-3">
-                  <h4 className="text-[10px] font-extrabold text-slate-900 uppercase tracking-wider">Billing retry sequence logs (Latest 3 runs)</h4>
-                  <div className="overflow-x-auto text-xs">
-                    <table className="w-full text-left text-slate-600">
-                      <tbody className="divide-y divide-slate-150">
-                        {[
-                          { time: "2026-06-27 02:15:20", msg: "Recurring billing cron completed. Processed 42 workspaces, generated 3 invoices, successfully charged 2 credit cards automatically.", level: "INFO" },
-                          { time: "2026-06-26 12:44:02", msg: "Payment collection failed for workspace [IND_MUNICIPAL_01]. Card status: EXPIRED. Grace period initiated (7 days left). Sending automated alerts.", level: "WARNING" },
-                          { time: "2026-06-25 00:00:15", msg: "Razorpay webhook received: Payment ID pay_XYZ987654. Confirmed renewal subscription for [KRN_DEVELOPERS]. Plan: GROWTH_YEARLY.", level: "SUCCESS" }
-                        ].map((row, idx) => (
-                          <tr key={idx} className="hover:bg-slate-100/30 font-mono text-[10px]">
-                            <td className="p-2.5 text-slate-450 font-bold whitespace-nowrap">{row.time}</td>
-                            <td className="p-2.5">
-                              <span className={`inline-block font-extrabold text-[8px] px-1 py-0.5 rounded mr-2 ${
-                                row.level === "SUCCESS" ? "bg-emerald-50 text-emerald-800" :
-                                row.level === "WARNING" ? "bg-red-50 text-red-800" : "bg-blue-50 text-blue-800"
-                              }`}>{row.level}</span>
-                              <span className="text-slate-700 leading-relaxed font-sans">{row.msg}</span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : activeGroup === "COUPONS" ? (
-            <div className="space-y-6" id="settings-coupons-view">
-              <div className="flex justify-between items-center border-b border-slate-100 pb-3 flex-wrap gap-4">
-                <div>
-                  <h4 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Promo Coupon Codes Catalog</h4>
-                  <p className="text-[11px] text-slate-500">Configure corporate discounts, custom launch percentage coupons, and seasonal price adjustments.</p>
-                </div>
+              {/* SUB-TABS TO TOGGLE GATEWAY SETUP vs LOGS */}
+              <div className="flex border-b border-slate-200 gap-1 select-none">
                 <button 
-                  onClick={() => onShowToast("Dynamic Coupon registry creation is available! Modify settings directly to add customized pricing variables.", "success")}
-                  className="bg-indigo-650 hover:bg-indigo-750 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition-all"
+                  onClick={() => setSubTab("gateways")}
+                  className={`px-4 py-2 text-xs font-extrabold uppercase tracking-wide border-b-2 transition-all cursor-pointer ${
+                    subTab === "gateways" ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-800"
+                  }`}
                 >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Create Coupon Code</span>
+                  Gateway Configurations
+                </button>
+                <button 
+                  onClick={() => setSubTab("transactions")}
+                  className={`px-4 py-2 text-xs font-extrabold uppercase tracking-wide border-b-2 transition-all cursor-pointer ${
+                    subTab === "transactions" ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  Transaction Logs
+                </button>
+                <button 
+                  onClick={() => setSubTab("webhooks")}
+                  className={`px-4 py-2 text-xs font-extrabold uppercase tracking-wide border-b-2 transition-all cursor-pointer ${
+                    subTab === "webhooks" ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  Webhook Verifications
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs">
-                {[
-                  { code: "BHOOMI_LAUNCH_25", label: "Early Adopter Promotion", value: "25% OFF", type: "Percentage Recurring", limit: "First 100 Tenants", status: "ACTIVE", color: "text-emerald-700 bg-emerald-50 border border-emerald-100" },
-                  { code: "CORP_IND_ANNUAL", label: "State Government Subsidy", value: "₹15,000 OFF", type: "Flat Rate Deduction", limit: "Municipal Tenants", status: "ACTIVE", color: "text-emerald-700 bg-emerald-50 border border-emerald-100" },
-                  { code: "SPRING_STG_EXPIRED", label: "Historic Spring Campaign", value: "10% OFF", type: "Percentage Base", limit: "No restriction", status: "EXPIRED", color: "text-slate-400 bg-slate-100 border border-slate-200" }
-                ].map((row, idx) => (
-                  <div key={idx} className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-4 hover:shadow-sm transition-all flex flex-col justify-between">
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="font-mono font-black text-indigo-700 text-xs tracking-wide bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">{row.code}</span>
-                        <span className={`text-[8.5px] font-bold px-2 py-0.5 rounded-full ${row.color}`}>{row.status}</span>
+              {gatewaysLoading ? (
+                <div className="flex flex-col items-center justify-center p-12 space-y-3 bg-slate-50 border border-slate-200 rounded-xl">
+                  <RefreshCw className="w-6 h-6 text-indigo-600 animate-spin" />
+                  <p className="text-[11px] font-bold text-slate-500">Loading live gateway telemetry...</p>
+                </div>
+              ) : subTab === "gateways" ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+                  
+                  {/* Left Gateways list */}
+                  <div className="md:col-span-1 space-y-2">
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Gateway Registry</p>
+                    <div className="space-y-1.5">
+                      {gateways.map(g => {
+                        const isSel = activeGatewayCode === g.gatewayCode;
+                        return (
+                          <button
+                            key={g.gatewayCode}
+                            onClick={() => setActiveGatewayCode(g.gatewayCode)}
+                            className={`w-full text-left p-3 rounded-xl border flex items-center justify-between transition-all cursor-pointer ${
+                              isSel 
+                                ? "bg-slate-55 border-indigo-200 ring-2 ring-indigo-500/10" 
+                                : "bg-white border-slate-200 hover:bg-slate-50"
+                            }`}
+                          >
+                            <div className="min-w-0">
+                              <p className="text-xs font-extrabold text-slate-800 uppercase tracking-wide">{g.name}</p>
+                              <p className="text-[9px] font-mono text-slate-400 mt-0.5">{g.gatewayCode}</p>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              {g.isDefault && (
+                                <span className="text-[7.5px] font-black uppercase bg-indigo-50 border border-indigo-200 text-indigo-750 px-1 py-0.5 rounded">Default</span>
+                              )}
+                              <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${
+                                g.isEnabled ? "bg-emerald-50 text-emerald-700 border border-emerald-100" : "bg-slate-100 text-slate-400 border border-slate-200"
+                              }`}>
+                                {g.isEnabled ? "Enabled" : "Off"}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Right Gateway Config Form */}
+                  {activeGateway ? (
+                    <div className="md:col-span-2 space-y-5 bg-slate-50/50 p-5 border border-slate-200 rounded-2xl">
+                      
+                      {/* Active Gateway Heading */}
+                      <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-200">
+                        <div>
+                          <h4 className="text-sm font-extrabold text-indigo-950 uppercase tracking-wider">{activeGateway.name} Credentials</h4>
+                          <p className="text-[10px] text-slate-500 mt-0.5">Define sandbox/production environments and API credentials securely.</p>
+                        </div>
+                        <span className={`text-[9px] font-black border uppercase px-2 py-0.5 rounded-full ${
+                          activeGateway.status === 'ACTIVE' ? "bg-emerald-50 border-emerald-200 text-emerald-850" : "bg-amber-50 border-amber-200 text-amber-850"
+                        }`}>
+                          Health: {activeGateway.status}
+                        </span>
                       </div>
-                      <p className="font-extrabold text-slate-900 text-xs">{row.label}</p>
-                      <p className="text-slate-500 text-[10px] leading-relaxed">Type: {row.type} • Limit: {row.limit}</p>
-                    </div>
-                    <div className="pt-3 border-t border-slate-150 flex items-center justify-between">
-                      <span className="text-[10px] text-slate-400 uppercase font-bold">Value Multiplier</span>
-                      <span className="text-sm font-black text-indigo-950 font-mono">{row.value}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : activeGroup === "PROMOTIONS" ? (
-            <div className="space-y-6" id="settings-promotions-view">
-              <div className="border-b border-slate-100 pb-3">
-                <h4 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Outreach & Campaigns Marketing Banners</h4>
-                <p className="text-[11px] text-slate-500">Configure active promotions shown inside customer portal dashboards to drive annual plan upgrades.</p>
-              </div>
 
-              <div className="bg-slate-50 p-6 border border-slate-205 rounded-2xl space-y-4">
-                <div className="flex items-start gap-4">
-                  <div className="p-3 bg-indigo-50 text-indigo-650 rounded-xl shrink-0">
-                    <Star className="w-6 h-6" />
-                  </div>
-                  <div className="space-y-1 text-xs">
-                    <h4 className="font-extrabold text-slate-900 uppercase tracking-wide">Active Portal Banner: "Upgrade & Save 20%"</h4>
-                    <p className="text-slate-600 leading-normal max-w-2xl">
-                      Displays on the left margin sidebar inside the standard customer workspaces. Urges Starter and Growth tier tenants to upgrade their plan to the annual Professional cycle to receive complimentary DXF integration nodes and custom GIS maps.
-                    </p>
-                  </div>
-                </div>
+                      {/* Config Form Grid */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                        {/* Enabled Switch */}
+                        <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1">
+                          <label className="text-[10px] font-bold uppercase text-slate-500 tracking-wider block">Activation State</label>
+                          <div className="flex items-center gap-3 pt-1">
+                            <input 
+                              type="checkbox" 
+                              checked={activeGateway.isEnabled}
+                              onChange={(e) => handleGatewayFieldChange("isEnabled", e.target.checked)}
+                              className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
+                            />
+                            <span className="font-extrabold text-slate-800">{activeGateway.isEnabled ? "Enabled & Live" : "Deactivated"}</span>
+                          </div>
+                        </div>
 
-                <div className="pt-3 border-t border-slate-200 flex items-center gap-6 text-[10px] text-slate-450 font-mono uppercase font-bold flex-wrap">
-                  <span>Impressions (30d): <strong className="text-slate-800">12,480 Views</strong></span>
-                  <span>Click-through (CTR): <strong className="text-emerald-700">4.82%</strong></span>
-                  <span>Total Conversions: <strong className="text-indigo-600">32 Upgrades</strong></span>
-                  <span>Status: <strong className="text-emerald-700">LIVE & TARGETING ACTIVE</strong></span>
-                </div>
-              </div>
-            </div>
-          ) : activeGroup === "ADVANCED" ? (
-            /* TECHNICAL GATEWAY INFRASTRUCTURE INFO SCREEN */
-            <div className="space-y-6" id="advanced-ingress-view">
-              <div className="bg-amber-50/50 border border-amber-200 rounded-xl p-5 flex items-start gap-4 text-xs">
-                <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <h4 className="font-extrabold text-amber-950 uppercase tracking-wide">Developer & System Admin Console Area</h4>
-                  <p className="text-amber-800 leading-normal">
-                    This technical gateway telemetry area details live ingress routing ports and Nginx proxy setups. Modifying container configurations manually is restricted to maintain locked sandbox encapsulation rules.
-                  </p>
-                </div>
-              </div>
+                        {/* Sandbox / Production */}
+                        <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1">
+                          <label className="text-[10px] font-bold uppercase text-slate-500 tracking-wider block">Execution Mode</label>
+                          <select
+                            value={activeGateway.environment}
+                            onChange={(e) => handleGatewayFieldChange("environment", e.target.value)}
+                            className="w-full mt-1 px-2.5 py-1.5 border border-slate-200 rounded bg-white text-xs text-slate-800 outline-hidden font-bold"
+                          >
+                            <option value="SANDBOX">SANDBOX (Sandbox/Test)</option>
+                            <option value="PRODUCTION">PRODUCTION (Production)</option>
+                          </select>
+                        </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <h4 className="font-extrabold text-slate-800 text-xs mb-3 uppercase tracking-wider">Workspace Ingress Protocol</h4>
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3 text-xs leading-relaxed text-slate-700">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold">Strict cluster tenant sandboxing</span>
-                      <span className="text-emerald-700 font-bold uppercase text-[9px] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">Active Enforced</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold">Dynamic sub-domain DNS schemas</span>
-                      <span className="text-emerald-700 font-bold uppercase text-[9px] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">Active Enforced</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold">Automated SSL Handshake CNAME mappings</span>
-                      <span className="text-emerald-700 font-bold uppercase text-[9px] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">Live Active</span>
-                    </div>
-                  </div>
-                </div>
+                        {/* API Key */}
+                        {activeGateway.gatewayCode !== "MANUAL" && activeGateway.gatewayCode !== "BANK_TRANSFER" && (
+                          <>
+                            <div className="md:col-span-2 p-3 bg-white border border-slate-200 rounded-xl space-y-1">
+                              <label className="text-[10px] font-bold uppercase text-slate-500 tracking-wider block flex items-center gap-1">
+                                <Key className="w-3.5 h-3.5 text-slate-400" />
+                                <span>API Client Key</span>
+                              </label>
+                              <input 
+                                type="text"
+                                value={activeGateway.apiKey || ""}
+                                onChange={(e) => handleGatewayFieldChange("apiKey", e.target.value)}
+                                placeholder="rzp_test_..."
+                                className="w-full mt-1 px-3 py-1.5 border border-slate-200 rounded font-mono text-xs text-slate-800 outline-hidden"
+                              />
+                            </div>
 
-                <div>
-                  <h4 className="font-extrabold text-slate-800 text-xs mb-3 uppercase tracking-wider">Proxy Node Bindings</h4>
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4 text-xs">
-                    <div className="space-y-1">
-                      <p className="font-bold text-slate-900">Sandbox Reverse Proxy</p>
-                      <p className="text-slate-500 leading-normal">
-                        All incoming traffic binds directly to host <code className="font-mono bg-slate-200 text-slate-700 px-1 py-0.5 rounded">0.0.0.0</code> on core listening container ingress port <code className="font-mono bg-slate-200 text-slate-700 px-1 py-0.5 rounded">3000</code>.
-                      </p>
+                            {/* Secret Key */}
+                            <div className="md:col-span-2 p-3 bg-white border border-slate-200 rounded-xl space-y-1">
+                              <label className="text-[10px] font-bold uppercase text-slate-500 tracking-wider block flex items-center gap-1">
+                                <Lock className="w-3.5 h-3.5 text-slate-400" />
+                                <span>API Secret Key</span>
+                              </label>
+                              <input 
+                                type="password"
+                                value={activeGateway.secretKey || ""}
+                                onChange={(e) => handleGatewayFieldChange("secretKey", e.target.value)}
+                                placeholder="••••••••••••••••••••••••"
+                                className="w-full mt-1 px-3 py-1.5 border border-slate-200 rounded font-mono text-xs text-slate-800 outline-hidden"
+                              />
+                            </div>
+
+                            {/* Webhook Secret */}
+                            <div className="md:col-span-2 p-3 bg-white border border-slate-200 rounded-xl space-y-1">
+                              <label className="text-[10px] font-bold uppercase text-slate-500 tracking-wider block flex items-center gap-1">
+                                <Globe className="w-3.5 h-3.5 text-slate-400" />
+                                <span>Webhook Verification Secret Signature</span>
+                              </label>
+                              <input 
+                                type="text"
+                                value={activeGateway.webhookSecret || ""}
+                                onChange={(e) => handleGatewayFieldChange("webhookSecret", e.target.value)}
+                                placeholder="whsec_..."
+                                className="w-full mt-1 px-3 py-1.5 border border-slate-200 rounded font-mono text-xs text-slate-800 outline-hidden"
+                              />
+                            </div>
+                          </>
+                        )}
+
+                        {/* Base Currency */}
+                        <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1">
+                          <label className="text-[10px] font-bold uppercase text-slate-500 tracking-wider block">Default Currency Code</label>
+                          <select
+                            value={activeGateway.currency}
+                            onChange={(e) => handleGatewayFieldChange("currency", e.target.value)}
+                            className="w-full mt-1 px-2.5 py-1.5 border border-slate-200 rounded bg-white text-xs text-slate-800 outline-hidden font-bold"
+                          >
+                            <option value="INR">INR (₹)</option>
+                            <option value="USD">USD ($)</option>
+                            <option value="EUR">EUR (€)</option>
+                            <option value="GBP">GBP (£)</option>
+                          </select>
+                        </div>
+
+                        {/* Set Default */}
+                        <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1">
+                          <label className="text-[10px] font-bold uppercase text-slate-500 tracking-wider block">Priority Rank</label>
+                          <div className="flex items-center gap-3 pt-1">
+                            <input 
+                              type="checkbox" 
+                              checked={activeGateway.isDefault}
+                              onChange={(e) => {
+                                // Clear default from others, set to active
+                                setGateways(prev => prev.map(g => ({
+                                  ...g,
+                                  isDefault: g.gatewayCode === activeGatewayCode ? e.target.checked : false
+                                })));
+                              }}
+                              className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
+                            />
+                            <span className="font-extrabold text-slate-800">{activeGateway.isDefault ? "Primary Default Gateway" : "Fallback Secondary"}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Action buttons bar */}
+                      <div className="pt-4 border-t border-slate-200 flex flex-wrap gap-2.5 justify-between">
+                        <button
+                          onClick={handleSaveGateways}
+                          disabled={saving}
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold px-4 py-2 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                          {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                          <span>Save Config</span>
+                        </button>
+
+                        <div className="flex gap-2">
+                          {activeGateway.gatewayCode !== "MANUAL" && activeGateway.gatewayCode !== "BANK_TRANSFER" && (
+                            <>
+                              <button
+                                onClick={() => handleTestConnection(activeGateway.gatewayCode)}
+                                className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer border border-slate-300"
+                              >
+                                <Zap className="w-3.5 h-3.5 text-amber-500" />
+                                <span>Test Connection</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setTestAmount(2490);
+                                  setShowTestPaymentModal(true);
+                                }}
+                                className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer border border-slate-300"
+                              >
+                                <Play className="w-3.5 h-3.5 text-indigo-500" />
+                                <span>Test Charge</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setWebhookEvent("payment.authorized");
+                                  setWebhookPayload(JSON.stringify({ event: "payment.authorized", amount: 249000, id: "pay_test_" + Math.floor(Math.random()*1000) }));
+                                  setShowWebhookModal(true);
+                                }}
+                                className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer border border-slate-300"
+                              >
+                                <Send className="w-3.5 h-3.5 text-teal-500" />
+                                <span>Simulate Webhook</span>
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
                     </div>
-                    <div className="pt-3 border-t border-slate-200 flex items-center gap-2 text-slate-400 font-mono text-[10px]">
-                      <Server className="w-4 h-4 text-slate-500 shrink-0" />
-                      <span>BhoomiOne Core Proxy Daemon v5.21 (Staging-01)</span>
-                    </div>
-                  </div>
+                  ) : null}
+
                 </div>
-              </div>
+              ) : subTab === "transactions" ? (
+                /* TRANSACTION LOGS LIST */
+                <div className="space-y-3" id="payment-logs-view">
+                  <div className="flex justify-between items-center">
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Historical Transactions Ledger (Latest 100)</p>
+                    <button 
+                      onClick={loadGatewaysData}
+                      className="text-[10px] text-indigo-600 hover:text-indigo-850 font-bold flex items-center gap-1"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      <span>Refresh</span>
+                    </button>
+                  </div>
+
+                  {paymentLogs.length === 0 ? (
+                    <div className="p-12 text-center bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500 font-sans">
+                      No transactions have been logged in this sandbox environment yet.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white">
+                      <table className="w-full text-left text-xs text-slate-600">
+                        <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400 tracking-wider border-b border-slate-200 select-none">
+                          <tr>
+                            <th className="p-3">Gateway</th>
+                            <th className="p-3">Transaction ID</th>
+                            <th className="p-3">Amount</th>
+                            <th className="p-3">Customer Email</th>
+                            <th className="p-3">Status</th>
+                            <th className="p-3">Timestamp</th>
+                            <th className="p-3 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {paymentLogs.map(l => (
+                            <tr key={l.id} className="hover:bg-slate-50/50">
+                              <td className="p-3 font-extrabold text-slate-800">{l.gatewayName}</td>
+                              <td className="p-3 font-mono text-[11px] text-slate-500">{l.transactionId || "N/A"}</td>
+                              <td className="p-3 font-mono font-bold text-slate-800">{l.currency} {l.amount?.toFixed(2)}</td>
+                              <td className="p-3 text-slate-600">{l.customerEmail}</td>
+                              <td className="p-3">
+                                <div className="space-y-1">
+                                  <span className={`inline-block text-[8.5px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                    l.status === 'SUCCESS' ? "bg-emerald-50 text-emerald-800 border border-emerald-100" : "bg-red-50 text-red-800 border border-red-100"
+                                  }`}>
+                                    {l.status}
+                                  </span>
+                                  {l.errorMessage && (
+                                    <p className="text-[9px] text-red-500 font-sans leading-tight font-medium max-w-xs">{l.errorMessage}</p>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="p-3 text-[10px] text-slate-450 font-mono">
+                                {l.createdAt ? new Date(l.createdAt).toLocaleString() : "N/A"}
+                              </td>
+                              <td className="p-3 text-right">
+                                {l.status === 'FAILED' && (
+                                  <button
+                                    onClick={() => handleRetryPayment(l.id)}
+                                    className="bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-750 text-[9.5px] font-black uppercase px-2 py-1 rounded transition-all cursor-pointer"
+                                  >
+                                    Retry Charge
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                </div>
+              ) : (
+                /* WEBHOOK LOGS LIST */
+                <div className="space-y-3" id="webhook-logs-view">
+                  <div className="flex justify-between items-center">
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Dynamic Webhook Receipts Logs (Latest 100)</p>
+                    <button 
+                      onClick={loadGatewaysData}
+                      className="text-[10px] text-indigo-600 hover:text-indigo-850 font-bold flex items-center gap-1"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      <span>Refresh</span>
+                    </button>
+                  </div>
+
+                  {webhookLogs.length === 0 ? (
+                    <div className="p-12 text-center bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500 font-sans">
+                      No webhooks have been captured in this sandbox session yet.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white">
+                      <table className="w-full text-left text-xs text-slate-600">
+                        <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400 tracking-wider border-b border-slate-200 select-none">
+                          <tr>
+                            <th className="p-3">Gateway</th>
+                            <th className="p-3">Event Type</th>
+                            <th className="p-3">Payload Data Summary</th>
+                            <th className="p-3">Verification</th>
+                            <th className="p-3">Timestamp</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {webhookLogs.map(w => (
+                            <tr key={w.id} className="hover:bg-slate-50/50">
+                              <td className="p-3 font-extrabold text-slate-800">{w.gatewayName}</td>
+                              <td className="p-3 font-mono text-[11px] text-indigo-700">{w.eventType}</td>
+                              <td className="p-3 font-mono text-[10.5px] text-slate-500 truncate max-w-xs">
+                                {w.payload}
+                              </td>
+                              <td className="p-3">
+                                <div className="space-y-1">
+                                  <span className={`inline-block text-[8.5px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                    w.status === 'VERIFIED' || w.status === 'PROCESSED' 
+                                      ? "bg-emerald-50 text-emerald-850 border border-emerald-100" 
+                                      : "bg-red-50 text-red-850 border border-red-100"
+                                  }`}>
+                                    {w.status}
+                                  </span>
+                                  {w.errorMessage && (
+                                    <p className="text-[9px] text-red-500 font-sans leading-tight font-medium max-w-xs">{w.errorMessage}</p>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="p-3 text-[10px] text-slate-450 font-mono">
+                                {w.createdAt ? new Date(w.createdAt).toLocaleString() : "N/A"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                </div>
+              )}
+
             </div>
           ) : (
-            /* DYNAMIC FORM ROW GENERATION */
+            /* GENERAL DYNAMIC FORM ROW GENERATION */
             <div className="space-y-6">
               {filteredSettings.length === 0 ? (
                 <div className="p-8 text-center text-slate-400 font-medium text-xs">
@@ -610,7 +898,7 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({
                           {s.settingType === "boolean" ? (
                             <div className="flex items-center gap-3 mt-1.5">
                               <input 
-                                type="checkbox"
+                                type="checkbox" 
                                 id={`check-${s.settingKey}`}
                                 checked={s.settingValue === "true" || s.settingValue === "1"}
                                 onChange={(e) => handleValueChange(s.settingKey, e.target.checked ? "true" : "false")}
@@ -654,6 +942,134 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({
           )}
         </div>
       </div>
+
+      {/* 3. TEST CHARGE SIMULATOR MODAL */}
+      {showTestPaymentModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden font-sans">
+            <div className="p-5 border-b border-slate-150 flex items-center justify-between bg-slate-50">
+              <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-900">Test Payment Gateway Simulation</h3>
+              <button 
+                onClick={() => setShowTestPaymentModal(false)}
+                className="text-slate-400 hover:text-slate-650 p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="p-5 space-y-4 text-xs text-slate-700">
+              <p className="leading-relaxed">This simulates creating a real-time card or net banking payment payload over secure production sockets.</p>
+              
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase text-slate-400 tracking-wider block">Target Gateway</label>
+                <p className="font-extrabold text-slate-800 bg-slate-100 border p-2.5 rounded-lg uppercase tracking-wider text-[11px]">{activeGateway.name} ({activeGateway.environment})</p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase text-slate-500 tracking-wider block">Billing Charge Amount ({activeGateway.currency})</label>
+                <input 
+                  type="number"
+                  value={testAmount}
+                  onChange={(e) => setTestAmount(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded text-xs outline-hidden"
+                />
+                <p className="text-[9px] text-slate-400 italic">Amounts greater than or equal to 1,000,000 simulate transaction limit failures.</p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase text-slate-500 tracking-wider block">Customer Billing Email</label>
+                <input 
+                  type="email"
+                  value={testEmail}
+                  onChange={(e) => setTestEmail(e.target.value)}
+                  placeholder="customer@bhoomione.com"
+                  className="w-full px-3 py-2 border border-slate-200 rounded text-xs outline-hidden"
+                />
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-slate-150 bg-slate-55 flex justify-end gap-2 text-xs">
+              <button 
+                onClick={() => setShowTestPaymentModal(false)}
+                className="px-3.5 py-1.5 border border-slate-250 hover:bg-slate-100 rounded text-slate-655 font-bold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleExecuteTestPayment}
+                className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-750 text-white font-bold rounded flex items-center gap-1.5 cursor-pointer"
+              >
+                <Play className="w-3.5 h-3.5" />
+                <span>Simulate Charge</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 4. SIMULATE WEBHOOK MODAL */}
+      {showWebhookModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden font-sans">
+            <div className="p-5 border-b border-slate-150 flex items-center justify-between bg-slate-50">
+              <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-900">Simulate REST Webhook Webhook Payload</h3>
+              <button 
+                onClick={() => setShowWebhookModal(false)}
+                className="text-slate-400 hover:text-slate-650 p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="p-5 space-y-4 text-xs text-slate-700">
+              <p className="leading-relaxed">This simulates a live server-to-server HTTP webhook payload post sent directly to platform listener routes.</p>
+              
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase text-slate-400 tracking-wider block">Origin Gateway</label>
+                <p className="font-extrabold text-slate-800 bg-slate-100 border p-2.5 rounded-lg uppercase tracking-wider text-[11px]">{activeGateway.name}</p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase text-slate-500 tracking-wider block">Webhook Callback Event Type</label>
+                <input 
+                  type="text"
+                  value={webhookEvent}
+                  onChange={(e) => setWebhookEvent(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded text-xs outline-hidden font-mono text-indigo-700"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase text-slate-500 tracking-wider block">JSON Payload Body</label>
+                <textarea 
+                  value={webhookPayload}
+                  rows={4}
+                  onChange={(e) => setWebhookPayload(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded text-xs outline-hidden font-mono text-[11px] text-slate-600 bg-slate-50"
+                />
+                <p className="text-[9px] text-slate-400 italic">Adding the word "fail" or "invalid" into the payload body simulates verification failures.</p>
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-slate-150 bg-slate-55 flex justify-end gap-2 text-xs">
+              <button 
+                onClick={() => setShowWebhookModal(false)}
+                className="px-3.5 py-1.5 border border-slate-250 hover:bg-slate-100 rounded text-slate-655 font-bold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleSimulateWebhook}
+                className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-750 text-white font-bold rounded flex items-center gap-1.5 cursor-pointer"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Dispatch Callback</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

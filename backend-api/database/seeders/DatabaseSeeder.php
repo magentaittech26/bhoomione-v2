@@ -15,6 +15,7 @@ class DatabaseSeeder extends Seeder
             RoleAndPermissionSeeder::class,
             SaasSubscriptionSeeder::class,
             SaasPlatformSettingsSeeder::class,
+            PaymentGatewaySeeder::class,
         ]);
     }
 }

@@ -316,6 +316,55 @@ Route::prefix('v1')->group(function () {
     Route::post('/admin/settings', [SaasController::class, 'savePlatformSettings'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
     Route::get('/admin/dashboard-stats', [SaasController::class, 'getDashboardStats'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
 
+    // BILLING & PAYMENT GATEWAY MANAGEMENT ENDPOINTS
+    Route::get('/admin/gateways', [SaasController::class, 'getGateways'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::post('/admin/gateways', [SaasController::class, 'saveGateways'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/gateways/{code}/test-connection', [SaasController::class, 'testConnection'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/gateways/{code}/test-payment', [SaasController::class, 'testPayment'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/gateways/{code}/webhook-verify', [SaasController::class, 'webhookVerify'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::get('/admin/gateways/logs', [SaasController::class, 'getPaymentLogs'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::get('/admin/gateways/webhooks', [SaasController::class, 'getWebhookLogs'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::post('/admin/gateways/retry/{id}', [SaasController::class, 'retryPayment'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+
+    // GST & TAX CONFIGURATION MODULE ROUTES
+    Route::get('/admin/tax-rules', [SaasController::class, 'getTaxRules'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::post('/admin/tax-rules', [SaasController::class, 'saveTaxRule'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::delete('/admin/tax-rules/{id}', [SaasController::class, 'deleteTaxRule'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/tax-rules/calculate', [SaasController::class, 'calculateTax'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::post('/admin/tax-rules/invoice', [SaasController::class, 'recordInvoiceTax'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::get('/admin/tax-rules/reports', [SaasController::class, 'getTaxReports'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+
+    // EMAIL SERVICE MANAGER MODULE ROUTES
+    Route::get('/admin/email-service/configurations', [SaasController::class, 'getEmailConfigs'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::post('/admin/email-service/configurations', [SaasController::class, 'saveEmailConfig'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/email-service/test-connection', [SaasController::class, 'testEmailConnection'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/email-service/send-test', [SaasController::class, 'sendTestEmail'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::get('/admin/email-service/templates', [SaasController::class, 'getEmailTemplates'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::post('/admin/email-service/templates', [SaasController::class, 'saveEmailTemplate'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::get('/admin/email-service/logs', [SaasController::class, 'getEmailLogs'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::post('/admin/email-service/retry/{id}', [SaasController::class, 'retryEmail'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+
+    // NOTIFICATION ENGINE MODULE ROUTES
+    Route::get('/admin/notifications/configurations', [SaasController::class, 'getNotificationConfigs'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::post('/admin/notifications/configurations', [SaasController::class, 'saveNotificationConfig'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/notifications/test-gateway', [SaasController::class, 'testNotificationGateway'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/notifications/sync-whatsapp-templates', [SaasController::class, 'syncWhatsAppTemplates'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::get('/admin/notifications/templates', [SaasController::class, 'getNotificationTemplates'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::post('/admin/notifications/templates', [SaasController::class, 'saveNotificationTemplate'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::get('/admin/notifications/logs', [SaasController::class, 'getNotificationLogs'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::post('/admin/notifications/retry/{id}', [SaasController::class, 'retryNotification'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/notifications/send-test', [SaasController::class, 'sendTestNotification'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/notifications/sweep', [SaasController::class, 'sweepNotifications'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+
+    // PROMO COUPONS & ACTIVE CAMPAIGNS MODULE ROUTES
+    Route::get('/admin/coupons', [SaasController::class, 'getCoupons'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::post('/admin/coupons', [SaasController::class, 'saveCoupon'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::delete('/admin/coupons/{id}', [SaasController::class, 'deleteCoupon'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::get('/admin/campaigns', [SaasController::class, 'getCampaigns'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+    Route::post('/admin/campaigns', [SaasController::class, 'saveCampaign'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::delete('/admin/campaigns/{id}', [SaasController::class, 'deleteCampaign'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
+    Route::post('/admin/coupons/simulate', [SaasController::class, 'simulateCoupon'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
+
     // Super-Admin Marketplace Moderation (Phase 2B)
     Route::get('/admin/marketplace/projects', [\App\Http\Controllers\Api\v1\MarketplaceController::class, 'adminProjects'])->middleware([PermissionRequirementMiddleware::class . ':tenants.view']);
     Route::post('/admin/marketplace/projects/{id}/moderate', [\App\Http\Controllers\Api\v1\MarketplaceController::class, 'adminModerateProject'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);

@@ -362,6 +362,209 @@ export async function bootstrapDatabase() {
       )
     `);
 
+    // 23b. payment_gateways Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS payment_gateways (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        gateway_code VARCHAR(50) UNIQUE NOT NULL,
+        name VARCHAR(100) NOT NULL,
+        is_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        environment VARCHAR(20) NOT NULL DEFAULT 'SANDBOX',
+        api_key VARCHAR(255) NULL,
+        secret_key VARCHAR(255) NULL,
+        webhook_secret VARCHAR(255) NULL,
+        currency VARCHAR(10) NOT NULL DEFAULT 'INR',
+        status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
+        is_default BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // 23c. payment_logs Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS payment_logs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        gateway_code VARCHAR(50) NOT NULL,
+        transaction_id VARCHAR(100) NULL,
+        amount DECIMAL(12,2) NOT NULL,
+        currency VARCHAR(10) NOT NULL DEFAULT 'INR',
+        status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+        error_message TEXT NULL,
+        customer_email VARCHAR(255) NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // 23d. webhook_logs Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS webhook_logs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        gateway_code VARCHAR(50) NOT NULL,
+        event_type VARCHAR(100) NOT NULL,
+        payload TEXT NOT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'PROCESSED',
+        error_message TEXT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // 23e. tax_rules Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS tax_rules (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id UUID NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        tax_type VARCHAR(50) NOT NULL, -- 'GST', 'CGST', 'SGST', 'IGST', 'TDS', 'STAMP_DUTY', 'REGISTRATION', 'OTHER'
+        name VARCHAR(100) NOT NULL,
+        rate_percentage DECIMAL(5,2) NOT NULL DEFAULT 0.00,
+        state_code VARCHAR(10) NOT NULL DEFAULT 'ALL', -- 'KA', 'MH', 'DL', 'HR', 'ALL' (Default)
+        effective_from DATE NOT NULL DEFAULT CURRENT_DATE,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // 23f. tax_transactions Table (for Invoice integration & Reports)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS tax_transactions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        invoice_number VARCHAR(100) NOT NULL,
+        customer_name VARCHAR(255) NOT NULL,
+        state_code VARCHAR(10) NOT NULL,
+        base_amount DECIMAL(15,2) NOT NULL,
+        cgst_amount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+        sgst_amount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+        igst_amount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+        tds_amount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+        stamp_duty_amount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+        registration_charges DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+        other_charges DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+        total_tax_amount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+        total_invoice_amount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // 23g. email_configurations Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS email_configurations (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        provider_code VARCHAR(50) UNIQUE NOT NULL, -- 'SMTP', 'SES', 'MAILGUN', 'SENDGRID', 'BREVO', 'ZOHO', 'OFFICE365', 'GMAIL_OAUTH'
+        name VARCHAR(100) NOT NULL,
+        is_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        is_default BOOLEAN NOT NULL DEFAULT FALSE,
+        host VARCHAR(255) NULL,
+        port INTEGER NULL,
+        encryption VARCHAR(20) NULL, -- 'TLS', 'SSL', 'NONE'
+        username VARCHAR(255) NULL,
+        password TEXT NULL,
+        sender_name VARCHAR(255) NOT NULL,
+        sender_email VARCHAR(255) NOT NULL,
+        custom_params JSONB DEFAULT '{}'::jsonb, -- API Key, Domain, OAuth params
+        status VARCHAR(50) DEFAULT 'INACTIVE', -- 'ACTIVE', 'INACTIVE', 'FAILED'
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // 23h. email_templates Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS email_templates (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        template_key VARCHAR(50) UNIQUE NOT NULL, -- 'WELCOME', 'PASSWORD_RESET', 'TENANT_PROVISIONED', 'SUBSCRIPTION', 'INVOICE', 'RECEIPT', 'VERIFICATION'
+        name VARCHAR(100) NOT NULL,
+        subject VARCHAR(255) NOT NULL,
+        body_html TEXT NOT NULL,
+        body_text TEXT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // 23i. email_logs Table (acts as delivery ledger, queue, bounce log)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS email_logs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        provider_code VARCHAR(50) NULL,
+        template_key VARCHAR(50) NULL,
+        recipient_email VARCHAR(255) NOT NULL,
+        recipient_name VARCHAR(255) NULL,
+        subject VARCHAR(255) NOT NULL,
+        body_html TEXT NOT NULL,
+        status VARCHAR(50) NOT NULL, -- 'QUEUED', 'DELIVERED', 'BOUNCED', 'FAILED'
+        error_message TEXT NULL,
+        retry_count INTEGER DEFAULT 0 NOT NULL,
+        max_retries INTEGER DEFAULT 3 NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        sent_at TIMESTAMP WITH TIME ZONE NULL,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // 23j. notification_configurations Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS notification_configurations (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        channel VARCHAR(50) NOT NULL, -- 'EMAIL', 'SMS', 'WHATSAPP', 'PUSH', 'IN_APP', 'WEBHOOK'
+        provider_code VARCHAR(50) NOT NULL, -- 'SMTP', 'TWILIO_SMS', 'PLIVO', 'TWILIO_WA', 'META_WA', 'FCM', 'IN_APP_SYSTEM', 'GENERIC_WEBHOOK'
+        name VARCHAR(100) NOT NULL,
+        is_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        is_default BOOLEAN NOT NULL DEFAULT FALSE,
+        config_params JSONB DEFAULT '{}'::jsonb, -- Store host, port, secrets, api keys, headers, webhook URLs, etc.
+        status VARCHAR(50) DEFAULT 'INACTIVE', -- 'ACTIVE', 'INACTIVE', 'FAILED'
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT unique_channel_provider UNIQUE (channel, provider_code)
+      )
+    `);
+
+    // 23k. notification_templates Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS notification_templates (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        event_type VARCHAR(100) UNIQUE NOT NULL, -- 'TENANT_CREATED', 'BOOKING', 'PAYMENT', 'INVOICE', 'RECEIPT', 'AGREEMENT', 'EMI_REMINDER', 'SUBSCRIPTION_RENEWAL', 'LEAD_ASSIGNMENT', 'SITE_VISIT', 'ADMIN_ALERTS'
+        name VARCHAR(150) NOT NULL,
+        email_subject VARCHAR(255) NULL,
+        email_body_html TEXT NULL,
+        sms_template TEXT NULL,
+        whatsapp_template TEXT NULL,
+        push_title VARCHAR(255) NULL,
+        push_body TEXT NULL,
+        in_app_body TEXT NULL,
+        webhook_payload_template TEXT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // 23l. notification_logs Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS notification_logs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        event_type VARCHAR(100) NOT NULL,
+        channel VARCHAR(50) NOT NULL, -- 'EMAIL', 'SMS', 'WHATSAPP', 'PUSH', 'IN_APP', 'WEBHOOK'
+        recipient VARCHAR(255) NOT NULL, -- Email, Phone, FCM token, webhook URL, or user ID
+        subject VARCHAR(255) NULL,
+        body TEXT NOT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'QUEUED', -- 'QUEUED', 'DELIVERED', 'FAILED', 'SCHEDULED'
+        retry_count INTEGER DEFAULT 0 NOT NULL,
+        max_retries INTEGER DEFAULT 3 NOT NULL,
+        scheduled_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        sent_at TIMESTAMP WITH TIME ZONE NULL,
+        error_message TEXT NULL,
+        audit_trail JSONB DEFAULT '[]'::jsonb,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Indexes for notification logs
+    await client.query("CREATE INDEX IF NOT EXISTS idx_notification_logs_status ON notification_logs(status)");
+    await client.query("CREATE INDEX IF NOT EXISTS idx_notification_logs_channel ON notification_logs(channel)");
+    await client.query("CREATE INDEX IF NOT EXISTS idx_notification_logs_created ON notification_logs(created_at DESC)");
+
     // 24. Alter existing tables to add marketplace columns
     await client.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS publishing_status VARCHAR(50) DEFAULT 'Draft'");
     await client.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT FALSE");
@@ -378,6 +581,12 @@ export async function bootstrapDatabase() {
     await client.query("ALTER TABLE plots ADD COLUMN IF NOT EXISTS marketplace_visible BOOLEAN DEFAULT TRUE");
     await client.query("ALTER TABLE plots ADD COLUMN IF NOT EXISTS booking_status VARCHAR(50) DEFAULT 'AVAILABLE'");
     await client.query("ALTER TABLE plots ADD COLUMN IF NOT EXISTS reserved_by VARCHAR(255) NULL");
+
+    // Notification Engine Media Message support columns
+    await client.query("ALTER TABLE notification_templates ADD COLUMN IF NOT EXISTS whatsapp_media_url VARCHAR(512) NULL");
+    await client.query("ALTER TABLE notification_templates ADD COLUMN IF NOT EXISTS whatsapp_media_type VARCHAR(50) NULL");
+    await client.query("ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS whatsapp_media_url VARCHAR(512) NULL");
+    await client.query("ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS whatsapp_media_type VARCHAR(50) NULL");
 
     // PERFORMANCE INDEXES
     await client.query("CREATE INDEX IF NOT EXISTS idx_tenant_domains_domain ON tenant_domains(domain_name)");
@@ -396,11 +605,26 @@ export async function bootstrapDatabase() {
     await client.query("CREATE INDEX IF NOT EXISTS idx_dxf_files_tenant ON dxf_files(tenant_id)");
     await client.query("CREATE INDEX IF NOT EXISTS idx_import_jobs_file ON import_jobs(dxf_file_id)");
     await client.query("CREATE INDEX IF NOT EXISTS idx_dxf_mappings_file ON dxf_layer_mappings(dxf_file_id)");
+    await client.query("CREATE INDEX IF NOT EXISTS idx_tax_rules_tenant ON tax_rules(tenant_id)");
+    await client.query("CREATE INDEX IF NOT EXISTS idx_tax_rules_state ON tax_rules(state_code)");
+    await client.query("CREATE INDEX IF NOT EXISTS idx_tax_transactions_tenant ON tax_transactions(tenant_id)");
+    await client.query("CREATE INDEX IF NOT EXISTS idx_tax_transactions_invoice ON tax_transactions(invoice_number)");
+    await client.query("CREATE INDEX IF NOT EXISTS idx_email_logs_status ON email_logs(status)");
+    await client.query("CREATE INDEX IF NOT EXISTS idx_email_logs_recipient ON email_logs(recipient_email)");
+    await client.query("CREATE INDEX IF NOT EXISTS idx_email_logs_created_at ON email_logs(created_at DESC)");
 
     // --- SEED SECTIONS ---
     // Truncate first to ensure clean seed
+    await client.query("TRUNCATE TABLE email_logs CASCADE");
+    await client.query("TRUNCATE TABLE email_templates CASCADE");
+    await client.query("TRUNCATE TABLE email_configurations CASCADE");
+    await client.query("TRUNCATE TABLE tax_rules CASCADE");
+    await client.query("TRUNCATE TABLE tax_transactions CASCADE");
     await client.query("TRUNCATE TABLE developer_profiles CASCADE");
     await client.query("TRUNCATE TABLE marketplace_leads CASCADE");
+    await client.query("TRUNCATE TABLE payment_gateways CASCADE");
+    await client.query("TRUNCATE TABLE payment_logs CASCADE");
+    await client.query("TRUNCATE TABLE webhook_logs CASCADE");
     await client.query("TRUNCATE TABLE import_templates CASCADE");
     await client.query("TRUNCATE TABLE dxf_layer_mappings CASCADE");
     await client.query("TRUNCATE TABLE import_job_logs CASCADE");
@@ -979,7 +1203,282 @@ export async function bootstrapDatabase() {
           trial_expiry_date = EXCLUDED.trial_expiry_date, renewal_date = EXCLUDED.renewal_date
       `);
 
-      console.log("Seeded relational PostgreSQL SaaS models, plans, limits, addons, slabs, and tenant subscriptions successfully.");
+      // 9. Seed Payment Gateways
+      const gatewaysData = [
+        { code: 'RAZORPAY', name: 'Razorpay', is_enabled: true, environment: 'SANDBOX', api_key: 'rzp_test_51O2aB6...', secret_key: 'sk_test_90XyZ1...', webhook_secret: 'whsec_rzp123', currency: 'INR', is_default: true },
+        { code: 'CASHFREE', name: 'Cashfree', is_enabled: false, environment: 'SANDBOX', api_key: 'cf_test_61P3cD8...', secret_key: 'sk_cf_80YaW2...', webhook_secret: 'whsec_cf123', currency: 'INR', is_default: false },
+        { code: 'PHONEPE', name: 'PhonePe', is_enabled: false, environment: 'SANDBOX', api_key: 'pp_test_71Q4eF9...', secret_key: 'sk_pp_70ZaV3...', webhook_secret: 'whsec_pp123', currency: 'INR', is_default: false },
+        { code: 'STRIPE', name: 'Stripe', is_enabled: false, environment: 'SANDBOX', api_key: 'pk_test_81R5fG0...', secret_key: 'sk_stripe_60WbU4...', webhook_secret: 'whsec_stripe123', currency: 'USD', is_default: false },
+        { code: 'PAYPAL', name: 'PayPal', is_enabled: false, environment: 'SANDBOX', api_key: 'client_paypal_91S...', secret_key: 'secret_paypal_50Xa...', webhook_secret: 'whsec_paypal123', currency: 'USD', is_default: false },
+        { code: 'MANUAL', name: 'Manual Payment', is_enabled: true, environment: 'PRODUCTION', api_key: null, secret_key: null, webhook_secret: null, currency: 'INR', is_default: false },
+        { code: 'BANK_TRANSFER', name: 'Bank Transfer', is_enabled: true, environment: 'PRODUCTION', api_key: null, secret_key: null, webhook_secret: null, currency: 'INR', is_default: false }
+      ];
+
+      for (const g of gatewaysData) {
+        await client.query(`
+          INSERT INTO payment_gateways (gateway_code, name, is_enabled, environment, api_key, secret_key, webhook_secret, currency, is_default)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `, [g.code, g.name, g.is_enabled, g.environment, g.api_key, g.secret_key, g.webhook_secret, g.currency, g.is_default]);
+      }
+
+      // Seed dummy transaction logs
+      await client.query(`
+        INSERT INTO payment_logs (gateway_code, transaction_id, amount, currency, status, error_message, customer_email)
+        VALUES 
+          ('RAZORPAY', 'pay_Njd982Kds', 2490.00, 'INR', 'SUCCESS', NULL, 'owner@developer1.com'),
+          ('RAZORPAY', 'pay_Kjs823Usa', 990.00, 'INR', 'FAILED', 'Insufficient funds / card declined', 'customer@bhoomione.com'),
+          ('STRIPE', 'ch_1N92saK8s', 49.00, 'USD', 'SUCCESS', NULL, 'owner@developer1.com')
+      `);
+
+      // Seed dummy webhook logs
+      await client.query(`
+        INSERT INTO webhook_logs (gateway_code, event_type, payload, status, error_message)
+        VALUES 
+          ('RAZORPAY', 'payment.authorized', '{"event": "payment.authorized", "payload": {"payment": {"entity": {"id": "pay_Njd982Kds", "amount": 249000}}}}', 'PROCESSED', NULL),
+          ('STRIPE', 'charge.failed', '{"event": "charge.failed", "payload": {"charge": {"entity": {"id": "ch_failed_123", "amount": 4900}}}}', 'VERIFIED', NULL)
+      `);
+
+      // Seed Default State-wise Tax Rules and Builder-specific Overrides
+      
+      await client.query(`
+        INSERT INTO tax_rules (tenant_id, tax_type, name, rate_percentage, state_code, effective_from, is_active)
+        VALUES
+          -- Platform Defaults (Global Rules)
+          (NULL, 'CGST', 'Central GST Default', 9.00, 'ALL', '2026-01-01', true),
+          (NULL, 'SGST', 'State GST Default', 9.00, 'ALL', '2026-01-01', true),
+          (NULL, 'IGST', 'Integrated GST Default', 18.00, 'ALL', '2026-01-01', true),
+          (NULL, 'TDS', 'TDS on Land Sale (Sec 194IA)', 1.00, 'ALL', '2026-01-01', true),
+          (NULL, 'STAMP_DUTY', 'Stamp Duty Default', 5.00, 'ALL', '2026-01-01', true),
+          (NULL, 'REGISTRATION', 'Registration Charges Default', 1.00, 'ALL', '2026-01-01', true),
+
+          -- State-Specific Rules (Karnataka - KA)
+          (NULL, 'SGST', 'Karnataka SGST', 9.00, 'KA', '2026-01-01', true),
+          (NULL, 'CGST', 'Karnataka CGST', 9.00, 'KA', '2026-01-01', true),
+          (NULL, 'STAMP_DUTY', 'Karnataka Stamp Duty', 5.60, 'KA', '2026-01-01', true),
+          (NULL, 'REGISTRATION', 'Karnataka Registration', 1.00, 'KA', '2026-01-01', true),
+          (NULL, 'OTHER', 'Karnataka Infrastructure Cess', 1.00, 'KA', '2026-01-01', true),
+
+          -- State-Specific Rules (Maharashtra - MH)
+          (NULL, 'SGST', 'Maharashtra SGST', 9.00, 'MH', '2026-01-01', true),
+          (NULL, 'CGST', 'Maharashtra CGST', 9.00, 'MH', '2026-01-01', true),
+          (NULL, 'STAMP_DUTY', 'Maharashtra Stamp Duty', 6.00, 'MH', '2026-01-01', true),
+          (NULL, 'REGISTRATION', 'Maharashtra Registration Charges', 1.00, 'MH', '2026-01-01', true),
+          (NULL, 'OTHER', 'Maharashtra Local Body Tax', 0.50, 'MH', '2026-01-01', true),
+
+          -- State-Specific Rules (Haryana - HR)
+          (NULL, 'SGST', 'Haryana SGST', 9.00, 'HR', '2026-01-01', true),
+          (NULL, 'CGST', 'Haryana CGST', 9.00, 'HR', '2026-01-01', true),
+          (NULL, 'STAMP_DUTY', 'Haryana Stamp Duty', 7.00, 'HR', '2026-01-01', true),
+          (NULL, 'REGISTRATION', 'Haryana Registration Fee', 1.00, 'HR', '2026-01-01', true),
+          (NULL, 'OTHER', 'Haryana Development Cess', 0.80, 'HR', '2026-01-01', true),
+
+          -- Builder-Specific Overrides (Bhoomi Developer Corp - tenant1Id)
+          ('${tenant1Id}', 'TDS', 'Bhoomi Custom TDS concession', 0.75, 'ALL', '2026-01-01', true),
+          ('${tenant1Id}', 'STAMP_DUTY', 'Bhoomi Concession Stamp Duty KA', 4.50, 'KA', '2026-01-01', true),
+          ('${tenant1Id}', 'REGISTRATION', 'Bhoomi Concession Registration KA', 0.80, 'KA', '2026-01-01', true),
+          ('${tenant1Id}', 'OTHER', 'Bhoomi Internal Infrastructure Waiver', 0.00, 'KA', '2026-01-01', true)
+      `);
+
+      // Seed Dummy Tax Transactions for Reports & Invoice Integration
+      await client.query(`
+        INSERT INTO tax_transactions (tenant_id, invoice_number, customer_name, state_code, base_amount, cgst_amount, sgst_amount, igst_amount, tds_amount, stamp_duty_amount, registration_charges, other_charges, total_tax_amount, total_invoice_amount)
+        VALUES
+          ('${tenant1Id}', 'BO-INV-2026-001', 'Rajesh Kumar', 'KA', 5000000.00, 450000.00, 450000.00, 0.00, 37500.00, 225000.00, 40000.00, 0.00, 1202500.00, 6202500.00),
+          ('${tenant1Id}', 'BO-INV-2026-002', 'Amit Sharma', 'MH', 7500000.00, 675000.00, 675000.00, 0.00, 75000.00, 450000.00, 75000.00, 37500.00, 1987500.00, 9487500.00),
+          ('${tenant1Id}', 'BO-INV-2026-003', 'Vikram Singh', 'HR', 4000000.00, 360000.00, 360000.00, 0.00, 40000.00, 280000.00, 40000.00, 32000.00, 1112000.00, 5112000.00),
+          ('${tenant1Id}', 'BO-INV-2026-004', 'Sunita Patil', 'KA', 6000000.00, 540000.00, 540000.00, 0.00, 45000.00, 270000.00, 48000.00, 0.00, 1443000.00, 7443000.00),
+          ('${tenant1Id}', 'BO-INV-2026-005', 'John Doe (Interstate)', 'DL', 3500000.00, 0.00, 0.00, 630000.00, 35000.00, 175000.00, 35000.00, 0.00, 875000.00, 4375000.00)
+      `);
+
+      // Seed default email configurations (8 providers)
+      await client.query(`
+        INSERT INTO email_configurations (provider_code, name, is_enabled, is_default, host, port, encryption, username, password, sender_name, sender_email, custom_params, status)
+        VALUES
+          ('SMTP', 'Central SMTP Relay', true, true, 'smtp.mailgun.org', 587, 'TLS', 'postmaster@bhoomione.in', 'sk_smtp_auth_9812as', 'BhoomiOne Outbound', 'no-reply@bhoomione.in', '{}', 'ACTIVE'),
+          ('SES', 'Amazon SES Gateway', false, false, 'email-smtp.us-east-1.amazonaws.com', 465, 'SSL', 'AKIAIOSFODNN7EXAMPLE', 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY', 'BhoomiOne Outbound', 'no-reply@bhoomione.in', '{"region": "us-east-1", "access_key_id": "AKIAIOSFODNN7EXAMPLE"}', 'INACTIVE'),
+          ('MAILGUN', 'Mailgun API Relay', false, false, 'api.mailgun.net', 443, 'TLS', NULL, 'key-mailgun-api-secret', 'BhoomiOne Outbound', 'no-reply@bhoomione.in', '{"domain": "mg.bhoomione.in", "region": "US"}', 'INACTIVE'),
+          ('SENDGRID', 'SendGrid Delivery Engine', false, false, 'smtp.sendgrid.net', 587, 'TLS', 'apikey', 'SG.SendGridApiKeyPlaceholder12345', 'BhoomiOne Outbound', 'no-reply@bhoomione.in', '{}', 'INACTIVE'),
+          ('BREVO', 'Brevo (formerly Sendinblue)', false, false, 'smtp-relay.brevo.com', 587, 'TLS', 'brevo-user-id@gmail.com', 'xkeysib-brevo-secret-key', 'BhoomiOne Outbound', 'no-reply@bhoomione.in', '{}', 'INACTIVE'),
+          ('ZOHO', 'Zoho Mail Relaying', false, false, 'smtp.zoho.in', 465, 'SSL', 'admin@bhoomione.in', 'zoho_secure_pass_123', 'BhoomiOne Outbound', 'no-reply@bhoomione.in', '{}', 'INACTIVE'),
+          ('OFFICE365', 'Microsoft 365 Exchange', false, false, 'smtp.office365.com', 587, 'TLS', 'office@bhoomione.in', 'ms_office_secret_pass', 'BhoomiOne Outbound', 'no-reply@bhoomione.in', '{}', 'INACTIVE'),
+          ('GMAIL_OAUTH', 'Gmail REST API OAuth 2.0', false, false, 'smtp.gmail.com', 587, 'TLS', 'oauth2-user', 'oauth_token_placeholder', 'BhoomiOne Outbound', 'no-reply@bhoomione.in', '{"client_id": "gmail-client-id-123", "client_secret": "gmail-client-secret-123", "refresh_token": "gmail-refresh-token-123"}', 'INACTIVE')
+      `);
+
+      // Seed core email templates (7 required templates)
+      await client.query(`
+        INSERT INTO email_templates (template_key, name, subject, body_html, body_text)
+        VALUES
+          ('WELCOME', 'Welcome Email', 'Welcome to BhoomiOne V2!', '<div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #f0f0f0; border-radius: 12px; background: #ffffff;"><h2 style="color: #4f46e5; margin-bottom: 20px;">Welcome to BhoomiOne V2, {{name}}!</h2><p>Your real estate SaaS platform account is fully set up and ready to go.</p><p style="margin-top: 30px;">Regards,<br><strong>BhoomiOne Team</strong></p></div>', ''Welcome to BhoomiOne V2, {{name}}! Your real estate SaaS platform account is fully set up and ready to go. Regards, BhoomiOne Team''),
+          
+          ('PASSWORD_RESET', 'Password Reset Request', 'Reset Your Password', '<div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #f0f0f0; border-radius: 12px; background: #ffffff;"><h2 style="color: #ef4444; margin-bottom: 20px;">Password Reset Request</h2><p>Click the link below to reset your password. This link will expire in 1 hour.</p><p style="margin: 30px 0;"><a href="{{reset_link}}" style="background: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Reset Password</a></p><p style="color: #666; font-size: 12px;">If you didn''t request this, you can ignore this email.</p></div>', ''Password Reset Request. Click the link below to reset your password: {{reset_link}}''),
+          
+          ('TENANT_PROVISIONED', 'Tenant Workspace Provisioned', 'Your Real Estate Builder Tenant Portal is Ready!', '<div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #f0f0f0; border-radius: 12px; background: #ffffff;"><h2 style="color: #10b981; margin-bottom: 20px;">Tenant Workspace Provisioned</h2><p>Your tenant workspace <strong>{{tenant_name}}</strong> ({{tenant_domain}}) is now active.</p><p style="background: #f3f4f6; padding: 15px; border-radius: 8px;">Access URL: <a href="https://{{tenant_domain}}/portal" style="color: #4f46e5; font-weight: bold;">https://{{tenant_domain}}/portal</a></p></div>', ''Tenant Workspace {{tenant_name}} is now active. Access URL: https://{{tenant_domain}}/portal''),
+          
+          ('SUBSCRIPTION', 'Subscription Upgrades & Changes', 'Subscription Plan Confirmed – BhoomiOne V2', '<div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #f0f0f0; border-radius: 12px; background: #ffffff;"><h2 style="color: #4f46e5; margin-bottom: 20px;">Subscription Active</h2><p>Your subscription to the <strong>{{plan_name}}</strong> has been updated successfully.</p><p style="background: #f3f4f6; padding: 15px; border-radius: 8px;">Billing Period: <strong>{{billing_period}}</strong></p></div>', ''Your subscription to the {{plan_name}} has been updated successfully.''),
+          
+          ('INVOICE', 'Invoice Created', 'New Invoice #{{invoice_number}} – BhoomiOne V2', '<div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #f0f0f0; border-radius: 12px; background: #ffffff;"><h2 style="color: #4f46e5; margin-bottom: 20px;">New Invoice Generated</h2><p>An invoice has been generated for your recent real estate transaction.</p><p style="background: #f3f4f6; padding: 15px; border-radius: 8px;">Invoice Number: <strong>{{invoice_number}}</strong><br>Total Amount: <strong>₹{{amount}}</strong></p></div>', ''An invoice has been generated for your recent transaction: #{{invoice_number}} for ₹{{amount}}''),
+          
+          ('RECEIPT', 'Payment Receipt', 'Payment Receipt – Invoice #{{invoice_number}}', '<div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #f0f0f0; border-radius: 12px; background: #ffffff;"><h2 style="color: #10b981; margin-bottom: 20px;">Payment Received</h2><p>Thank you for your payment of <strong>₹{{amount}}</strong>.</p><p style="background: #f3f4f6; padding: 15px; border-radius: 8px;">Transaction ID: <strong>{{transaction_id}}</strong></p></div>', ''Thank you for your payment of ₹{{amount}}. Transaction ID: {{transaction_id}}''),
+          
+          ('VERIFICATION', 'Account OTP Verification', 'Verify Your Email Address', '<div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #f0f0f0; border-radius: 12px; background: #ffffff;"><h2 style="color: #4f46e5; margin-bottom: 20px;">Email Verification Required</h2><p>Please enter the code below to verify your email address:</p><p style="font-size: 28px; font-weight: bold; letter-spacing: 6px; color: #4f46e5; text-align: center; background: #f3f4f6; padding: 15px; border-radius: 8px;">{{code}}</p></div>', ''Your email verification OTP is: {{code}}'')
+      `);
+
+      // Seed dummy logs for delivery, bounce, failure charts and lists
+      await client.query(`
+        INSERT INTO email_logs (provider_code, template_key, recipient_email, recipient_name, subject, body_html, status, error_message, retry_count, sent_at)
+        VALUES
+          ('SMTP', 'WELCOME', 'karan.sharma@example.com', 'Karan Sharma', 'Welcome to BhoomiOne V2!', '...', 'DELIVERED', NULL, 0, NOW() - INTERVAL '1 hour'),
+          ('SMTP', 'VERIFICATION', 'sneha.patel@example.com', 'Sneha Patel', 'Verify Your Email Address', '...', 'DELIVERED', NULL, 0, NOW() - INTERVAL '2 hours'),
+          ('SMTP', 'PASSWORD_RESET', 'unknown-user@invalid-domain.xyz', 'John Doe', 'Reset Your Password', '...', 'BOUNCED', '550 5.1.1 User Unknown', 1, NOW() - INTERVAL '3 hours'),
+          ('SMTP', 'INVOICE', 'rahul.verma@example.com', 'Rahul Verma', 'New Invoice #BO-INV-2026-001', '...', 'FAILED', 'Connection timed out: smtp.mailgun.org:587', 3, NOW() - INTERVAL '4 hours'),
+          ('SMTP', 'TENANT_PROVISIONED', 'builder@bhoomione.in', 'Elite Builders Ltd', 'Your Real Estate Builder Tenant Portal is Ready!', '...', 'DELIVERED', NULL, 0, NOW() - INTERVAL '10 minutes')
+      `);
+
+      console.log("Seeded relational PostgreSQL SaaS models, plans, limits, addons, slabs, tax rules and transactions, and tenant subscriptions successfully.");
+
+      // --- SEED NOTIFICATION ENGINE DATA ---
+      // Clear notification tables
+      await client.query("TRUNCATE TABLE notification_logs, notification_templates, notification_configurations CASCADE");
+
+      // Seed notification configurations
+      await client.query(`
+        INSERT INTO notification_configurations (channel, provider_code, name, is_enabled, is_default, config_params, status)
+        VALUES
+          ('EMAIL', 'SMTP', 'Central SMTP Relay', true, true, '{"host": "smtp.mailgun.org", "port": 587, "encryption": "TLS", "username": "postmaster@bhoomione.in"}', 'ACTIVE'),
+          ('EMAIL', 'SES', 'AWS SES Gateway', false, false, '{"region": "us-east-1", "access_key_id": "AKIAIOSFODNN7EXAMPLE"}', 'INACTIVE'),
+          ('SMS', 'TWILIO_SMS', 'Twilio SMS Gateway', true, true, '{"account_sid": "AC112233445566778899aabbccddeeff", "sender_id": "BHOOMI"}', 'ACTIVE'),
+          ('SMS', 'PLIVO', 'Plivo SMS Outbound', false, false, '{"auth_id": "MAYZZMNOTZNMNDNIZD", "sender_id": "BHOOMI"}', 'INACTIVE'),
+          ('WHATSAPP', 'TWILIO_WA', 'Twilio WhatsApp API', true, true, '{"whatsapp_phone": "+14155238886"}', 'ACTIVE'),
+          ('WHATSAPP', 'META_WA', 'Meta WhatsApp Cloud API', false, false, '{"phone_number_id": "10198273812", "business_id": "921827318"}', 'INACTIVE'),
+          ('PUSH', 'FCM', 'Firebase Cloud Messaging (FCM)', true, true, '{"project_id": "bhoomione-v2", "messaging_sender_id": "129837192"}', 'ACTIVE'),
+          ('IN_APP', 'IN_APP_SYSTEM', 'In-App Notification Center Engine', true, true, '{}', 'ACTIVE'),
+          ('WEBHOOK', 'GENERIC_WEBHOOK', 'Global Webhook Hub Receiver', true, true, '{"endpoint_url": "https://api.bhoomione.in/v1/webhook-receiver", "signing_secret": "whsec_bhoomi_v2_992123"}', 'ACTIVE')
+      `);
+
+      // Seed notification templates (for all 11 required event types!)
+      await client.query(`
+        INSERT INTO notification_templates (event_type, name, email_subject, email_body_html, sms_template, whatsapp_template, push_title, push_body, in_app_body, webhook_payload_template)
+        VALUES
+          ('TENANT_CREATED', 'Tenant Creation Welcome', 'BhoomiOne Workspace Created - {{tenant_name}}', 
+           '<div style="font-family: sans-serif; padding: 20px;"><h2 style="color: #4f46e5;">Welcome to BhoomiOne!</h2><p>Your tenant workspace {{tenant_name}} has been created successfully.</p></div>',
+           'BhoomiOne: Your builder tenant workspace {{tenant_name}} has been provisioned successfully. Access: https://{{tenant_domain}}/portal',
+           'Hello {{admin_name}}, your real estate builder portal *{{tenant_name}}* is now active. Access dashboard at https://{{tenant_domain}}/portal.',
+           'Tenant Workspace Active', 'Workspace {{tenant_name}} has been provisioned.',
+           'System has successfully provisioned tenant workspace {{tenant_name}} on domain {{tenant_domain}}.',
+           '{"event": "tenant.created", "tenant_id": "{{tenant_id}}", "tenant_name": "{{tenant_name}}", "timestamp": "{{timestamp}}"}'
+          ),
+          ('BOOKING', 'New Unit Plot Booking', 'Unit Plot Booking Confirmed - {{unit_number}}',
+           '<div style="font-family: sans-serif; padding: 20px;"><h2 style="color: #10b981;">Plot Booking Confirmed</h2><p>Dear {{customer_name}}, plot unit {{unit_number}} at layout {{layout_name}} has been booked.</p></div>',
+           'BhoomiOne: Dear {{customer_name}}, booking for unit {{unit_number}} at {{layout_name}} is confirmed. Booking ID: {{booking_id}}.',
+           'Dear {{customer_name}}, plot unit *{{unit_number}}* is officially booked at *{{layout_name}}*. Booking reference: {{booking_id}}.',
+           'New Plot Booked', 'Plot unit {{unit_number}} at {{layout_name}} is confirmed.',
+           'New booking registered for plot unit {{unit_number}} by customer {{customer_name}}.',
+           '{"event": "booking.confirmed", "booking_id": "{{booking_id}}", "customer_email": "{{customer_email}}", "amount": "{{amount}}"}'
+          ),
+          ('PAYMENT', 'Payment Received Notice', 'Payment Received - ₹{{amount}}',
+           '<div style="font-family: sans-serif; padding: 20px;"><h2 style="color: #10b981;">Payment Acknowledgment</h2><p>Payment of ₹{{amount}} received for booking reference {{booking_id}}.</p></div>',
+           'BhoomiOne: Payment of ₹{{amount}} has been received for Booking Ref: {{booking_id}}.',
+           'Dear {{customer_name}}, we have received a payment of *₹{{amount}}* for Booking ID: {{booking_id}}.',
+           'Payment Received', 'Amount of ₹{{amount}} credited successfully.',
+           'Payment of ₹{{amount}} received from customer {{customer_name}} (Booking ID: {{booking_id}}).',
+           '{"event": "payment.received", "booking_id": "{{booking_id}}", "amount": "{{amount}}", "tx_id": "{{transaction_id}}"}'
+          ),
+          ('INVOICE', 'Invoice Generated Alert', 'New Invoice #{{invoice_number}} Generated',
+           '<div style="font-family: sans-serif; padding: 20px;"><h2 style="color: #4f46e5;">Invoice Generated</h2><p>Invoice #{{invoice_number}} has been created for plot booking {{booking_id}}.</p></div>',
+           'BhoomiOne: Invoice #{{invoice_number}} of ₹{{amount}} has been generated for your transaction.',
+           'Dear {{customer_name}}, invoice *#{{invoice_number}}* for *₹{{amount}}* is now generated. View and pay at your portal.',
+           'New Invoice #{{invoice_number}}', 'Invoice of ₹{{amount}} is ready for payment.',
+           'Invoice #{{invoice_number}} has been generated for ₹{{amount}}.',
+           '{"event": "invoice.generated", "invoice_number": "{{invoice_number}}", "amount": "{{amount}}"}'
+          ),
+          ('RECEIPT', 'Official Tax Receipt Issued', 'Tax Receipt for Invoice #{{invoice_number}}',
+           '<div style="font-family: sans-serif; padding: 20px;"><h2 style="color: #10b981;">Payment Receipt</h2><p>Receipt issued for invoice #{{invoice_number}}. Tax paid: ₹{{tax_amount}}.</p></div>',
+           'BhoomiOne: Tax Receipt for Invoice #{{invoice_number}} has been issued. Amount: ₹{{amount}}.',
+           'Dear {{customer_name}}, receipt for Invoice *#{{invoice_number}}* has been issued. Payment ID: {{payment_id}}.',
+           'Receipt Issued', 'Tax receipt for #{{invoice_number}} is ready to download.',
+           'Official receipt for Invoice #{{invoice_number}} has been generated and filed.',
+           '{"event": "receipt.issued", "invoice_number": "{{invoice_number}}", "receipt_id": "{{receipt_id}}"}'
+          ),
+          ('AGREEMENT', 'Sale Agreement Execution Alert', 'Sale Agreement Ready for Signatures',
+           '<div style="font-family: sans-serif; padding: 20px;"><h2 style="color: #4f46e5;">Sale Agreement Ready</h2><p>Dear {{customer_name}}, the draft sale agreement for unit {{unit_number}} is ready for digital signature.</p></div>',
+           'BhoomiOne: Sale Agreement for unit {{unit_number}} is ready. Digital signature required: {{signature_link}}.',
+           'Dear {{customer_name}}, the Sale Agreement for unit *{{unit_number}}* is ready. Sign digitally here: {{signature_link}}.',
+           'Agreement Pending Signature', 'Agreement for plot {{unit_number}} requires your signature.',
+           'Draft sale agreement for plot unit {{unit_number}} has been compiled and dispatched to {{customer_name}}.',
+           '{"event": "agreement.prepared", "unit_number": "{{unit_number}}", "agreement_id": "{{agreement_id}}"}'
+          ),
+          ('EMI_REMINDER', 'Upcoming Installment EMI Reminder', 'EMI Installment Reminder - Due in {{days}} days',
+           '<div style="font-family: sans-serif; padding: 20px;"><h2 style="color: #f59e0b;">EMI Installment Notice</h2><p>Dear {{customer_name}}, your upcoming installment of ₹{{amount}} is due on {{due_date}}.</p></div>',
+           'BhoomiOne: EMI of ₹{{amount}} is due on {{due_date}}. Avoid late fees by paying via portal.',
+           'Dear {{customer_name}}, quick reminder that your next EMI installment of *₹{{amount}}* is due on *{{due_date}}*.',
+           'Upcoming EMI Due', 'Installment of ₹{{amount}} is due on {{due_date}}.',
+           'Scheduled EMI reminder triggered for customer {{customer_name}} (Plot: {{unit_number}}, Due: {{due_date}}).',
+           '{"event": "emi.reminder", "customer_email": "{{customer_email}}", "due_amount": "{{amount}}", "due_date": "{{due_date}}"}'
+          ),
+          ('SUBSCRIPTION_RENEWAL', 'SaaS Plan Subscription Renewal Notice', 'BhoomiOne SaaS Subscription Renewing Soon',
+           '<div style="font-family: sans-serif; padding: 20px;"><h2 style="color: #4f46e5;">SaaS Renewal Approaching</h2><p>Your subscription plan will renew automatically on {{renewal_date}}.</p></div>',
+           'BhoomiOne: Your platform plan {{plan_name}} will renew on {{renewal_date}}. Billing amount: ₹{{amount}}.',
+           'Hello, your *{{plan_name}}* subscription is scheduled for auto-renewal on *{{renewal_date}}*. Secure payment of ₹{{amount}}.',
+           'SaaS Subscription Renewing', 'Plan {{plan_name}} auto-renewing on {{renewal_date}}.',
+           'Platform plan subscription renewal schedule notification sent to tenant administrator.',
+           '{"event": "subscription.renewing", "plan_name": "{{plan_name}}", "renewal_date": "{{renewal_date}}"}'
+          ),
+          ('LEAD_ASSIGNMENT', 'Real Estate Lead Assignment Alert', 'New Sales Lead Assigned to You: {{lead_name}}',
+           '<div style="font-family: sans-serif; padding: 20px;"><h2 style="color: #4f46e5;">New Lead Assigned</h2><p>You have been assigned a new high-priority lead: {{lead_name}} (Phone: {{lead_phone}}).</p></div>',
+           'BhoomiOne: New Lead assigned: {{lead_name}} ({{lead_phone}}). Please follow up immediately.',
+           'Hi {{agent_name}}, a new lead *{{lead_name}}* has been assigned to you. Interested in project: *{{project_name}}*. Follow-up today!',
+           'New Lead Assigned', 'Lead {{lead_name}} assigned to your sales pipeline.',
+           'Lead {{lead_name}} ({{lead_email}}) assigned to sales executive {{agent_name}}.',
+           '{"event": "lead.assigned", "lead_id": "{{lead_id}}", "agent_id": "{{agent_id}}"}'
+          ),
+          ('SITE_VISIT', 'Site Visit Schedule Notification', 'Site Visit Confirmed - {{project_name}}',
+           '<div style="font-family: sans-serif; padding: 20px;"><h2 style="color: #4f46e5;">Site Visit Confirmed</h2><p>Dear {{customer_name}}, your physical site tour of {{project_name}} is confirmed for {{visit_time}}.</p></div>',
+           'BhoomiOne: Your physical tour of {{project_name}} is confirmed for {{visit_time}}. Executive contact: {{agent_phone}}.',
+           'Dear {{customer_name}}, your site visit for *{{project_name}}* is scheduled on *{{visit_time}}*. Assistant: {{agent_name}}.',
+           'Site Visit Scheduled', 'Physical tour of {{project_name}} confirmed on {{visit_time}}.',
+           'Site visit scheduled for customer {{customer_name}} at project site {{project_name}} for {{visit_time}}.',
+           '{"event": "site_visit.scheduled", "customer_name": "{{customer_name}}", "visit_time": "{{visit_time}}"}'
+          ),
+          ('ADMIN_ALERTS', 'Critical System Administrator Alerts', '[CRITICAL ALERT] BhoomiOne System Admin Notice',
+           '<div style="font-family: sans-serif; padding: 20px; background: #fffbeb;"><h2 style="color: #b45309;">System Admin Notice</h2><p>A system status action is required: {{message}}.</p></div>',
+           'BhoomiOne Admin: CRITICAL Alert: {{message}}.',
+           'System Admin Alert: *{{message}}* has triggered system action. Review admin terminal.',
+           'Critical System Alert', 'Admin Action Required: {{message}}',
+           'Admin security alert triggered: {{message}}.',
+           '{"event": "admin.alert", "severity": "critical", "message": "{{message}}"}'
+          )
+      `);
+
+      // Seed mock notification logs for comprehensive dashboard views
+      await client.query(`
+        INSERT INTO notification_logs (event_type, channel, recipient, subject, body, status, retry_count, max_retries, error_message, sent_at, audit_trail)
+        VALUES
+          ('BOOKING', 'EMAIL', 'anil.verma@gmail.com', 'Unit Plot Booking Confirmed - PLOT-104', 
+           'Dear Anil Verma, plot unit PLOT-104 at layout Royal Meadows has been booked.', 'DELIVERED', 0, 3, NULL, NOW() - INTERVAL '30 minutes',
+           '[{"time": "2026-06-30T04:10:00Z", "status": "QUEUED", "message": "Enqueued for delivery"}, {"time": "2026-06-30T04:10:02Z", "status": "DELIVERED", "message": "Dispatched via SMTP relay"}]'::jsonb
+          ),
+          ('BOOKING', 'SMS', '+919900112233', NULL, 
+           'BhoomiOne: Dear Anil Verma, booking for unit PLOT-104 at Royal Meadows is confirmed.', 'DELIVERED', 0, 3, NULL, NOW() - INTERVAL '30 minutes',
+           '[{"time": "2026-06-30T04:10:00Z", "status": "QUEUED", "message": "Enqueued"}, {"time": "2026-06-30T04:10:01Z", "status": "DELIVERED", "message": "SMS Delivered successfully"}]'::jsonb
+          ),
+          ('PAYMENT', 'WHATSAPP', '+919900112233', NULL, 
+           'Dear Anil Verma, we have received a payment of ₹5,00,000 for Booking ID: BK-99211.', 'DELIVERED', 0, 3, NULL, NOW() - INTERVAL '25 minutes',
+           '[{"time": "2026-06-30T04:15:00Z", "status": "QUEUED", "message": "Enqueued"}, {"time": "2026-06-30T04:15:03Z", "status": "DELIVERED", "message": "WhatsApp API callback success"}]'::jsonb
+          ),
+          ('EMI_REMINDER', 'EMAIL', 'suresh.kumar@yahoo.com', 'EMI Installment Reminder - Due in 5 days', 
+           'Dear Suresh Kumar, your upcoming installment of ₹50,000 is due on 2026-07-05.', 'QUEUED', 0, 3, NULL, NULL,
+           '[{"time": "2026-06-30T04:30:00Z", "status": "QUEUED", "message": "Scheduled upcoming EMI dispatch"}]'::jsonb
+          ),
+          ('LEAD_ASSIGNMENT', 'IN_APP', 'usr-sales-01', NULL, 
+           'Lead Sunita Rao assigned to your sales pipeline.', 'DELIVERED', 0, 3, NULL, NOW() - INTERVAL '15 minutes',
+           '[{"time": "2026-06-30T04:25:00Z", "status": "DELIVERED", "message": "Pushed to In-App database"}]'::jsonb
+          ),
+          ('SITE_VISIT', 'WEBHOOK', 'https://builder-crm.com/api/v1/visits', NULL, 
+           '{"event": "site_visit.scheduled", "customer_name": "Ramesh Gupta", "visit_time": "2026-07-02 11:00"}', 'FAILED', 3, 3, 
+           'HTTP 504 Gateway Timeout connecting to CRM server.', NULL,
+           '[{"time": "2026-06-30T03:00:00Z", "status": "QUEUED", "message": "Initial post trigger"}, {"time": "2026-06-30T03:01:00Z", "status": "RETRYING", "message": "Attempt 1 failed. Retry 1 enqueued"}, {"time": "2026-06-30T03:02:00Z", "status": "RETRYING", "message": "Attempt 2 failed. Retry 2 enqueued"}, {"time": "2026-06-30T03:03:00Z", "status": "FAILED", "message": "Attempt 3 failed. Retries exhausted."}]'::jsonb
+          )
+      `);
     } catch (seedErr) {
       console.error("❌ Pre-migration relational seeding failed:", seedErr);
     }

@@ -308,6 +308,307 @@ class ApiClient {
     });
   }
 
+  // ==========================================
+  // EMAIL SERVICE MANAGER APIs
+  // ==========================================
+
+  async fetchEmailConfigs(): Promise<any[]> {
+    return this.request<any[]>("/admin/email-service/configurations", {
+      method: "GET"
+    });
+  }
+
+  async saveEmailConfig(config: any): Promise<{ success: boolean; message: string; config: any }> {
+    return this.request<{ success: boolean; message: string; config: any }>("/admin/email-service/configurations", {
+      method: "POST",
+      body: JSON.stringify(config)
+    });
+  }
+
+  async testEmailConnection(config: any): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>("/admin/email-service/test-connection", {
+      method: "POST",
+      body: JSON.stringify(config)
+    });
+  }
+
+  async sendTestEmail(payload: {
+    providerCode: string;
+    recipientEmail: string;
+    recipientName?: string;
+    subject: string;
+    bodyHtml: string;
+  }): Promise<{ success: boolean; message: string; logId: string }> {
+    return this.request<{ success: boolean; message: string; logId: string }>("/admin/email-service/send-test", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async fetchEmailTemplates(): Promise<any[]> {
+    return this.request<any[]>("/admin/email-service/templates", {
+      method: "GET"
+    });
+  }
+
+  async saveEmailTemplate(template: {
+    templateKey: string;
+    name: string;
+    subject: string;
+    bodyHtml: string;
+    bodyText?: string;
+  }): Promise<{ success: boolean; message: string; template: any }> {
+    return this.request<{ success: boolean; message: string; template: any }>("/admin/email-service/templates", {
+      method: "POST",
+      body: JSON.stringify(template)
+    });
+  }
+
+  async fetchEmailLogs(): Promise<any[]> {
+    return this.request<any[]>("/admin/email-service/logs", {
+      method: "GET"
+    });
+  }
+
+  async retryEmailLog(id: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/admin/email-service/retry/${id}`, {
+      method: "POST"
+    });
+  }
+
+  // ==========================================
+  // CENTRALIZED NOTIFICATION ENGINE APIs
+  // ==========================================
+
+  async fetchNotificationConfigs(): Promise<any[]> {
+    return this.request<any[]>("/admin/notifications/configurations", {
+      method: "GET"
+    });
+  }
+
+  async saveNotificationConfig(config: any): Promise<{ success: boolean; message: string; config: any }> {
+    return this.request<{ success: boolean; message: string; config: any }>("/admin/notifications/configurations", {
+      method: "POST",
+      body: JSON.stringify(config)
+    });
+  }
+
+  async testNotificationGateway(payload: {
+    channel: string;
+    providerCode: string;
+    configParams: any;
+  }): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>("/admin/notifications/test-gateway", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async fetchNotificationTemplates(): Promise<any[]> {
+    return this.request<any[]>("/admin/notifications/templates", {
+      method: "GET"
+    });
+  }
+
+  async saveNotificationTemplate(template: any): Promise<{ success: boolean; message: string; template: any }> {
+    return this.request<{ success: boolean; message: string; template: any }>("/admin/notifications/templates", {
+      method: "POST",
+      body: JSON.stringify(template)
+    });
+  }
+
+  async syncWhatsAppTemplates(): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>("/admin/notifications/sync-whatsapp-templates", {
+      method: "POST"
+    });
+  }
+
+  async fetchNotificationLogs(): Promise<any[]> {
+    return this.request<any[]>("/admin/notifications/logs", {
+      method: "GET"
+    });
+  }
+
+  async retryNotificationLog(id: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/admin/notifications/retry/${id}`, {
+      method: "POST"
+    });
+  }
+
+  async sendTestNotification(payload: {
+    eventType: string;
+    channel: string;
+    recipient: string;
+    variables: Record<string, string>;
+    scheduledAt?: string;
+    whatsappMediaUrl?: string;
+    whatsappMediaType?: string;
+  }): Promise<{ success: boolean; message: string; logId: string }> {
+    return this.request<{ success: boolean; message: string; logId: string }>("/admin/notifications/send-test", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async forceSweepNotifications(): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>("/admin/notifications/sweep", {
+      method: "POST"
+    });
+  }
+
+  // ==========================================
+  // PAYMENT GATEWAY & BILLING MANAGEMENT APIs
+  // ==========================================
+
+  async fetchGateways(): Promise<any[]> {
+    return this.request<any[]>("/admin/gateways", {
+      method: "GET"
+    });
+  }
+
+  async saveGateways(gateways: any[]): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>("/admin/gateways", {
+      method: "POST",
+      body: JSON.stringify({ gateways })
+    });
+  }
+
+  async testConnection(code: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/admin/gateways/${code}/test-connection`, {
+      method: "POST"
+    });
+  }
+
+  async testPayment(code: string, amount: number, email: string): Promise<{ success: boolean; transactionId: string; message: string }> {
+    return this.request<{ success: boolean; transactionId: string; message: string }>(`/admin/gateways/${code}/test-payment`, {
+      method: "POST",
+      body: JSON.stringify({ amount, email })
+    });
+  }
+
+  async webhookVerify(code: string, eventType: string, payload: any): Promise<{ success: boolean; status: string; message: string }> {
+    return this.request<{ success: boolean; status: string; message: string }>(`/admin/gateways/${code}/webhook-verify`, {
+      method: "POST",
+      body: JSON.stringify({ eventType, payload })
+    });
+  }
+
+  async fetchPaymentLogs(): Promise<any[]> {
+    return this.request<any[]>("/admin/gateways/logs", {
+      method: "GET"
+    });
+  }
+
+  async fetchWebhookLogs(): Promise<any[]> {
+    return this.request<any[]>("/admin/gateways/webhooks", {
+      method: "GET"
+    });
+  }
+
+  async retryPayment(id: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/admin/gateways/retry/${id}`, {
+      method: "POST"
+    });
+  }
+
+  // ==========================================
+  // GST & TAX CONFIGURATION APIs
+  // ==========================================
+
+  async fetchTaxRules(): Promise<any[]> {
+    return this.request<any[]>("/admin/tax-rules", {
+      method: "GET"
+    });
+  }
+
+  async saveTaxRule(rule: any): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>("/admin/tax-rules", {
+      method: "POST",
+      body: JSON.stringify(rule)
+    });
+  }
+
+  async deleteTaxRule(id: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/admin/tax-rules/${id}`, {
+      method: "DELETE"
+    });
+  }
+
+  async calculateTax(params: { baseAmount: number; customerState: string; builderState: string; tenantId?: string }): Promise<any> {
+    return this.request<any>("/admin/tax-rules/calculate", {
+      method: "POST",
+      body: JSON.stringify(params)
+    });
+  }
+
+  async recordTaxInvoice(invoice: any): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>("/admin/tax-rules/invoice", {
+      method: "POST",
+      body: JSON.stringify(invoice)
+    });
+  }
+
+  async fetchTaxReports(): Promise<any> {
+    return this.request<any>("/admin/tax-rules/reports", {
+      method: "GET"
+    });
+  }
+
+  // ==========================================
+  // PROMO COUPONS & CAMPAIGNS APIs
+  // ==========================================
+
+  async fetchCoupons(): Promise<any[]> {
+    return this.request<any[]>("/admin/coupons", {
+      method: "GET"
+    });
+  }
+
+  async saveCoupon(coupon: any): Promise<{ success: boolean; message: string; coupon: any }> {
+    return this.request<{ success: boolean; message: string; coupon: any }>("/admin/coupons", {
+      method: "POST",
+      body: JSON.stringify(coupon)
+    });
+  }
+
+  async deleteCoupon(id: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/admin/coupons/${id}`, {
+      method: "DELETE"
+    });
+  }
+
+  async fetchCampaigns(): Promise<any[]> {
+    return this.request<any[]>("/admin/campaigns", {
+      method: "GET"
+    });
+  }
+
+  async saveCampaign(campaign: any): Promise<{ success: boolean; message: string; campaign: any }> {
+    return this.request<{ success: boolean; message: string; campaign: any }>("/admin/campaigns", {
+      method: "POST",
+      body: JSON.stringify(campaign)
+    });
+  }
+
+  async deleteCampaign(id: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/admin/campaigns/${id}`, {
+      method: "DELETE"
+    });
+  }
+
+  async simulateCoupon(params: {
+    code: string;
+    baseAmount: number;
+    tenantId?: string;
+    builderName?: string;
+    scope: string;
+  }): Promise<any> {
+    return this.request<any>("/admin/coupons/simulate", {
+      method: "POST",
+      body: JSON.stringify(params)
+    });
+  }
+
   async fetchTenantSubscription(id: string): Promise<any> {
     return this.request<any>(`/admin/tenants/${id}/subscription`, {
       method: "GET"
