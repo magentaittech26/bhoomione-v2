@@ -582,6 +582,11 @@ export async function bootstrapDatabase() {
     await client.query("ALTER TABLE plots ADD COLUMN IF NOT EXISTS booking_status VARCHAR(50) DEFAULT 'AVAILABLE'");
     await client.query("ALTER TABLE plots ADD COLUMN IF NOT EXISTS reserved_by VARCHAR(255) NULL");
 
+    // Promo Coupons and Campaigns support columns for Lifecycle, Soft Deletes, etc.
+    await client.query("ALTER TABLE promo_coupons ADD COLUMN IF NOT EXISTS start_date DATE");
+    await client.query("ALTER TABLE promo_coupons ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE");
+    await client.query("ALTER TABLE promo_campaigns ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE");
+
     // Notification Engine Media Message support columns
     await client.query("ALTER TABLE notification_templates ADD COLUMN IF NOT EXISTS whatsapp_media_url VARCHAR(512) NULL");
     await client.query("ALTER TABLE notification_templates ADD COLUMN IF NOT EXISTS whatsapp_media_type VARCHAR(50) NULL");

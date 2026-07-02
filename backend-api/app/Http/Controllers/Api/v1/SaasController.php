@@ -2123,7 +2123,7 @@ class SaasController extends Controller
     public function getCoupons(\Illuminate\Http\Request $request)
     {
         try {
-            $coupons = \App\Models\PromoCoupon::with('campaign')->get();
+            $coupons = \App\Models\PromoCoupon::withTrashed()->with('campaign')->get();
             
             // Apply policy check if user is found
             $user = $request->attributes->get('authenticatedUser');
@@ -2149,7 +2149,12 @@ class SaasController extends Controller
             $validated = $request->validated();
 
             $id = $validated['id'] ?? (string)\Illuminate\Support\Str::uuid();
-            $couponModel = \App\Models\PromoCoupon::findOrNew($id);
+            $couponModel = \App\Models\PromoCoupon::withTrashed()->find($id);
+            if (!$couponModel) {
+                $couponModel = new \App\Models\PromoCoupon();
+            } else if ($couponModel->trashed()) {
+                $couponModel->restore();
+            }
 
             // Apply policy check if user is found
             $user = $request->attributes->get('authenticatedUser');
@@ -2160,13 +2165,14 @@ class SaasController extends Controller
                 }
             }
 
-            $coupon = \App\Models\PromoCoupon::updateOrCreate(
+            $coupon = \App\Models\PromoCoupon::withTrashed()->updateOrCreate(
                 ['id' => $id],
                 [
                     'code' => strtoupper(trim($validated['code'])),
                     'type' => $validated['type'],
                     'value' => $validated['value'],
                     'campaign_id' => ($validated['campaign_id'] ?? null) ?: null,
+                    'start_date' => $validated['start_date'] ?? null,
                     'expiry_date' => $validated['expiry_date'] ?? null,
                     'max_uses' => $validated['max_uses'] ?? null,
                     'current_uses' => $validated['current_uses'] ?? 0,
@@ -2192,7 +2198,7 @@ class SaasController extends Controller
     public function deleteCoupon(\Illuminate\Http\Request $request, $id)
     {
         try {
-            $coupon = \App\Models\PromoCoupon::find($id);
+            $coupon = \App\Models\PromoCoupon::withTrashed()->find($id);
             if (!$coupon) {
                 return response()->json(['error' => 'Coupon not found.'], 404);
             }
@@ -2206,10 +2212,18 @@ class SaasController extends Controller
                 }
             }
 
-            $coupon->delete();
+            $force = $request->query('force') === 'true';
+            if ($force) {
+                $coupon->forceDelete();
+                $msg = 'Coupon permanently deleted.';
+            } else {
+                $coupon->delete();
+                $msg = 'Coupon deleted successfully.';
+            }
+
             return response()->json([
                 'success' => true,
-                'message' => 'Coupon deleted successfully.'
+                'message' => $msg
             ]);
         } catch (\Throwable $e) {
             return response()->json(['error' => 'Failed to delete coupon: ' . $e->getMessage()], 500);
@@ -2222,7 +2236,7 @@ class SaasController extends Controller
     public function getCampaigns(\Illuminate\Http\Request $request)
     {
         try {
-            $campaigns = \App\Models\PromoCampaign::withCount('coupons')->get();
+            $campaigns = \App\Models\PromoCampaign::withTrashed()->withCount('coupons')->get();
             
             // Apply policy check if user is found
             $user = $request->attributes->get('authenticatedUser');
@@ -2248,7 +2262,12 @@ class SaasController extends Controller
             $validated = $request->validated();
 
             $id = $validated['id'] ?? (string)\Illuminate\Support\Str::uuid();
-            $campaignModel = \App\Models\PromoCampaign::findOrNew($id);
+            $campaignModel = \App\Models\PromoCampaign::withTrashed()->find($id);
+            if (!$campaignModel) {
+                $campaignModel = new \App\Models\PromoCampaign();
+            } else if ($campaignModel->trashed()) {
+                $campaignModel->restore();
+            }
 
             // Apply policy check if user is found
             $user = $request->attributes->get('authenticatedUser');
@@ -2259,7 +2278,7 @@ class SaasController extends Controller
                 }
             }
 
-            $campaign = \App\Models\PromoCampaign::updateOrCreate(
+            $campaign = \App\Models\PromoCampaign::withTrashed()->updateOrCreate(
                 ['id' => $id],
                 [
                     'name' => $validated['name'],
@@ -2296,7 +2315,7 @@ class SaasController extends Controller
     public function deleteCampaign(\Illuminate\Http\Request $request, $id)
     {
         try {
-            $campaign = \App\Models\PromoCampaign::find($id);
+            $campaign = \App\Models\PromoCampaign::withTrashed()->find($id);
             if (!$campaign) {
                 return response()->json(['error' => 'Campaign not found.'], 404);
             }
@@ -2310,10 +2329,18 @@ class SaasController extends Controller
                 }
             }
 
-            $campaign->delete();
+            $force = $request->query('force') === 'true';
+            if ($force) {
+                $campaign->forceDelete();
+                $msg = 'Campaign permanently deleted.';
+            } else {
+                $campaign->delete();
+                $msg = 'Campaign deleted successfully.';
+            }
+
             return response()->json([
                 'success' => true,
-                'message' => 'Campaign deleted successfully.'
+                'message' => $msg
             ]);
         } catch (\Throwable $e) {
             return response()->json(['error' => 'Failed to delete campaign: ' . $e->getMessage()], 500);
@@ -2340,57 +2367,105 @@ class SaasController extends Controller
             $builderName = $validated['builderName'] ?? null;
             $scope = $validated['scope'] ?? 'SUBSCRIPTION';
 
-            $coupon = \App\Models\PromoCoupon::where('code', $code)->first();
+            // Find coupon (even soft-deleted ones for precise diagnostics)
+            $coupon = \App\Models\PromoCoupon::withTrashed()->where('code', $code)->first();
+
+            // Default diagnostics payload
+            $diagnostics = [
+                'couponFound' => false,
+                'campaign' => 'None',
+                'couponType' => 'N/A',
+                'validFrom' => 'N/A',
+                'validUntil' => 'N/A',
+                'maximumUses' => 0,
+                'currentUses' => 0,
+                'remainingUses' => 0,
+                'applicableBuilder' => 'Global (All)',
+                'applicableTenant' => 'Global (All)',
+                'discount' => 0.00,
+                'gstBefore' => round($baseAmount * 0.18, 2),
+                'gstAfter' => round($baseAmount * 0.18, 2),
+                'finalPrice' => round($baseAmount * 1.18, 2),
+                'totalSavings' => 0.00,
+                'isValid' => false,
+                'failureReason' => null
+            ];
 
             if (!$coupon) {
+                $diagnostics['failureReason'] = "Coupon code '{$code}' was not found in the central registry database.";
                 return response()->json([
                     'success' => false,
-                    'error' => "Coupon code '{$code}' not found in the central registry database."
+                    'error' => $diagnostics['failureReason'],
+                    'diagnostics' => $diagnostics
                 ]);
             }
 
-            if ($coupon->status !== 'ACTIVE') {
-                return response()->json([
-                    'success' => false,
-                    'error' => "Coupon is inactive. Status: {$coupon->status}."
-                ]);
+            // Fill basic info from coupon
+            $diagnostics['couponFound'] = true;
+            $diagnostics['couponType'] = $coupon->type;
+            $diagnostics['campaign'] = $coupon->campaign ? $coupon->campaign->name : 'Standalone Promo';
+            $diagnostics['validFrom'] = $coupon->start_date ? $coupon->start_date->format('Y-m-d') : 'Immediate';
+            $diagnostics['validUntil'] = $coupon->expiry_date ? $coupon->expiry_date->format('Y-m-d') : 'No Expiry';
+            $diagnostics['maximumUses'] = (int)$coupon->max_uses;
+            $diagnostics['currentUses'] = (int)$coupon->current_uses;
+            $diagnostics['remainingUses'] = max(0, (int)$coupon->max_uses - (int)$coupon->current_uses);
+            $diagnostics['applicableBuilder'] = $coupon->builder_name ?: 'Global (All)';
+            $diagnostics['applicableTenant'] = $coupon->tenant_id ?: 'Global (All)';
+
+            // Perform checks
+            if ($coupon->trashed()) {
+                $diagnostics['failureReason'] = "This coupon was deleted/archived from active circulation.";
+                return response()->json(['success' => false, 'error' => $diagnostics['failureReason'], 'diagnostics' => $diagnostics]);
             }
 
-            if ($coupon->expiry_date && $coupon->expiry_date->isPast()) {
-                return response()->json([
-                    'success' => false,
-                    'error' => "Coupon has expired on " . $coupon->expiry_date->format('Y-m-d') . "."
-                ]);
+            $computedStatus = $coupon->calculated_status;
+            if ($computedStatus === 'PAUSED' || $coupon->status === 'PAUSED') {
+                $diagnostics['failureReason'] = "This coupon is currently paused/deactivated by an administrator.";
+                return response()->json(['success' => false, 'error' => $diagnostics['failureReason'], 'diagnostics' => $diagnostics]);
             }
 
-            if ($coupon->current_uses >= $coupon->max_uses) {
-                return response()->json([
-                    'success' => false,
-                    'error' => "Coupon maximum redemptions limit ({$coupon->max_uses}) has been reached."
-                ]);
+            if ($computedStatus === 'DRAFT' || $coupon->status === 'DRAFT') {
+                $diagnostics['failureReason'] = "This coupon is in DRAFT state and is not open for public redemption.";
+                return response()->json(['success' => false, 'error' => $diagnostics['failureReason'], 'diagnostics' => $diagnostics]);
             }
 
+            if ($computedStatus === 'ARCHIVED' || $coupon->status === 'ARCHIVED') {
+                $diagnostics['failureReason'] = "This coupon is archived and no longer accepting redemptions.";
+                return response()->json(['success' => false, 'error' => $diagnostics['failureReason'], 'diagnostics' => $diagnostics]);
+            }
+
+            if ($computedStatus === 'SCHEDULED') {
+                $diagnostics['failureReason'] = "This coupon is scheduled to start on " . $coupon->start_date->format('Y-m-d') . ".";
+                return response()->json(['success' => false, 'error' => $diagnostics['failureReason'], 'diagnostics' => $diagnostics]);
+            }
+
+            if ($computedStatus === 'EXPIRED') {
+                $diagnostics['failureReason'] = "This coupon expired on " . $coupon->expiry_date->format('Y-m-d') . ".";
+                return response()->json(['success' => false, 'error' => $diagnostics['failureReason'], 'diagnostics' => $diagnostics]);
+            }
+
+            if ($computedStatus === 'EXHAUSTED' || $coupon->current_uses >= $coupon->max_uses) {
+                $diagnostics['failureReason'] = "Maximum redemption count of " . $coupon->max_uses . " has been fully exhausted.";
+                return response()->json(['success' => false, 'error' => $diagnostics['failureReason'], 'diagnostics' => $diagnostics]);
+            }
+
+            // Lock rules
             if ($coupon->type === 'TENANT' && $tenantId && strtolower($coupon->tenant_id) !== strtolower($tenantId)) {
-                return response()->json([
-                    'success' => false,
-                    'error' => "This is a tenant-locked coupon restricted to Tenant ID: {$coupon->tenant_id}."
-                ]);
+                $diagnostics['failureReason'] = "This is a tenant-locked coupon restricted to Tenant ID: {$coupon->tenant_id}.";
+                return response()->json(['success' => false, 'error' => $diagnostics['failureReason'], 'diagnostics' => $diagnostics]);
             }
 
             if ($coupon->type === 'BUILDER' && $builderName && stripos($builderName, $coupon->builder_name) === false) {
-                return response()->json([
-                    'success' => false,
-                    'error' => "This coupon is restricted to builder/developer: '{$coupon->builder_name}'."
-                ]);
+                $diagnostics['failureReason'] = "This coupon is restricted to builder/developer: '{$coupon->builder_name}'.";
+                return response()->json(['success' => false, 'error' => $diagnostics['failureReason'], 'diagnostics' => $diagnostics]);
             }
 
             if ($coupon->type === 'MARKETPLACE' && $scope !== 'MARKETPLACE') {
-                return response()->json([
-                    'success' => false,
-                    'error' => "This coupon is restricted to theme & addon purchases inside the Marketplace only."
-                ]);
+                $diagnostics['failureReason'] = "This coupon is restricted to theme & addon purchases inside the Marketplace only.";
+                return response()->json(['success' => false, 'error' => $diagnostics['failureReason'], 'diagnostics' => $diagnostics]);
             }
 
+            // Calculations
             $discount = 0.00;
             if ($coupon->type === 'PERCENTAGE' || $coupon->type === 'TENANT') {
                 $discount = round(($baseAmount * (float)$coupon->value) / 100, 2);
@@ -2402,7 +2477,18 @@ class SaasController extends Controller
                 $discount = $baseAmount;
             }
 
-            $finalAmount = $baseAmount - $discount;
+            $gstBefore = round($baseAmount * 0.18, 2);
+            $gstAfter = round(($baseAmount - $discount) * 0.18, 2);
+            $finalPrice = round(($baseAmount - $discount) + $gstAfter, 2);
+            $totalSavings = round($discount + ($gstBefore - $gstAfter), 2);
+
+            // Update diagnostics
+            $diagnostics['discount'] = $discount;
+            $diagnostics['gstBefore'] = $gstBefore;
+            $diagnostics['gstAfter'] = $gstAfter;
+            $diagnostics['finalPrice'] = $finalPrice;
+            $diagnostics['totalSavings'] = $totalSavings;
+            $diagnostics['isValid'] = true;
 
             return response()->json([
                 'success' => true,
@@ -2414,10 +2500,11 @@ class SaasController extends Controller
                 'simulation' => [
                     'baseAmount' => $baseAmount,
                     'discountAmount' => $discount,
-                    'finalAmount' => $finalAmount,
+                    'finalAmount' => $baseAmount - $discount,
                     'scope' => $scope,
                     'appliedAt' => now()->toIso8601String()
-                ]
+                ],
+                'diagnostics' => $diagnostics
             ]);
         } catch (\Throwable $e) {
             return response()->json(['error' => 'Simulation failed: ' . $e->getMessage()], 500);

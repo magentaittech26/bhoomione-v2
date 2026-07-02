@@ -27,12 +27,13 @@ class PromoCouponRequest extends FormRequest
             'type' => 'required|string|in:PERCENTAGE,FIXED,REFERRAL,BUILDER,MARKETPLACE,TENANT',
             'value' => 'required|numeric|min:0.01',
             'campaign_id' => 'nullable|string',
+            'start_date' => 'nullable|date',
             'expiry_date' => 'required|date',
             'max_uses' => 'required|integer|min:1',
             'current_uses' => 'nullable|integer|min:0',
             'tenant_id' => 'nullable|string',
             'builder_name' => 'nullable|string',
-            'status' => 'nullable|string|in:ACTIVE,EXPIRED,EXHAUSTED',
+            'status' => 'nullable|string|in:DRAFT,SCHEDULED,ACTIVE,PAUSED,EXPIRED,EXHAUSTED,ARCHIVED,DELETED',
         ];
     }
 

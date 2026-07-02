@@ -9,8 +9,7 @@ class PromoCampaignResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        $totalRedemptions = \DB::table('promo_coupons')
-            ->where('campaign_id', $this->id)
+        $totalRedemptions = \App\Models\PromoCoupon::where('campaign_id', $this->id)
             ->sum('current_uses');
 
         return [

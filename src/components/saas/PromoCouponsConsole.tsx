@@ -23,7 +23,7 @@ interface PromoCoupon {
   currentUses: number;
   tenantId?: string;
   builderName?: string;
-  status: "ACTIVE" | "EXPIRED" | "EXHAUSTED";
+  status: "ACTIVE" | "EXPIRED" | "EXHAUSTED" | "DRAFT" | "SCHEDULED" | "PAUSED" | "ARCHIVED" | "DELETED";
   createdAt: string;
 }
 
@@ -132,6 +132,14 @@ const PromoCouponsConsoleInner: React.FC<PromoCouponsConsoleProps> = ({ onShowTo
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   
+  // Additional States
+  const [editingCoupon, setEditingCoupon] = useState<PromoCoupon | null>(null);
+  const [newStartDate, setNewStartDate] = useState("2026-07-01");
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [viewingCoupon, setViewingCoupon] = useState<PromoCoupon | null>(null);
+  const [selectedCoupons, setSelectedCoupons] = useState<string[]>([]);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  
   const loadData = async () => {
     setLoading(true);
     setFetchError(null);
@@ -205,7 +213,7 @@ const PromoCouponsConsoleInner: React.FC<PromoCouponsConsoleProps> = ({ onShowTo
     }
     
     const uppercaseCode = newCode.trim().toUpperCase();
-    if (coupons.some(c => c.code === uppercaseCode)) {
+    if (!editingCoupon && coupons.some(c => c.code === uppercaseCode)) {
       onShowToast(`Coupon Code '${uppercaseCode}' already exists in the system registry.`, "error");
       return;
     }
@@ -222,31 +230,36 @@ const PromoCouponsConsoleInner: React.FC<PromoCouponsConsoleProps> = ({ onShowTo
 
     try {
       const res = await api.saveCoupon({
+        id: editingCoupon ? editingCoupon.id : undefined,
         code: uppercaseCode,
         type: newType,
         value: Number(newValue),
         campaignId: newCampaignId || undefined,
+        startDate: newStartDate || undefined,
         expiryDate: newExpiryDate,
         maxUses: Number(newMaxUses),
         tenantId: newType === "TENANT" ? newTenantId.trim() || "T-999" : undefined,
         builderName: newType === "BUILDER" || newType === "TENANT" ? newBuilderName.trim() || "Consolidated Builder" : undefined,
-        status: "ACTIVE"
+        status: editingCoupon ? editingCoupon.status : "ACTIVE"
       });
 
       if (res.success) {
-        onShowToast(`Promo coupon '${uppercaseCode}' created successfully.`, "success");
+        onShowToast(`Promo coupon '${uppercaseCode}' saved successfully.`, "success");
         loadData();
         // Reset inputs
         setNewCode("");
         setNewValue(10);
         setNewCampaignId("");
+        setNewStartDate("2026-07-01");
+        setNewExpiryDate("2026-12-31");
         setNewMaxUses(100);
         setNewTenantId("");
         setNewBuilderName("");
+        setEditingCoupon(null);
         setShowCreateModal(false);
       }
     } catch (err: any) {
-      onShowToast("Failed to create coupon: " + (err.message || err), "error");
+      onShowToast("Failed to save coupon: " + (err.message || err), "error");
     }
   };
 
@@ -254,11 +267,138 @@ const PromoCouponsConsoleInner: React.FC<PromoCouponsConsoleProps> = ({ onShowTo
     try {
       const res = await api.deleteCoupon(id);
       if (res.success) {
-        onShowToast(`Promo Coupon '${code}' deleted from registry.`, "success");
+        onShowToast(`Promo Coupon '${code}' moved to trash bin.`, "success");
         loadData();
       }
     } catch (err: any) {
       onShowToast("Failed to delete coupon: " + (err.message || err), "error");
+    }
+  };
+
+  const handlePermanentDelete = async (id: string, code: string) => {
+    try {
+      const res = await api.deleteCoupon(id, true);
+      if (res.success) {
+        onShowToast(`Promo Coupon '${code}' permanently removed.`, "success");
+        loadData();
+      }
+    } catch (err: any) {
+      onShowToast("Failed to permanently delete coupon: " + (err.message || err), "error");
+    }
+  };
+
+  const openEditModal = (coupon: PromoCoupon) => {
+    setEditingCoupon(coupon);
+    setNewCode(coupon.code);
+    setNewType(coupon.type);
+    setNewValue(coupon.value);
+    setNewCampaignId(coupon.campaignId || "");
+    setNewStartDate((coupon as any).startDate || "2026-07-01");
+    setNewExpiryDate(coupon.expiryDate);
+    setNewMaxUses(coupon.maxUses);
+    setNewTenantId(coupon.tenantId || "");
+    setNewBuilderName(coupon.builderName || "");
+    setShowCreateModal(true);
+  };
+
+  const handleDuplicateCoupon = async (coupon: PromoCoupon) => {
+    try {
+      let baseCode = coupon.code;
+      const suffixMatch = baseCode.match(/^(.*?)-(\d+)$/);
+      if (suffixMatch) {
+        baseCode = suffixMatch[1];
+      }
+      
+      let nextIndex = 1;
+      let targetCode = `${baseCode}-${String(nextIndex).padStart(3, "0")}`;
+      while (coupons.some(c => c.code === targetCode)) {
+        nextIndex++;
+        targetCode = `${baseCode}-${String(nextIndex).padStart(3, "0")}`;
+      }
+      
+      const res = await api.saveCoupon({
+        code: targetCode,
+        type: coupon.type,
+        value: coupon.value,
+        campaignId: coupon.campaignId || undefined,
+        startDate: (coupon as any).startDate || undefined,
+        expiryDate: coupon.expiryDate,
+        maxUses: coupon.maxUses,
+        tenantId: coupon.tenantId || undefined,
+        builderName: coupon.builderName || undefined,
+        status: "ACTIVE"
+      });
+      
+      if (res.success) {
+        onShowToast(`Duplicated into new code '${targetCode}' successfully!`, "success");
+        loadData();
+      }
+    } catch (err: any) {
+      onShowToast("Failed to duplicate coupon: " + (err.message || err), "error");
+    }
+  };
+
+  const handleUpdateStatus = async (coupon: PromoCoupon, status: string) => {
+    try {
+      const res = await api.saveCoupon({
+        ...coupon,
+        campaignId: coupon.campaignId || undefined,
+        startDate: (coupon as any).startDate || undefined,
+        expiryDate: coupon.expiryDate,
+        maxUses: coupon.maxUses,
+        currentUses: coupon.currentUses,
+        tenantId: coupon.tenantId || undefined,
+        builderName: coupon.builderName || undefined,
+        status: status
+      });
+      if (res.success) {
+        onShowToast(`Coupon '${coupon.code}' status updated to ${status}.`, "success");
+        loadData();
+      }
+    } catch (err: any) {
+      onShowToast("Failed to update status: " + (err.message || err), "error");
+    }
+  };
+
+  const handleBulkAction = async (action: "ACTIVATE" | "DEACTIVATE" | "ARCHIVE" | "DELETE") => {
+    if (selectedCoupons.length === 0) {
+      onShowToast("Please select at least one coupon to perform bulk actions.", "error");
+      return;
+    }
+    
+    setLoading(true);
+    let successCount = 0;
+    try {
+      for (const id of selectedCoupons) {
+        const c = coupons.find(item => item.id === id);
+        if (!c) continue;
+        
+        if (action === "DELETE") {
+          await api.deleteCoupon(id);
+          successCount++;
+        } else {
+          const statusMap = { ACTIVATE: "ACTIVE", DEACTIVATE: "PAUSED", ARCHIVE: "ARCHIVED" };
+          await api.saveCoupon({
+            ...c,
+            campaignId: c.campaignId || undefined,
+            startDate: (c as any).startDate || undefined,
+            expiryDate: c.expiryDate,
+            maxUses: c.maxUses,
+            currentUses: c.currentUses,
+            tenantId: c.tenantId || undefined,
+            builderName: c.builderName || undefined,
+            status: statusMap[action]
+          });
+          successCount++;
+        }
+      }
+      onShowToast(`Bulk ${action.toLowerCase()} completed for ${successCount} coupons.`, "success");
+      setSelectedCoupons([]);
+      loadData();
+    } catch (err: any) {
+      onShowToast("Bulk action hit error: " + (err.message || err), "error");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -313,7 +453,14 @@ const PromoCouponsConsoleInner: React.FC<PromoCouponsConsoleProps> = ({ onShowTo
         scope: simScope
       });
 
-      if (res.success) {
+      if (res.diagnostics) {
+        setSimResult(res.diagnostics);
+        if (res.diagnostics.isValid) {
+          onShowToast(`Coupon Code '${simCode.toUpperCase()}' applied successfully!`, "success");
+        } else {
+          setSimError(res.diagnostics.failureReason || "Simulation failed validation.");
+        }
+      } else if (res.success) {
         setSimResult({
           couponCode: res.coupon.code,
           type: res.coupon.type,
@@ -547,11 +694,63 @@ const PromoCouponsConsoleInner: React.FC<PromoCouponsConsoleProps> = ({ onShowTo
             </button>
           </div>
 
+          {/* Bulk Actions horizontal bar */}
+          {selectedCoupons.length > 0 && (
+            <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 flex flex-col sm:flex-row gap-3 items-center justify-between animate-fade-in shadow-3xs">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-indigo-600 shrink-0" />
+                <span className="text-xs font-bold text-indigo-950">
+                  {selectedCoupons.length} of {filteredCoupons.length} coupons selected for administrative actions
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2 w-full sm:w-auto justify-end">
+                <button
+                  onClick={() => handleBulkAction("ACTIVATE")}
+                  className="px-3 py-1.5 bg-white hover:bg-emerald-50 text-emerald-700 hover:text-emerald-800 border border-slate-200 rounded-xl text-xs font-extrabold transition-all cursor-pointer"
+                >
+                  Bulk Activate
+                </button>
+                <button
+                  onClick={() => handleBulkAction("DEACTIVATE")}
+                  className="px-3 py-1.5 bg-white hover:bg-amber-50 text-amber-700 hover:text-amber-800 border border-slate-200 rounded-xl text-xs font-extrabold transition-all cursor-pointer"
+                >
+                  Bulk Pause
+                </button>
+                <button
+                  onClick={() => handleBulkAction("ARCHIVE")}
+                  className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-800 border border-slate-200 rounded-xl text-xs font-extrabold transition-all cursor-pointer"
+                >
+                  Bulk Archive
+                </button>
+                <button
+                  onClick={() => handleBulkAction("DELETE")}
+                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-extrabold transition-all cursor-pointer shadow-3xs"
+                >
+                  Move to Trash
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Table display */}
-          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-3xs">
+          <div className="bg-white border border-slate-200 rounded-2xl overflow-visible shadow-3xs">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-50/50 border-b border-slate-200 text-slate-400 uppercase tracking-wider text-[9px] font-extrabold select-none">
+                  <th className="p-4 w-10">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedCoupons.length === filteredCoupons.length && filteredCoupons.length > 0}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedCoupons(filteredCoupons.map(c => c.id));
+                        } else {
+                          setSelectedCoupons([]);
+                        }
+                      }}
+                      className="rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                    />
+                  </th>
                   <th className="p-4">Coupon Code</th>
                   <th className="p-4">Type</th>
                   <th className="p-4">Value</th>
@@ -559,13 +758,13 @@ const PromoCouponsConsoleInner: React.FC<PromoCouponsConsoleProps> = ({ onShowTo
                   <th className="p-4">Expiry Date</th>
                   <th className="p-4">Redemption Count</th>
                   <th className="p-4">Status</th>
-                  <th className="p-4 w-12 text-center"></th>
+                  <th className="p-4 w-16 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
                 {filteredCoupons.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-slate-400 font-medium">
+                    <td colSpan={9} className="p-8 text-center text-slate-400 font-medium">
                       No promo coupons match your criteria. Create one above to get started.
                     </td>
                   </tr>
@@ -573,8 +772,36 @@ const PromoCouponsConsoleInner: React.FC<PromoCouponsConsoleProps> = ({ onShowTo
                   filteredCoupons.map((c) => {
                     // Calculate utilization percentage
                     const usePercent = Math.min(Math.round((c.currentUses / c.maxUses) * 100), 100);
+                    
+                    // Render custom colors for rich statuses
+                    const statusColorMap: Record<string, string> = {
+                      ACTIVE: "bg-emerald-50 border-emerald-100 text-emerald-700",
+                      PAUSED: "bg-amber-50 border-amber-100 text-amber-700",
+                      SCHEDULED: "bg-blue-50 border-blue-100 text-blue-700",
+                      DRAFT: "bg-slate-50 border-slate-150 text-slate-500",
+                      EXPIRED: "bg-rose-50 border-rose-100 text-rose-600",
+                      EXHAUSTED: "bg-orange-50 border-orange-100 text-orange-700",
+                      ARCHIVED: "bg-slate-100 border-slate-200 text-slate-600",
+                      DELETED: "bg-red-50 border-red-100 text-red-700"
+                    };
+                    const statusClass = statusColorMap[c.status] || "bg-indigo-50 border-indigo-100 text-indigo-700";
+
                     return (
                       <tr key={c.id} className="hover:bg-slate-50/30 transition-all">
+                        <td className="p-4 w-10">
+                          <input 
+                            type="checkbox" 
+                            checked={selectedCoupons.includes(c.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedCoupons(prev => [...prev, c.id]);
+                              } else {
+                                setSelectedCoupons(prev => prev.filter(id => id !== c.id));
+                              }
+                            }}
+                            className="rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                          />
+                        </td>
                         <td className="p-4">
                           <span className="font-extrabold font-mono text-[12.5px] bg-indigo-50 border border-indigo-100 text-indigo-700 px-2.5 py-1 rounded-lg tracking-wider">
                             {c.code}
@@ -626,24 +853,146 @@ const PromoCouponsConsoleInner: React.FC<PromoCouponsConsoleProps> = ({ onShowTo
                           </div>
                         </td>
                         <td className="p-4">
-                          <span className={`px-2.5 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-wider border ${
-                            c.status === "ACTIVE" 
-                              ? "bg-emerald-50 border-emerald-100 text-emerald-700"
-                              : c.status === "EXPIRED"
-                              ? "bg-rose-50 border-rose-100 text-rose-600"
-                              : "bg-amber-50 border-amber-100 text-amber-700"
-                          }`}>
+                          <span className={`px-2.5 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-wider border ${statusClass}`}>
                             {c.status}
                           </span>
                         </td>
-                        <td className="p-4 text-center">
+                        <td className="p-4 text-center relative overflow-visible">
                           <button
-                            onClick={() => handleDeleteCoupon(c.id, c.code)}
-                            className="text-slate-400 hover:text-rose-600 p-1.5 cursor-pointer rounded-lg hover:bg-slate-50 transition-all"
-                            title="Delete Coupon"
+                            onClick={() => setOpenMenuId(openMenuId === c.id ? null : c.id)}
+                            className="text-slate-400 hover:text-slate-800 p-1.5 cursor-pointer rounded-lg hover:bg-slate-100 transition-all flex items-center justify-center mx-auto"
+                            title="Actions"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <ChevronRight className={`w-4 h-4 transition-transform duration-250 ${openMenuId === c.id ? "rotate-90 text-indigo-600" : ""}`} />
                           </button>
+
+                          {openMenuId === c.id && (
+                            <>
+                              <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
+                              <div className="absolute right-4 mt-1 w-44 bg-white border border-slate-200 rounded-xl shadow-xl py-1.5 z-20 text-left font-sans">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setViewingCoupon(c);
+                                    setShowViewModal(true);
+                                    setOpenMenuId(null);
+                                  }}
+                                  className="w-full px-3.5 py-1.5 text-xs text-slate-600 hover:text-indigo-600 hover:bg-indigo-50/40 flex items-center gap-2 font-medium"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                  <span>View Diagnostics</span>
+                                </button>
+                                
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    openEditModal(c);
+                                    setOpenMenuId(null);
+                                  }}
+                                  className="w-full px-3.5 py-1.5 text-xs text-slate-600 hover:text-indigo-600 hover:bg-indigo-50/40 flex items-center gap-2 font-medium"
+                                >
+                                  <Sparkles className="w-3.5 h-3.5" />
+                                  <span>Edit Settings</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleDuplicateCoupon(c);
+                                    setOpenMenuId(null);
+                                  }}
+                                  className="w-full px-3.5 py-1.5 text-xs text-slate-600 hover:text-indigo-600 hover:bg-indigo-50/40 flex items-center gap-2 font-medium"
+                                >
+                                  <RefreshCw className="w-3.5 h-3.5" />
+                                  <span>Duplicate Code</span>
+                                </button>
+
+                                {c.status !== "ACTIVE" && c.status !== "DELETED" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleUpdateStatus(c, "ACTIVE");
+                                      setOpenMenuId(null);
+                                    }}
+                                    className="w-full px-3.5 py-1.5 text-xs text-emerald-600 hover:bg-emerald-50 flex items-center gap-2 font-medium"
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    <span>Activate</span>
+                                  </button>
+                                )}
+
+                                {c.status === "ACTIVE" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleUpdateStatus(c, "PAUSED");
+                                      setOpenMenuId(null);
+                                    }}
+                                    className="w-full px-3.5 py-1.5 text-xs text-amber-600 hover:bg-amber-50 flex items-center gap-2 font-medium"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                    <span>Pause Coupon</span>
+                                  </button>
+                                )}
+
+                                {c.status !== "ARCHIVED" && c.status !== "DELETED" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleUpdateStatus(c, "ARCHIVED");
+                                      setOpenMenuId(null);
+                                    }}
+                                    className="w-full px-3.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50 flex items-center gap-2 font-medium"
+                                  >
+                                    <Download className="w-3.5 h-3.5" />
+                                    <span>Archive</span>
+                                  </button>
+                                )}
+
+                                {c.status === "DELETED" ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        handleUpdateStatus(c, "ACTIVE");
+                                        setOpenMenuId(null);
+                                      }}
+                                      className="w-full px-3.5 py-1.5 text-xs text-indigo-600 hover:bg-indigo-50 flex items-center gap-2 font-medium border-t border-slate-100"
+                                    >
+                                      <Check className="w-3.5 h-3.5" />
+                                      <span>Restore Code</span>
+                                    </button>
+                                    
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (confirm(`Are you absolutely sure you want to permanently delete the promo code '${c.code}'? This cannot be undone.`)) {
+                                          handlePermanentDelete(c.id, c.code);
+                                        }
+                                        setOpenMenuId(null);
+                                      }}
+                                      className="w-full px-3.5 py-1.5 text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2 font-black"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                      <span>Purge Forever</span>
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleDeleteCoupon(c.id, c.code);
+                                      setOpenMenuId(null);
+                                    }}
+                                    className="w-full px-3.5 py-1.5 text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2 font-medium border-t border-slate-100"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <span>Move to Trash</span>
+                                  </button>
+                                )}
+                              </div>
+                            </>
+                          )}
                         </td>
                       </tr>
                     );
@@ -852,8 +1201,8 @@ const PromoCouponsConsoleInner: React.FC<PromoCouponsConsoleProps> = ({ onShowTo
               </div>
             )}
 
-            {/* Error Output */}
-            {simError && (
+            {/* Error Output (Plain Error if diagnostics didn't return) */}
+            {simError && !simResult && (
               <div className="bg-rose-50 border border-rose-200 rounded-2xl p-6 flex gap-3.5 items-start">
                 <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
                 <div className="space-y-1">
@@ -863,64 +1212,185 @@ const PromoCouponsConsoleInner: React.FC<PromoCouponsConsoleProps> = ({ onShowTo
               </div>
             )}
 
-            {/* Successful Result Receipt */}
+            {/* Comprehensive Diagnostics Report */}
             {simResult && (
-              <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-5 shadow-3xs animate-fade-in">
+              <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6 shadow-3xs animate-fade-in">
                 
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-3 gap-2">
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                    <span className="text-[11px] font-black uppercase tracking-wider text-emerald-600">Handshake validation passed</span>
+                    {simResult.isValid ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-100">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                        <span>PASSED EVALUATION</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-rose-600 bg-rose-50 px-2.5 py-1 rounded-md border border-rose-100 animate-pulse">
+                        <AlertCircle className="w-4 h-4 text-rose-500" />
+                        <span>FAILED COMPLIANCE</span>
+                      </span>
+                    )}
                   </div>
-                  <span className="text-[9.5px] font-bold text-slate-400 uppercase tracking-widest">Receipt Code: B0S-SIM-99</span>
+                  <span className="text-[9.5px] font-bold text-slate-400 uppercase tracking-widest font-mono">ID: BHOOMI-SIM-VAL-{simCode.toUpperCase()}</span>
                 </div>
 
-                {/* Subtitle properties */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-xl text-[10px]">
-                  <div>
-                    <span className="text-slate-400 block font-semibold uppercase">Coupon Type</span>
-                    <span className="font-bold text-slate-700">{simResult.type}</span>
+                {/* Main Error Callout if invalid */}
+                {!simResult.isValid && (
+                  <div className="bg-rose-50/60 border border-rose-150 p-4 rounded-xl text-xs text-rose-700 font-medium">
+                    <span className="font-extrabold uppercase text-rose-800 tracking-wider block mb-1">Triggered Refusal:</span>
+                    {simResult.failureReason || simError}
                   </div>
-                  <div>
-                    <span className="text-slate-400 block font-semibold uppercase">Campaign Linked</span>
-                    <span className="font-bold text-slate-700 truncate block">{simResult.linkedCampaign}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block font-semibold uppercase">Validity Expiry</span>
-                    <span className="font-mono font-bold text-slate-600">{simResult.expiryDate}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block font-semibold uppercase">Quota Gauges</span>
-                    <span className="font-mono font-bold text-indigo-600">{simResult.usageGauge} Uses</span>
+                )}
+
+                {/* Handshake Checklist Grid */}
+                <div className="space-y-3">
+                  <h6 className="text-[9.5px] font-black uppercase text-slate-400 tracking-wider">Evaluation Diagnostics Checklist</h6>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    
+                    <div className="flex items-start gap-2.5 p-2.5 bg-slate-50 rounded-xl border border-slate-150 text-[10.5px]">
+                      {simResult.couponFound ? (
+                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                      ) : (
+                        <X className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                      )}
+                      <div>
+                        <span className="font-bold text-slate-500 block uppercase text-[8px]">Coupon Registry Lock</span>
+                        <span className="font-semibold text-slate-800">
+                          {simResult.couponFound ? "Verified Code Found" : "Not Found in Registry"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-2.5 p-2.5 bg-slate-50 rounded-xl border border-slate-150 text-[10.5px]">
+                      {simResult.campaign !== "None" ? (
+                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                      ) : (
+                        <HelpCircle className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                      )}
+                      <div>
+                        <span className="font-bold text-slate-500 block uppercase text-[8px]">Linked Campaign Status</span>
+                        <span className="font-semibold text-slate-800">
+                          {simResult.campaign}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-2.5 p-2.5 bg-slate-50 rounded-xl border border-slate-150 text-[10.5px]">
+                      <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold text-slate-500 block uppercase text-[8px]">Coupon Type Allocation</span>
+                        <span className="font-semibold text-slate-800 text-[10.5px]">
+                          {simResult.couponType} Promo
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-2.5 p-2.5 bg-slate-50 rounded-xl border border-slate-150 text-[10.5px]">
+                      {simResult.couponFound && (!simResult.failureReason || !simResult.failureReason.includes("start")) ? (
+                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                      ) : (
+                        <X className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                      )}
+                      <div>
+                        <span className="font-bold text-slate-500 block uppercase text-[8px]">Valid From Date</span>
+                        <span className="font-semibold text-slate-800">{simResult.validFrom}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-2.5 p-2.5 bg-slate-50 rounded-xl border border-slate-150 text-[10.5px]">
+                      {simResult.couponFound && (!simResult.failureReason || !simResult.failureReason.includes("expired")) ? (
+                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                      ) : (
+                        <X className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                      )}
+                      <div>
+                        <span className="font-bold text-slate-500 block uppercase text-[8px]">Valid Until Expiry</span>
+                        <span className="font-semibold text-slate-800">{simResult.validUntil}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-2.5 p-2.5 bg-slate-50 rounded-xl border border-slate-150 text-[10.5px]">
+                      {simResult.remainingUses > 0 ? (
+                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                      ) : (
+                        <X className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                      )}
+                      <div>
+                        <span className="font-bold text-slate-500 block uppercase text-[8px]">Quota Capacity Gauge</span>
+                        <span className="font-semibold text-slate-800 font-mono text-[9.5px]">
+                          {simResult.currentUses} / {simResult.maximumUses} Uses ({simResult.remainingUses} left)
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-2.5 p-2.5 bg-slate-50 rounded-xl border border-slate-150 text-[10.5px]">
+                      {simResult.couponFound && (!simResult.failureReason || !simResult.failureReason.toLowerCase().includes("builder")) ? (
+                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                      ) : (
+                        <X className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                      )}
+                      <div>
+                        <span className="font-bold text-slate-500 block uppercase text-[8px]">Applicable Builder</span>
+                        <span className="font-semibold text-slate-800 truncate block max-w-[160px]">{simResult.applicableBuilder}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-2.5 p-2.5 bg-slate-50 rounded-xl border border-slate-150 text-[10.5px]">
+                      {simResult.couponFound && (!simResult.failureReason || !simResult.failureReason.toLowerCase().includes("tenant")) ? (
+                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                      ) : (
+                        <X className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                      )}
+                      <div>
+                        <span className="font-bold text-slate-500 block uppercase text-[8px]">Applicable Tenant</span>
+                        <span className="font-semibold text-slate-800 truncate block max-w-[160px]">{simResult.applicableTenant}</span>
+                      </div>
+                    </div>
+
                   </div>
                 </div>
 
                 {/* Ledger Invoice Breakdown */}
-                <div className="space-y-2 pt-2">
-                  <h6 className="text-[9.5px] font-extrabold uppercase text-slate-400 tracking-wider">Simulated Invoicing Schema</h6>
+                <div className="space-y-3 pt-2">
+                  <h6 className="text-[9.5px] font-extrabold uppercase text-slate-400 tracking-wider">Simulated Cost Invoice Ledger</h6>
                   
                   <div className="divide-y divide-slate-100 text-xs text-slate-600 font-medium font-mono">
                     <div className="flex justify-between py-2">
                       <span>Base Service Sub-total:</span>
-                      <span className="font-bold text-slate-800">₹{simResult.baseAmount.toLocaleString()}</span>
+                      <span className="font-bold text-slate-800">₹{Number(simBaseAmount).toLocaleString()}</span>
+                    </div>
+
+                    <div className="flex justify-between py-2">
+                      <span>GST @ 18% (Before Promo):</span>
+                      <span className="font-bold text-slate-800">₹{(simResult.gstBefore ?? 0).toLocaleString()}</span>
                     </div>
                     
                     <div className="flex justify-between py-2 text-emerald-600 font-bold bg-emerald-50/40 px-2 rounded">
-                      <span>Promo Discount (Code: {simResult.couponCode}):</span>
-                      <span>- ₹{simResult.discountAmount.toLocaleString()} ({simResult.type === "PERCENTAGE" ? `${simResult.rateOrVal}%` : "Flat Value"})</span>
+                      <span>Promo Discount (Code: {simCode.toUpperCase()}):</span>
+                      <span>- ₹{(simResult.discount ?? 0).toLocaleString()}</span>
+                    </div>
+
+                    <div className="flex justify-between py-2">
+                      <span>GST @ 18% (After Promo):</span>
+                      <span className="font-bold text-slate-800">₹{(simResult.gstAfter ?? 0).toLocaleString()}</span>
                     </div>
 
                     <div className="flex justify-between py-2.5 text-sm font-black text-slate-800 border-t border-slate-200">
-                      <span className="font-sans">Final Net Payable:</span>
-                      <span className="text-indigo-600 font-mono">₹{simResult.finalAmount.toLocaleString()}</span>
+                      <span className="font-sans">Final Net Payable (with GST):</span>
+                      <span className="text-indigo-600 font-mono">₹{(simResult.finalPrice ?? 0).toLocaleString()}</span>
+                    </div>
+
+                    <div className="flex justify-between py-2 text-xs font-bold text-emerald-600 border-t border-slate-100 pt-2">
+                      <span className="font-sans">Total Client Savings Distributed:</span>
+                      <span>₹{(simResult.totalSavings ?? 0).toLocaleString()}</span>
                     </div>
                   </div>
                 </div>
 
                 {/* Notice stamp */}
-                <div className="text-[9px] text-slate-400 leading-normal border-t border-slate-100 pt-3 flex items-center justify-between">
+                <div className="text-[9px] text-slate-400 leading-normal border-t border-slate-100 pt-3 flex items-center justify-between font-medium">
                   <span>Simulation assumes active GST config values.</span>
-                  <span className="font-bold text-indigo-600 uppercase">Passed Handshake Verification</span>
+                  <span className="font-bold text-indigo-600 uppercase tracking-wider">Verified handshakes completed</span>
                 </div>
 
               </div>
@@ -1315,6 +1785,135 @@ const PromoCouponsConsoleInner: React.FC<PromoCouponsConsoleProps> = ({ onShowTo
               </div>
 
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW DIAGNOSTICS MODAL */}
+      {showViewModal && viewingCoupon && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4" id="view-coupon-diagnostics-modal">
+          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-md p-6 shadow-2xl animate-fade-in relative">
+            
+            <button 
+              type="button"
+              onClick={() => {
+                setShowViewModal(false);
+                setViewingCoupon(null);
+              }}
+              className="absolute right-4 top-4 p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-4">
+              <Eye className="w-4 h-4 text-indigo-600" />
+              <h5 className="text-sm font-black uppercase text-slate-800 tracking-wider">Promo Coupon Specification Lock</h5>
+            </div>
+
+            <div className="space-y-4">
+              {/* Promo code display card */}
+              <div className="bg-slate-50 border border-slate-150 p-4 rounded-2xl flex items-center justify-between">
+                <div>
+                  <span className="text-[9px] font-bold text-slate-400 block uppercase tracking-wide">COUPON CODE</span>
+                  <span className="font-extrabold font-mono text-lg text-indigo-700 tracking-wider">
+                    {viewingCoupon.code}
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[9px] font-bold text-slate-400 block uppercase tracking-wide">STATUS</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-wider border ${
+                    viewingCoupon.status === "ACTIVE" 
+                      ? "bg-emerald-50 border-emerald-100 text-emerald-700"
+                      : viewingCoupon.status === "PAUSED"
+                      ? "bg-amber-50 border-amber-100 text-amber-700"
+                      : "bg-slate-100 border-slate-200 text-slate-500"
+                  }`}>
+                    {viewingCoupon.status}
+                  </span>
+                </div>
+              </div>
+
+              {/* Specification parameters */}
+              <div className="space-y-2.5">
+                <h6 className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Lock Configuration Rules</h6>
+                
+                <div className="grid grid-cols-2 gap-3 text-[10.5px]">
+                  <div className="bg-slate-50/50 p-2.5 rounded-xl border border-slate-100">
+                    <span className="text-slate-400 font-bold block uppercase text-[8px]">Type Format</span>
+                    <span className="font-semibold text-slate-800">{viewingCoupon.type}</span>
+                  </div>
+                  <div className="bg-slate-50/50 p-2.5 rounded-xl border border-slate-100">
+                    <span className="text-slate-400 font-bold block uppercase text-[8px]">Rebate Value</span>
+                    <span className="font-black text-slate-800">
+                      {viewingCoupon.type === "PERCENTAGE" || viewingCoupon.type === "TENANT" ? `${viewingCoupon.value}%` : `₹${viewingCoupon.value.toLocaleString()}`}
+                    </span>
+                  </div>
+                  <div className="bg-slate-50/50 p-2.5 rounded-xl border border-slate-100">
+                    <span className="text-slate-400 font-bold block uppercase text-[8px]">Linked Campaign</span>
+                    <span className="font-semibold text-slate-700 truncate block">
+                      {viewingCoupon.campaignName || "Standalone"}
+                    </span>
+                  </div>
+                  <div className="bg-slate-50/50 p-2.5 rounded-xl border border-slate-100">
+                    <span className="text-slate-400 font-bold block uppercase text-[8px]">Valid Until</span>
+                    <span className="font-mono font-semibold text-slate-600">{viewingCoupon.expiryDate}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bound Constraints */}
+              {(viewingCoupon.tenantId || viewingCoupon.builderName) && (
+                <div className="space-y-2">
+                  <h6 className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Handshake Binding Keys</h6>
+                  <div className="bg-indigo-50/40 border border-indigo-100 rounded-xl p-3 space-y-1.5 text-[10px]">
+                    {viewingCoupon.tenantId && (
+                      <div className="flex justify-between">
+                        <span className="font-semibold text-slate-500">Bound Tenant ID:</span>
+                        <span className="font-mono font-bold text-indigo-700">{viewingCoupon.tenantId}</span>
+                      </div>
+                    )}
+                    {viewingCoupon.builderName && (
+                      <div className="flex justify-between">
+                        <span className="font-semibold text-slate-500">Builder Restricted:</span>
+                        <span className="font-bold text-slate-800">{viewingCoupon.builderName}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Redemptions progress */}
+              <div className="space-y-2">
+                <div className="flex justify-between text-[9px] font-black uppercase text-slate-400 tracking-wider">
+                  <span>Quota Gauge Utilization</span>
+                  <span className="text-indigo-600 font-mono">{viewingCoupon.currentUses} / {viewingCoupon.maxUses} Uses</span>
+                </div>
+                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-indigo-600 rounded-full transition-all"
+                    style={{ width: `${Math.min((viewingCoupon.currentUses / viewingCoupon.maxUses) * 100, 100)}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-3 rounded-xl text-[9.5px] text-slate-500 leading-normal border border-slate-200">
+                This specification represents a validated, cryptographically tracked billing allocation lock. Modifications are tracked under audit log history to prevent cross-tenant leakage.
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-4 mt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowViewModal(false);
+                  setViewingCoupon(null);
+                }}
+                className="px-4 py-2 text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-all cursor-pointer"
+              >
+                Close Diagnostics
+              </button>
+            </div>
+
           </div>
         </div>
       )}

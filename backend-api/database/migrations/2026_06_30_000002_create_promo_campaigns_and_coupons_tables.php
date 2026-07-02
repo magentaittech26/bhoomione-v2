@@ -25,6 +25,7 @@ return new class extends Migration
             $table->integer('conversions')->default(0);
             $table->text('target_audience')->nullable();
             $table->string('timezone', 100)->default('Asia/Kolkata');
+            $table->softDeletes();
             $table->timestamps();
         });
 
@@ -34,12 +35,14 @@ return new class extends Migration
             $table->string('type', 50); // PERCENTAGE, FIXED, REFERRAL, BUILDER, MARKETPLACE, TENANT
             $table->decimal('value', 12, 2);
             $table->uuid('campaign_id')->nullable();
+            $table->date('start_date')->nullable();
             $table->date('expiry_date');
             $table->integer('max_uses')->default(100);
             $table->integer('current_uses')->default(0);
             $table->string('tenant_id', 100)->nullable();
             $table->string('builder_name', 255)->nullable();
             $table->string('status', 50)->default('ACTIVE'); // ACTIVE, EXPIRED, EXHAUSTED
+            $table->softDeletes();
             $table->timestamps();
 
             $table->foreign('campaign_id')->references('id')->on('promo_campaigns')->onDelete('set null');

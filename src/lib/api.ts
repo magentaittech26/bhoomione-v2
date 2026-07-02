@@ -571,6 +571,7 @@ class ApiClient {
       type: coupon.type,
       value: coupon.value,
       campaign_id: coupon.campaignId !== undefined && coupon.campaignId !== "" ? coupon.campaignId : null,
+      start_date: coupon.startDate !== undefined && coupon.startDate !== "" ? coupon.startDate : null,
       expiry_date: coupon.expiryDate,
       max_uses: coupon.maxUses,
       current_uses: coupon.currentUses !== undefined ? coupon.currentUses : 0,
@@ -584,8 +585,8 @@ class ApiClient {
     });
   }
 
-  async deleteCoupon(id: string): Promise<{ success: boolean; message: string }> {
-    return this.request<{ success: boolean; message: string }>(`/admin/coupons/${id}`, {
+  async deleteCoupon(id: string, force = false): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/admin/coupons/${id}${force ? "?force=true" : ""}`, {
       method: "DELETE"
     });
   }
@@ -618,8 +619,8 @@ class ApiClient {
     });
   }
 
-  async deleteCampaign(id: string): Promise<{ success: boolean; message: string }> {
-    return this.request<{ success: boolean; message: string }>(`/admin/campaigns/${id}`, {
+  async deleteCampaign(id: string, force = false): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/admin/campaigns/${id}${force ? "?force=true" : ""}`, {
       method: "DELETE"
     });
   }
