@@ -565,9 +565,22 @@ class ApiClient {
   }
 
   async saveCoupon(coupon: any): Promise<{ success: boolean; message: string; coupon: any }> {
+    const payload = {
+      id: coupon.id,
+      code: coupon.code,
+      type: coupon.type,
+      value: coupon.value,
+      campaign_id: coupon.campaignId !== undefined && coupon.campaignId !== "" ? coupon.campaignId : null,
+      expiry_date: coupon.expiryDate,
+      max_uses: coupon.maxUses,
+      current_uses: coupon.currentUses !== undefined ? coupon.currentUses : 0,
+      tenant_id: coupon.tenantId !== undefined && coupon.tenantId !== "" ? coupon.tenantId : null,
+      builder_name: coupon.builderName !== undefined && coupon.builderName !== "" ? coupon.builderName : null,
+      status: coupon.status || "ACTIVE"
+    };
     return this.request<{ success: boolean; message: string; coupon: any }>("/admin/coupons", {
       method: "POST",
-      body: JSON.stringify(coupon)
+      body: JSON.stringify(payload)
     });
   }
 
@@ -584,9 +597,24 @@ class ApiClient {
   }
 
   async saveCampaign(campaign: any): Promise<{ success: boolean; message: string; campaign: any }> {
+    const payload = {
+      id: campaign.id,
+      name: campaign.name,
+      type: campaign.type,
+      channel: campaign.channel,
+      status: campaign.status,
+      start_date: campaign.startDate,
+      end_date: campaign.endDate,
+      spend: campaign.spend !== undefined ? campaign.spend : 0,
+      revenue: campaign.revenue !== undefined ? campaign.revenue : 0,
+      leads: campaign.leads !== undefined ? campaign.leads : 0,
+      conversions: campaign.conversions !== undefined ? campaign.conversions : 0,
+      target_audience: campaign.targetAudience,
+      timezone: campaign.timezone
+    };
     return this.request<{ success: boolean; message: string; campaign: any }>("/admin/campaigns", {
       method: "POST",
-      body: JSON.stringify(campaign)
+      body: JSON.stringify(payload)
     });
   }
 

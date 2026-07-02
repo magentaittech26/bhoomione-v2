@@ -3,6 +3,8 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Contracts\Validation\Validator;
+use Illuminate\Http\Exceptions\HttpResponseException;
 
 class PromoCampaignRequest extends FormRequest
 {
@@ -25,14 +27,26 @@ class PromoCampaignRequest extends FormRequest
             'type' => 'required|string',
             'channel' => 'nullable|string',
             'status' => 'required|string',
-            'startDate' => 'required|date',
-            'endDate' => 'required|date',
+            'start_date' => 'required|date',
+            'end_date' => 'required|date',
             'spend' => 'nullable|numeric',
             'revenue' => 'nullable|numeric',
             'leads' => 'nullable|integer',
             'conversions' => 'nullable|integer',
-            'targetAudience' => 'nullable|string',
+            'target_audience' => 'nullable|string',
             'timezone' => 'nullable|string',
         ];
     }
+
+    /**
+     * Return custom JSON response on validation failure instead of raw exception / redirect.
+     */
+    protected function failedValidation(Validator $validator)
+    {
+        throw new HttpResponseException(response()->json([
+            'error' => 'Validation failed: ' . implode(', ', $validator->errors()->all()),
+            'errors' => $validator->errors()
+        ], 422));
+    }
 }
+

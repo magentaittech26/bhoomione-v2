@@ -2166,12 +2166,12 @@ class SaasController extends Controller
                     'code' => strtoupper(trim($validated['code'])),
                     'type' => $validated['type'],
                     'value' => $validated['value'],
-                    'campaign_id' => $validated['campaignId'] ?: null,
-                    'expiry_date' => $validated['expiryDate'],
-                    'max_uses' => $validated['maxUses'],
-                    'current_uses' => $validated['currentUses'] ?? 0,
-                    'tenant_id' => $validated['tenantId'] ?: null,
-                    'builder_name' => $validated['builderName'] ?: null,
+                    'campaign_id' => ($validated['campaign_id'] ?? null) ?: null,
+                    'expiry_date' => $validated['expiry_date'] ?? null,
+                    'max_uses' => $validated['max_uses'] ?? null,
+                    'current_uses' => $validated['current_uses'] ?? 0,
+                    'tenant_id' => ($validated['tenant_id'] ?? null) ?: null,
+                    'builder_name' => ($validated['builder_name'] ?? null) ?: null,
                     'status' => $validated['status'] ?? 'ACTIVE',
                 ]
             );
@@ -2264,16 +2264,16 @@ class SaasController extends Controller
                 [
                     'name' => $validated['name'],
                     'type' => $validated['type'],
-                    'channel' => $validated['channel'] ?: 'Direct',
+                    'channel' => ($validated['channel'] ?? null) ?: 'Direct',
                     'status' => $validated['status'],
-                    'start_date' => $validated['startDate'],
-                    'end_date' => $validated['endDate'],
+                    'start_date' => $validated['start_date'] ?? null,
+                    'end_date' => $validated['end_date'] ?? null,
                     'spend' => $validated['spend'] ?? 0.00,
                     'revenue' => $validated['revenue'] ?? 0.00,
                     'leads' => $validated['leads'] ?? 0,
                     'conversions' => $validated['conversions'] ?? 0,
-                    'target_audience' => $validated['targetAudience'] ?: null,
-                    'timezone' => $validated['timezone'] ?: 'Asia/Kolkata',
+                    'target_audience' => ($validated['target_audience'] ?? null) ?: null,
+                    'timezone' => ($validated['timezone'] ?? null) ?: 'Asia/Kolkata',
                 ]
             );
 
@@ -2336,9 +2336,9 @@ class SaasController extends Controller
 
             $code = strtoupper(trim($validated['code']));
             $baseAmount = (float)$validated['baseAmount'];
-            $tenantId = $validated['tenantId'];
-            $builderName = $validated['builderName'];
-            $scope = $validated['scope'];
+            $tenantId = $validated['tenantId'] ?? null;
+            $builderName = $validated['builderName'] ?? null;
+            $scope = $validated['scope'] ?? 'SUBSCRIPTION';
 
             $coupon = \App\Models\PromoCoupon::where('code', $code)->first();
 
