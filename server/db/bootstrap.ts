@@ -2,6 +2,10 @@ import { getPool } from "./pool.ts";
 import bcrypt from "bcryptjs";
 
 export async function bootstrapDatabase() {
+  if (process.env.NODE_ENV === "production") {
+    console.log("ℹ️ Database schema changes are managed by Laravel migrations only in production. Skipping schema-altering bootstrapDatabase().");
+    return;
+  }
   const pool = getPool();
   let client;
 

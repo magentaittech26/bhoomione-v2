@@ -1015,34 +1015,23 @@ class SaasController extends Controller
     /**
      * GET /api/v1/admin/tax-rules
      */
-    public function getTaxRules()
+    public function getTaxRules(Request $request)
     {
         try {
-            $rules = \App\Models\TaxRule::orderBy('state_code', 'asc')
+            $user = $request->attributes->get('authenticatedUser');
+            $query = \App\Models\TaxRule::orderBy('state_code', 'asc')
                 ->orderBy('tax_type', 'asc')
-                ->orderBy('effective_from', 'desc')
-                ->get()
-                ->map(function ($r) {
-                    $tenant = \App\Models\Tenant::find($r->tenant_id);
-                    return [
-                        'id' => $r->id,
-                        'tenantId' => $r->tenant_id,
-                        'tenant_id' => $r->tenant_id,
-                        'taxType' => $r->tax_type,
-                        'tax_type' => $r->tax_type,
-                        'name' => $r->name,
-                        'ratePercentage' => $r->rate_percentage,
-                        'rate_percentage' => $r->rate_percentage,
-                        'stateCode' => $r->state_code,
-                        'state_code' => $r->state_code,
-                        'effectiveFrom' => $r->effective_from,
-                        'effective_from' => $r->effective_from,
-                        'isActive' => $r->is_active,
-                        'is_active' => $r->is_active,
-                        'tenant_name' => $tenant ? $tenant->company_name : null,
-                    ];
+                ->orderBy('effective_from', 'desc');
+
+            if ($user && $user->tenant_id !== null) {
+                $query->where(function ($q) use ($user) {
+                    $q->where('tenant_id', $user->tenant_id)
+                      ->orWhereNull('tenant_id');
                 });
-            return response()->json($rules);
+            }
+
+            $rules = $query->get();
+            return \App\Http\Resources\TaxRuleResource::collection($rules);
         } catch (\Throwable $e) {
             return response()->json(['error' => $e->getMessage()], 500);
         }
@@ -1051,7 +1040,7 @@ class SaasController extends Controller
     /**
      * POST /api/v1/admin/tax-rules
      */
-    public function saveTaxRule(Request $request)
+    public function saveTaxRule(\App\Http\Requests\TaxRuleRequest $request)
     {
         try {
             $id = $request->input('id');
@@ -1061,39 +1050,151 @@ class SaasController extends Controller
             $ratePercentage = $request->input('ratePercentage') !== null ? $request->input('ratePercentage') : $request->input('rate_percentage');
             $stateCode = $request->input('stateCode') ?: $request->input('state_code');
             $effectiveFrom = $request->input('effectiveFrom') ?: $request->input('effective_from');
+            $effectiveTo = $request->input('effectiveTo') ?: $request->input('effective_to');
             $isActive = $request->input('isActive') !== null ? $request->input('isActive') : $request->input('is_active');
-
-            if (empty($taxType) || empty($name) || $ratePercentage === null || empty($stateCode)) {
-                return response()->json(['error' => 'Missing required tax rule fields.'], 400);
-            }
+            $isDefault = $request->input('isDefault') !== null ? $request->input('isDefault') : $request->input('is_default');
+            $builderName = $request->input('builderName') ?: $request->input('builder_name');
+            $amountType = $request->input('amountType') ?: $request->input('amount_type') ?: 'percentage';
+            $fixedAmount = $request->input('fixedAmount') !== null ? $request->input('fixedAmount') : $request->input('fixed_amount');
 
             $finalTenantId = ($tenantId && trim($tenantId) !== '') ? trim($tenantId) : null;
             $finalEffectiveFrom = ($effectiveFrom && trim($effectiveFrom) !== '') ? trim($effectiveFrom) : date('Y-m-d');
+            $finalEffectiveTo = ($effectiveTo && trim($effectiveTo) !== '') ? trim($effectiveTo) : null;
             $finalIsActive = $isActive !== null ? (bool)$isActive : true;
+            $finalIsDefault = $isDefault !== null ? (bool)$isDefault : false;
+            $finalBuilderName = ($builderName && trim($builderName) !== '') ? trim($builderName) : null;
+            $finalAmountType = trim($amountType);
+            $finalFixedAmount = $fixedAmount !== null ? (double)$fixedAmount : 0.00;
+            $finalRatePercentage = $ratePercentage !== null ? (double)$ratePercentage : 0.00;
 
+            // Policy check
+            $user = $request->attributes->get('authenticatedUser');
+            if ($user) {
+                $policy = new \App\Policies\TaxRulePolicy();
+                $tempRule = $id ? \App\Models\TaxRule::findOrFail($id) : new \App\Models\TaxRule([
+                    'tenant_id' => $finalTenantId,
+                ]);
+                if (!$policy->manage($user, $tempRule)) {
+                    return response()->json(['error' => 'Unauthorized action on tax rule.'], 403);
+                }
+            }
+
+            // OVERLAP CHECK
+            // "No overlapping active tax rules for same: state, tax category, tenant, builder, effective date range"
+            if ($finalIsActive) {
+                $overlapQuery = \App\Models\TaxRule::where('is_active', true)
+                    ->where('tax_type', $taxType)
+                    ->where('state_code', $stateCode);
+
+                if ($finalTenantId) {
+                    $overlapQuery->where('tenant_id', $finalTenantId);
+                } else {
+                    $overlapQuery->whereNull('tenant_id');
+                }
+
+                if ($finalBuilderName) {
+                    $overlapQuery->where('builder_name', $finalBuilderName);
+                } else {
+                    $overlapQuery->where(function ($q) {
+                        $q->whereNull('builder_name')->orWhere('builder_name', '');
+                    });
+                }
+
+                if ($id) {
+                    $overlapQuery->where('id', '!=', $id);
+                }
+
+                // Overlap condition:
+                // (RuleA.effective_to is null OR RuleB.effective_from <= RuleA.effective_to)
+                // AND
+                // (RuleB.effective_to is null OR RuleA.effective_from <= RuleB.effective_to)
+                $overlapQuery->where(function ($q) use ($finalEffectiveFrom, $finalEffectiveTo) {
+                    $q->where(function ($sub) use ($finalEffectiveFrom) {
+                        $sub->whereNull('effective_to')
+                            ->orWhere('effective_to', '>=', $finalEffectiveFrom);
+                    });
+                    if ($finalEffectiveTo) {
+                        $q->where(function ($sub) use ($finalEffectiveTo) {
+                            $sub->where('effective_from', '<=', $finalEffectiveTo);
+                        });
+                    }
+                });
+
+                $overlapCount = $overlapQuery->count();
+                if ($overlapCount > 0) {
+                    return response()->json([
+                        'error' => 'Validation failed: This rule overlaps with an existing active rule for the same tax type, state, tenant, builder, and date range.'
+                    ], 422);
+                }
+            }
+
+            $oldRule = null;
             if ($id) {
                 $rule = \App\Models\TaxRule::findOrFail($id);
+                $oldRule = $rule->toArray();
                 $rule->update([
                     'tenant_id' => $finalTenantId,
                     'tax_type' => $taxType,
                     'name' => $name,
-                    'rate_percentage' => $ratePercentage,
+                    'rate_percentage' => $finalRatePercentage,
                     'state_code' => $stateCode,
                     'effective_from' => $finalEffectiveFrom,
+                    'effective_to' => $finalEffectiveTo,
                     'is_active' => $finalIsActive,
+                    'is_default' => $finalIsDefault,
+                    'builder_name' => $finalBuilderName,
+                    'amount_type' => $finalAmountType,
+                    'fixed_amount' => $finalFixedAmount,
                 ]);
+
+                // Custom audit log
+                if ($user) {
+                    \App\Services\AuditLogService::log([
+                        'tenantId' => $finalTenantId ?: ($user ? $user->tenant_id : null),
+                        'userId' => $user->id,
+                        'entityName' => 'TaxRule',
+                        'entityId' => $id,
+                        'action' => 'UPDATE',
+                        'oldValues' => json_encode($oldRule),
+                        'newValues' => json_encode($rule->toArray()),
+                        'ipAddress' => $request->ip(),
+                        'userAgent' => $request->userAgent(),
+                    ]);
+                }
+
                 return response()->json(['success' => true, 'message' => 'Tax rule updated successfully.']);
             } else {
-                \App\Models\TaxRule::create([
-                    'id' => (string) \Illuminate\Support\Str::uuid(),
+                $ruleId = (string) \Illuminate\Support\Str::uuid();
+                $newRule = \App\Models\TaxRule::create([
+                    'id' => $ruleId,
                     'tenant_id' => $finalTenantId,
                     'tax_type' => $taxType,
                     'name' => $name,
-                    'rate_percentage' => $ratePercentage,
+                    'rate_percentage' => $finalRatePercentage,
                     'state_code' => $stateCode,
                     'effective_from' => $finalEffectiveFrom,
+                    'effective_to' => $finalEffectiveTo,
                     'is_active' => $finalIsActive,
+                    'is_default' => $finalIsDefault,
+                    'builder_name' => $finalBuilderName,
+                    'amount_type' => $finalAmountType,
+                    'fixed_amount' => $finalFixedAmount,
                 ]);
+
+                // Custom audit log
+                if ($user) {
+                    \App\Services\AuditLogService::log([
+                        'tenantId' => $finalTenantId ?: ($user ? $user->tenant_id : null),
+                        'userId' => $user->id,
+                        'entityName' => 'TaxRule',
+                        'entityId' => $ruleId,
+                        'action' => 'CREATE',
+                        'newValues' => json_encode($newRule->toArray()),
+                        'ipAddress' => $request->ip(),
+                        'userAgent' => $request->userAgent(),
+                    ]);
+                }
+
                 return response()->json(['success' => true, 'message' => 'Tax rule created successfully.']);
             }
         } catch (\Throwable $e) {
@@ -1104,11 +1205,37 @@ class SaasController extends Controller
     /**
      * DELETE /api/v1/admin/tax-rules/{id}
      */
-    public function deleteTaxRule($id)
+    public function deleteTaxRule(Request $request, $id)
     {
         try {
             $rule = \App\Models\TaxRule::findOrFail($id);
+
+            // Policy check
+            $user = $request->attributes->get('authenticatedUser');
+            if ($user) {
+                $policy = new \App\Policies\TaxRulePolicy();
+                if (!$policy->manage($user, $rule)) {
+                    return response()->json(['error' => 'Unauthorized action on tax rule.'], 403);
+                }
+            }
+
+            $oldRule = $rule->toArray();
             $rule->delete();
+
+            // Custom audit log
+            if ($user) {
+                \App\Services\AuditLogService::log([
+                    'tenantId' => $rule->tenant_id ?: ($user ? $user->tenant_id : null),
+                    'userId' => $user->id,
+                    'entityName' => 'TaxRule',
+                    'entityId' => $id,
+                    'action' => 'DELETE',
+                    'oldValues' => json_encode($oldRule),
+                    'ipAddress' => $request->ip(),
+                    'userAgent' => $request->userAgent(),
+                ]);
+            }
+
             return response()->json(['success' => true, 'message' => 'Tax rule deleted successfully.']);
         } catch (\Throwable $e) {
             return response()->json(['error' => $e->getMessage()], 500);
@@ -1125,6 +1252,7 @@ class SaasController extends Controller
             $customerState = $request->input('customerState') ?: $request->input('customer_code');
             $builderState = $request->input('builderState') ?: $request->input('builder_code');
             $tenantId = $request->input('tenantId') ?: $request->input('tenant_id');
+            $builderName = $request->input('builderName') ?: $request->input('builder_name');
 
             if (!$baseAmount || !is_numeric($baseAmount) || $baseAmount <= 0) {
                 return response()->json(['error' => 'A valid base amount is required for tax calculation.'], 400);
@@ -1134,93 +1262,128 @@ class SaasController extends Controller
             $bState = strtoupper($builderState ?: 'KA');
             $isInterstate = $stateCode !== $bState;
 
-            // Fetch active rules matching tenant or global
+            $today = date('Y-m-d');
+
+            // Fetch active rules matching tenant or global and valid effective date range
             $rules = \App\Models\TaxRule::where('is_active', true)
-                ->where('effective_from', '<=', date('Y-m-d'))
+                ->where('effective_from', '<=', $today)
+                ->where(function ($q) use ($today) {
+                    $q->whereNull('effective_to')
+                      ->orWhere('effective_to', '>=', $today);
+                })
                 ->where(function ($query) use ($tenantId) {
-                    $query->where('tenant_id', $tenantId)->orWhereNull('tenant_id');
+                    if ($tenantId) {
+                        $query->where('tenant_id', $tenantId)->orWhereNull('tenant_id');
+                    } else {
+                        $query->whereNull('tenant_id');
+                    }
                 })
                 ->orderBy('tenant_id', 'desc')
                 ->orderBy('effective_from', 'desc')
                 ->get();
 
-            $getActiveRuleForType = function ($type) use ($rules, $stateCode) {
+            // Match Builder, Tenant, State, and Fallbacks
+            $getActiveRuleForType = function ($type) use ($rules, $stateCode, $builderName) {
+                // Priority 1: Match Builder Override + State Match + Tenant Rule
+                if ($builderName) {
+                    $rule = $rules->first(function ($r) use ($type, $stateCode, $builderName) {
+                        return $r->tax_type === $type && 
+                               $r->state_code === $stateCode && 
+                               $r->tenant_id !== null && 
+                               strcasecmp($r->builder_name ?? '', $builderName) === 0;
+                    });
+                    if ($rule) return $rule;
+
+                    // Priority 2: Match Builder Override + State Match + Global Rule
+                    $rule = $rules->first(function ($r) use ($type, $stateCode, $builderName) {
+                        return $r->tax_type === $type && 
+                               $r->state_code === $stateCode && 
+                               $r->tenant_id === null && 
+                               strcasecmp($r->builder_name ?? '', $builderName) === 0;
+                    });
+                    if ($rule) return $rule;
+
+                    // Priority 3: Match Builder Override + 'ALL' State + Tenant Rule
+                    $rule = $rules->first(function ($r) use ($type, $builderName) {
+                        return $r->tax_type === $type && 
+                               $r->state_code === 'ALL' && 
+                               $r->tenant_id !== null && 
+                               strcasecmp($r->builder_name ?? '', $builderName) === 0;
+                    });
+                    if ($rule) return $rule;
+
+                    // Priority 4: Match Builder Override + 'ALL' State + Global Rule
+                    $rule = $rules->first(function ($r) use ($type, $builderName) {
+                        return $r->tax_type === $type && 
+                               $r->state_code === 'ALL' && 
+                               $r->tenant_id === null && 
+                               strcasecmp($r->builder_name ?? '', $builderName) === 0;
+                    });
+                    if ($rule) return $rule;
+                }
+
+                // Priority 5: State Match + Tenant Rule (No builder match or fallback)
                 $rule = $rules->first(function ($r) use ($type, $stateCode) {
                     return $r->tax_type === $type && $r->state_code === $stateCode && $r->tenant_id !== null;
                 });
-                if (!$rule) {
-                    $rule = $rules->first(function ($r) use ($type, $stateCode) {
-                        return $r->tax_type === $type && $r->state_code === $stateCode && $r->tenant_id === null;
-                    });
-                }
-                if (!$rule) {
-                    $rule = $rules->first(function ($r) use ($type) {
-                        return $r->tax_type === $type && $r->state_code === 'ALL' && $r->tenant_id !== null;
-                    });
-                }
-                if (!$rule) {
-                    $rule = $rules->first(function ($r) use ($type) {
-                        return $r->tax_type === $type && $r->state_code === 'ALL' && $r->tenant_id === null;
-                    });
-                }
+                if ($rule) return $rule;
+
+                // Priority 6: State Match + Global Rule
+                $rule = $rules->first(function ($r) use ($type, $stateCode) {
+                    return $r->tax_type === $type && $r->state_code === $stateCode && $r->tenant_id === null;
+                });
+                if ($rule) return $rule;
+
+                // Priority 7: 'ALL' State + Tenant Rule
+                $rule = $rules->first(function ($r) use ($type) {
+                    return $r->tax_type === $type && $r->state_code === 'ALL' && $r->tenant_id !== null;
+                });
+                if ($rule) return $rule;
+
+                // Priority 8: 'ALL' State + Global Rule
+                $rule = $rules->first(function ($r) use ($type) {
+                    return $r->tax_type === $type && $r->state_code === 'ALL' && $r->tenant_id === null;
+                });
                 return $rule;
             };
 
             $amt = (double)$baseAmount;
-            $cgstRate = $sgstRate = $igstRate = $tdsRate = $stampRate = $regRate = $otherRate = 0;
-            $cgstName = 'CGST'; $sgstName = 'SGST'; $igstName = 'IGST'; $tdsName = 'TDS';
-            $stampName = 'Stamp Duty'; $regName = 'Registration Charges'; $otherName = 'Other Taxes';
-
-            if ($isInterstate) {
-                $igstRule = $getActiveRuleForType('IGST');
-                if ($igstRule) {
-                    $igstRate = (double)$igstRule->rate_percentage;
-                    $igstName = $igstRule->name;
-                }
-            } else {
-                $cgstRule = $getActiveRuleForType('CGST');
-                if ($cgstRule) {
-                    $cgstRate = (double)$cgstRule->rate_percentage;
-                    $cgstName = $cgstRule->name;
-                }
-                $sgstRule = $getActiveRuleForType('SGST');
-                if ($sgstRule) {
-                    $sgstRate = (double)$sgstRule->rate_percentage;
-                    $sgstName = $sgstRule->name;
-                }
-            }
-
+            
+            // Resolve Rules
+            $cgstRule = !$isInterstate ? $getActiveRuleForType('CGST') : null;
+            $sgstRule = !$isInterstate ? $getActiveRuleForType('SGST') : null;
+            $igstRule = $isInterstate ? $getActiveRuleForType('IGST') : null;
             $tdsRule = $getActiveRuleForType('TDS');
-            if ($tdsRule) {
-                $tdsRate = (double)$tdsRule->rate_percentage;
-                $tdsName = $tdsRule->name;
-            }
-
             $stampRule = $getActiveRuleForType('STAMP_DUTY');
-            if ($stampRule) {
-                $stampRate = (double)$stampRule->rate_percentage;
-                $stampName = $stampRule->name;
-            }
-
             $regRule = $getActiveRuleForType('REGISTRATION');
-            if ($regRule) {
-                $regRate = (double)$regRule->rate_percentage;
-                $regName = $regRule->name;
-            }
-
             $otherRule = $getActiveRuleForType('OTHER');
-            if ($otherRule) {
-                $otherRate = (double)$otherRule->rate_percentage;
-                $otherName = $otherRule->name;
-            }
 
-            $cgstAmount = round($amt * ($cgstRate / 100), 2);
-            $sgstAmount = round($amt * ($sgstRate / 100), 2);
-            $igstAmount = round($amt * ($igstRate / 100), 2);
-            $tdsAmount = round($amt * ($tdsRate / 100), 2);
-            $stampDutyAmount = round($amt * ($stampRate / 100), 2);
-            $registrationCharges = round($amt * ($regRate / 100), 2);
-            $otherCharges = round($amt * ($otherRate / 100), 2);
+            // Helper to compute tax amount (fixed or percentage)
+            $computeTax = function ($rule, $baseAmt) {
+                if (!$rule) return 0.00;
+                if (($rule->amount_type ?? 'percentage') === 'fixed') {
+                    return round((double)$rule->fixed_amount, 2);
+                }
+                $rate = (double)$rule->rate_percentage;
+                return round($baseAmt * ($rate / 100), 2);
+            };
+
+            // Helper to resolve rate to return
+            $getRate = function ($rule) {
+                if (!$rule) return 0.00;
+                if (($rule->amount_type ?? 'percentage') === 'fixed') {
+                    return 0.00; // Fixed amount doesn't have a percentage rate
+                }
+                return (double)$rule->rate_percentage;
+            };
+
+            $cgstAmount = $computeTax($cgstRule, $amt);
+            $sgstAmount = $computeTax($sgstRule, $amt);
+            $igstAmount = $computeTax($igstRule, $amt);
+            $tdsAmount = $computeTax($tdsRule, $amt);
+            $stampDutyAmount = $computeTax($stampRule, $amt);
+            $registrationCharges = $computeTax($regRule, $amt);
+            $otherCharges = $computeTax($otherRule, $amt);
 
             $totalTaxAmount = round($cgstAmount + $sgstAmount + $igstAmount + $tdsAmount + $stampDutyAmount + $registrationCharges + $otherCharges, 2);
             $totalInvoiceAmount = round($amt + $totalTaxAmount, 2);
@@ -1233,13 +1396,13 @@ class SaasController extends Controller
                     'customerState' => $stateCode,
                     'builderState' => $bState,
                     'taxes' => [
-                        ['type' => 'CGST', 'name' => $cgstName, 'rate' => $cgstRate, 'amount' => $cgstAmount],
-                        ['type' => 'SGST', 'name' => $sgstName, 'rate' => $sgstRate, 'amount' => $sgstAmount],
-                        ['type' => 'IGST', 'name' => $igstName, 'rate' => $igstRate, 'amount' => $igstAmount],
-                        ['type' => 'TDS', 'name' => $tdsName, 'rate' => $tdsRate, 'amount' => $tdsAmount],
-                        ['type' => 'STAMP_DUTY', 'name' => $stampName, 'rate' => $stampRate, 'amount' => $stampDutyAmount],
-                        ['type' => 'REGISTRATION', 'name' => $regName, 'rate' => $regRate, 'amount' => $registrationCharges],
-                        ['type' => 'OTHER', 'name' => $otherName, 'rate' => $otherRate, 'amount' => $otherCharges]
+                        ['type' => 'CGST', 'name' => $cgstRule ? $cgstRule->name : 'CGST', 'rate' => $getRate($cgstRule), 'amount' => $cgstAmount],
+                        ['type' => 'SGST', 'name' => $sgstRule ? $sgstRule->name : 'SGST', 'rate' => $getRate($sgstRule), 'amount' => $sgstAmount],
+                        ['type' => 'IGST', 'name' => $igstRule ? $igstRule->name : 'IGST', 'rate' => $getRate($igstRule), 'amount' => $igstAmount],
+                        ['type' => 'TDS', 'name' => $tdsRule ? $tdsRule->name : 'TDS', 'rate' => $getRate($tdsRule), 'amount' => $tdsAmount],
+                        ['type' => 'STAMP_DUTY', 'name' => $stampRule ? $stampRule->name : 'Stamp Duty', 'rate' => $getRate($stampRule), 'amount' => $stampDutyAmount],
+                        ['type' => 'REGISTRATION', 'name' => $regRule ? $regRule->name : 'Registration Charges', 'rate' => $getRate($regRule), 'amount' => $registrationCharges],
+                        ['type' => 'OTHER', 'name' => $otherRule ? $otherRule->name : 'Other Taxes', 'rate' => $getRate($otherRule), 'amount' => $otherCharges]
                     ],
                     'totalTaxAmount' => $totalTaxAmount,
                     'totalInvoiceAmount' => $totalInvoiceAmount
@@ -1266,7 +1429,17 @@ class SaasController extends Controller
                 return response()->json(['error' => 'Missing required invoice integration parameters.'], 400);
             }
 
-            \App\Models\TaxTransaction::create([
+            // Policy / Authorization
+            $user = $request->attributes->get('authenticatedUser');
+            if ($user) {
+                $policy = new \App\Policies\TaxTransactionPolicy();
+                $tempTx = new \App\Models\TaxTransaction(['tenant_id' => $tenantId]);
+                if (!$policy->manage($user, $tempTx)) {
+                    return response()->json(['error' => 'Unauthorized action on tax transaction.'], 403);
+                }
+            }
+
+            $tx = \App\Models\TaxTransaction::create([
                 'id' => (string) \Illuminate\Support\Str::uuid(),
                 'tenant_id' => $tenantId,
                 'invoice_number' => $invoiceNumber,
@@ -1284,6 +1457,20 @@ class SaasController extends Controller
                 'total_invoice_amount' => $request->input('totalInvoiceAmount') ?: $request->input('total_invoice_amount') ?: 0,
             ]);
 
+            // Custom audit log
+            if ($user) {
+                \App\Services\AuditLogService::log([
+                    'tenantId' => $tenantId ?: ($user ? $user->tenant_id : null),
+                    'userId' => $user->id,
+                    'entityName' => 'TaxTransaction',
+                    'entityId' => $tx->id,
+                    'action' => 'CREATE',
+                    'newValues' => json_encode($tx->toArray()),
+                    'ipAddress' => $request->ip(),
+                    'userAgent' => $request->userAgent(),
+                ]);
+            }
+
             return response()->json(['success' => true, 'message' => 'Tax-compliant invoice generated and logged successfully.']);
         } catch (\Throwable $e) {
             return response()->json(['error' => $e->getMessage()], 500);
@@ -1293,50 +1480,27 @@ class SaasController extends Controller
     /**
      * GET /api/v1/admin/tax-rules/reports
      */
-    public function getTaxReports()
+    public function getTaxReports(Request $request)
     {
         try {
-            $transactions = \App\Models\TaxTransaction::orderBy('created_at', 'desc')
-                ->take(100)
-                ->get()
-                ->map(function ($t) {
-                    $tenant = \App\Models\Tenant::find($t->tenant_id);
-                    return [
-                        'id' => $t->id,
-                        'tenantId' => $t->tenant_id,
-                        'tenant_id' => $t->tenant_id,
-                        'invoiceNumber' => $t->invoice_number,
-                        'invoice_number' => $t->invoice_number,
-                        'customerName' => $t->customer_name,
-                        'customer_name' => $t->customer_name,
-                        'stateCode' => $t->state_code,
-                        'state_code' => $t->state_code,
-                        'baseAmount' => $t->base_amount,
-                        'base_amount' => $t->base_amount,
-                        'cgstAmount' => $t->cgst_amount,
-                        'cgst_amount' => $t->cgst_amount,
-                        'sgstAmount' => $t->sgst_amount,
-                        'sgst_amount' => $t->sgst_amount,
-                        'igstAmount' => $t->igst_amount,
-                        'igst_amount' => $t->igst_amount,
-                        'tdsAmount' => $t->tds_amount,
-                        'tds_amount' => $t->tds_amount,
-                        'stampDutyAmount' => $t->stamp_duty_amount,
-                        'stamp_duty_amount' => $t->stamp_duty_amount,
-                        'registrationCharges' => $t->registration_charges,
-                        'registration_charges' => $t->registration_charges,
-                        'otherCharges' => $t->other_charges,
-                        'other_charges' => $t->other_charges,
-                        'totalTaxAmount' => $t->total_tax_amount,
-                        'total_tax_amount' => $t->total_tax_amount,
-                        'totalInvoiceAmount' => $t->total_invoice_amount,
-                        'total_invoice_amount' => $t->total_invoice_amount,
-                        'createdAt' => $t->created_at ? $t->created_at->toIso8601String() : null,
-                        'tenant_name' => $tenant ? $tenant->company_name : null,
-                    ];
-                });
+            $user = $request->attributes->get('authenticatedUser');
+            
+            $query = \App\Models\TaxTransaction::orderBy('created_at', 'desc');
+            $stateQuery = \DB::table('tax_transactions');
+            $monthlyQuery = \DB::table('tax_transactions');
 
-            $stateSummary = \DB::table('tax_transactions')
+            $stateQuery->whereNull('deleted_at');
+            $monthlyQuery->whereNull('deleted_at');
+
+            if ($user && $user->tenant_id !== null) {
+                $query->where('tenant_id', $user->tenant_id);
+                $stateQuery->where('tenant_id', $user->tenant_id);
+                $monthlyQuery->where('tenant_id', $user->tenant_id);
+            }
+
+            $transactions = $query->take(100)->get();
+
+            $stateSummary = $stateQuery
                 ->select('state_code', \DB::raw('SUM(total_tax_amount) as total_tax'), \DB::raw('SUM(base_amount) as total_base'))
                 ->groupBy('state_code')
                 ->get()
@@ -1351,7 +1515,7 @@ class SaasController extends Controller
                     ];
                 });
 
-            $monthlySummary = \DB::table('tax_transactions')
+            $monthlySummary = $monthlyQuery
                 ->select(\DB::raw("TO_CHAR(created_at, 'YYYY-MM') as month"), \DB::raw('SUM(total_tax_amount) as total_tax'), \DB::raw('SUM(base_amount) as total_base'))
                 ->groupBy(\DB::raw("TO_CHAR(created_at, 'YYYY-MM')"))
                 ->orderBy('month', 'asc')
@@ -1367,7 +1531,7 @@ class SaasController extends Controller
                 });
 
             return response()->json([
-                'transactions' => $transactions,
+                'transactions' => \App\Http\Resources\TaxTransactionResource::collection($transactions),
                 'stateSummary' => $stateSummary,
                 'monthlySummary' => $monthlySummary,
             ]);

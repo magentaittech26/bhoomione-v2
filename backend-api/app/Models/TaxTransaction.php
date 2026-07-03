@@ -3,13 +3,16 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class TaxTransaction extends Model
 {
+    use SoftDeletes;
+
     protected $table = 'tax_transactions';
     protected $keyType = 'string';
     public $incrementing = false;
-    public $timestamps = false; // created_at only
+    public $timestamps = false; // created_at only, but SoftDeletes uses deleted_at
 
     protected $fillable = [
         'id',

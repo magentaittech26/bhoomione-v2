@@ -21,6 +21,11 @@ interface TaxRule {
   effective_from: string;
   is_active: boolean;
   created_at?: string;
+  effective_to?: string | null;
+  is_default?: boolean;
+  builder_name?: string | null;
+  amount_type?: "percentage" | "fixed";
+  fixed_amount?: number;
 }
 
 interface TaxTransaction {
@@ -154,7 +159,7 @@ export const EnterpriseTaxConsole: React.FC<EnterpriseTaxConsoleProps> = ({ onSh
 
   const handleSaveRule = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingRule?.tax_type || !editingRule?.name || editingRule?.rate_percentage === undefined || !editingRule?.state_code) {
+    if (!editingRule?.tax_type || !editingRule?.name || !editingRule?.state_code) {
       onShowToast("Please enter all required tax rule properties.", "error");
       return;
     }
@@ -166,10 +171,15 @@ export const EnterpriseTaxConsole: React.FC<EnterpriseTaxConsoleProps> = ({ onSh
         tenantId: editingRule.tenant_id || null,
         taxType: editingRule.tax_type,
         name: editingRule.name,
-        ratePercentage: Number(editingRule.rate_percentage),
+        ratePercentage: Number(editingRule.rate_percentage || 0),
         stateCode: editingRule.state_code,
         effectiveFrom: editingRule.effective_from || new Date().toISOString().split("T")[0],
-        isActive: editingRule.is_active !== undefined ? !!editingRule.is_active : true
+        isActive: editingRule.is_active !== undefined ? !!editingRule.is_active : true,
+        effectiveTo: editingRule.effective_to || null,
+        isDefault: editingRule.is_default !== undefined ? !!editingRule.is_default : false,
+        builderName: editingRule.builder_name || null,
+        amountType: editingRule.amount_type || "percentage",
+        fixedAmount: editingRule.fixed_amount !== undefined ? Number(editingRule.fixed_amount) : 0,
       };
 
       const res = await api.saveTaxRule(payload);
@@ -179,9 +189,9 @@ export const EnterpriseTaxConsole: React.FC<EnterpriseTaxConsoleProps> = ({ onSh
         setEditingRule(null);
         await loadTaxConsoleData();
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to save tax rule:", err);
-      onShowToast("Failed to commit tax rule changes.", "error");
+      onShowToast(err.message || "Failed to commit tax rule changes.", "error");
     } finally {
       setSaving(false);
     }
@@ -284,7 +294,12 @@ export const EnterpriseTaxConsole: React.FC<EnterpriseTaxConsoleProps> = ({ onSh
                 rate_percentage: 0,
                 state_code: "ALL",
                 effective_from: new Date().toISOString().split("T")[0],
-                is_active: true
+                effective_to: "",
+                is_active: true,
+                is_default: false,
+                builder_name: "",
+                amount_type: "percentage",
+                fixed_amount: 0
               });
               setShowRuleModal(true);
             }}
@@ -429,8 +444,12 @@ export const EnterpriseTaxConsole: React.FC<EnterpriseTaxConsoleProps> = ({ onSh
                           <td className="p-4 font-extrabold text-slate-850">
                             {r.name}
                           </td>
-                          <td className="p-4 font-mono font-black text-slate-900 text-sm">
-                            {Number(r.rate_percentage).toFixed(2)}%
+                           <td className="p-4 font-mono font-black text-slate-900 text-sm">
+                            {r.amount_type === "fixed" ? (
+                              <span>₹{Number(r.fixed_amount || 0).toLocaleString("en-IN")}</span>
+                            ) : (
+                              <span>{Number(r.rate_percentage).toFixed(2)}%</span>
+                            )}
                           </td>
                           <td className="p-4">
                             <div className="flex items-center gap-1">
@@ -447,7 +466,19 @@ export const EnterpriseTaxConsole: React.FC<EnterpriseTaxConsoleProps> = ({ onSh
                                   <Building2 className="w-3 h-3" />
                                   <span>Builder Override</span>
                                 </span>
-                                <span className="text-[9px] text-slate-450 mt-1 max-w-[150px] truncate">{r.tenant_name || "Bhoomi Dev Corp"}</span>
+                                <span className="text-[9px] text-slate-450 mt-1 max-w-[150px] truncate">
+                                  {r.builder_name || r.tenant_name || "Bhoomi Dev Corp"}
+                                </span>
+                              </div>
+                            ) : r.builder_name ? (
+                              <div className="flex flex-col">
+                                <span className="text-[10px] font-black uppercase text-amber-700 bg-amber-50 border border-amber-150 px-1.5 py-0.5 rounded self-start flex items-center gap-1">
+                                  <Building2 className="w-3 h-3" />
+                                  <span>Global Override</span>
+                                </span>
+                                <span className="text-[9px] text-slate-450 mt-1 max-w-[150px] truncate">
+                                  {r.builder_name}
+                                </span>
                               </div>
                             ) : (
                               <span className="text-[10px] font-black uppercase text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded flex items-center gap-1 self-start select-none">
@@ -456,8 +487,17 @@ export const EnterpriseTaxConsole: React.FC<EnterpriseTaxConsoleProps> = ({ onSh
                               </span>
                             )}
                           </td>
-                          <td className="p-4 font-mono text-slate-500 text-[11px]">
-                            {r.effective_from ? new Date(r.effective_from).toLocaleDateString("en-IN", { day: '2-digit', month: 'short', year: 'numeric' }) : "Immediate"}
+                          <td className="p-4 font-mono text-slate-500 text-[11px] space-y-0.5">
+                            <div>
+                              <span className="text-slate-400">From: </span>
+                              {r.effective_from ? new Date(r.effective_from).toLocaleDateString("en-IN", { day: '2-digit', month: 'short', year: 'numeric' }) : "Immediate"}
+                            </div>
+                            {r.effective_to && (
+                              <div className="text-slate-450">
+                                <span className="text-slate-400">To: </span>
+                                {new Date(r.effective_to).toLocaleDateString("en-IN", { day: '2-digit', month: 'short', year: 'numeric' })}
+                              </div>
+                            )}
                           </td>
                           <td className="p-4">
                             <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
@@ -474,7 +514,12 @@ export const EnterpriseTaxConsole: React.FC<EnterpriseTaxConsoleProps> = ({ onSh
                                   setEditingRule({
                                     ...r,
                                     rate_percentage: Number(r.rate_percentage),
-                                    effective_from: r.effective_from ? r.effective_from.substring(0, 10) : ""
+                                    effective_from: r.effective_from ? r.effective_from.substring(0, 10) : "",
+                                    effective_to: r.effective_to ? r.effective_to.substring(0, 10) : "",
+                                    is_default: !!r.is_default,
+                                    builder_name: r.builder_name || "",
+                                    amount_type: r.amount_type || "percentage",
+                                    fixed_amount: r.fixed_amount !== undefined ? Number(r.fixed_amount) : 0
                                   });
                                   setShowRuleModal(true);
                                 }}
@@ -1003,21 +1048,50 @@ export const EnterpriseTaxConsole: React.FC<EnterpriseTaxConsoleProps> = ({ onSh
                   />
                 </div>
 
-                {/* Rate Percentage */}
+                {/* Rate Percentage / Fixed Amount input */}
                 <div className="space-y-1">
-                  <label className="text-[9.5px] font-black uppercase text-slate-500 tracking-wider block">Rate percentage (%)</label>
-                  <div className="relative">
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-slate-400 font-mono">%</span>
-                    <input 
-                      type="number"
-                      step="0.01"
-                      value={editingRule.rate_percentage !== undefined ? editingRule.rate_percentage : 0}
-                      onChange={(e) => setEditingRule(prev => ({ ...prev, rate_percentage: Number(e.target.value) }))}
-                      className="w-full px-3 py-2 border border-slate-250 rounded-xl text-xs outline-hidden font-mono font-bold"
-                      required
-                    />
-                  </div>
+                  <label className="text-[9.5px] font-black uppercase text-slate-500 tracking-wider block">Tax Levy Calculation Type</label>
+                  <select
+                    value={editingRule.amount_type || "percentage"}
+                    onChange={(e) => setEditingRule(prev => ({ ...prev, amount_type: e.target.value as any }))}
+                    className="w-full px-3 py-2 border border-slate-250 rounded-xl bg-white text-xs font-bold text-slate-750 outline-hidden"
+                  >
+                    <option value="percentage">Percentage-based (%)</option>
+                    <option value="fixed">Fixed Levy Amount (₹)</option>
+                  </select>
                 </div>
+
+                {editingRule.amount_type === "fixed" ? (
+                  <div className="space-y-1">
+                    <label className="text-[9.5px] font-black uppercase text-slate-500 tracking-wider block">Fixed Amount (₹)</label>
+                    <div className="relative">
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-slate-400 font-mono">₹</span>
+                      <input 
+                        type="number"
+                        step="1"
+                        value={editingRule.fixed_amount !== undefined ? editingRule.fixed_amount : 0}
+                        onChange={(e) => setEditingRule(prev => ({ ...prev, fixed_amount: Number(e.target.value) }))}
+                        className="w-full px-3 py-2 border border-slate-250 rounded-xl text-xs outline-hidden font-mono font-bold"
+                        required
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <label className="text-[9.5px] font-black uppercase text-slate-500 tracking-wider block">Rate percentage (%)</label>
+                    <div className="relative">
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-slate-400 font-mono">%</span>
+                      <input 
+                        type="number"
+                        step="0.01"
+                        value={editingRule.rate_percentage !== undefined ? editingRule.rate_percentage : 0}
+                        onChange={(e) => setEditingRule(prev => ({ ...prev, rate_percentage: Number(e.target.value) }))}
+                        className="w-full px-3 py-2 border border-slate-250 rounded-xl text-xs outline-hidden font-mono font-bold"
+                        required
+                      />
+                    </div>
+                  </div>
+                )}
 
                 {/* Effective From Date */}
                 <div className="space-y-1">
@@ -1030,32 +1104,68 @@ export const EnterpriseTaxConsole: React.FC<EnterpriseTaxConsoleProps> = ({ onSh
                   />
                 </div>
 
+                {/* Effective To Date */}
+                <div className="space-y-1">
+                  <label className="text-[9.5px] font-black uppercase text-slate-500 tracking-wider block">Effective expiry date (optional)</label>
+                  <input 
+                    type="date"
+                    value={editingRule.effective_to || ""}
+                    onChange={(e) => setEditingRule(prev => ({ ...prev, effective_to: e.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-250 rounded-xl text-xs outline-hidden font-mono font-bold"
+                  />
+                </div>
+
                 {/* Tenant / Builder Scope */}
-                <div className="col-span-2 space-y-1">
-                  <label className="text-[9.5px] font-black uppercase text-slate-500 tracking-wider block">Builder Scope Override (Concessional Policy)</label>
+                <div className="space-y-1">
+                  <label className="text-[9.5px] font-black uppercase text-slate-500 tracking-wider block">Builder Scope Override</label>
                   <select
                     value={editingRule.tenant_id || ""}
                     onChange={(e) => setEditingRule(prev => ({ ...prev, tenant_id: e.target.value === "" ? null : e.target.value }))}
                     className="w-full px-3 py-2 border border-slate-250 rounded-xl bg-white text-xs font-bold text-slate-750 outline-hidden"
                   >
-                    <option value="">Global default (Applies to all builders lacking specific overrides)</option>
+                    <option value="">Global default (All builders)</option>
                     <option value="11111111-1111-4111-8111-111111111111">Bhoomi Developer Corp (dev-01)</option>
                     <option value="22222222-2222-4222-8222-222222222222">Horizon Estates Ltd (dev-02)</option>
                   </select>
                 </div>
 
-                {/* Active Status Check */}
-                <div className="col-span-2 p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-3">
+                <div className="space-y-1">
+                  <label className="text-[9.5px] font-black uppercase text-slate-500 tracking-wider block">Builder Name Label</label>
                   <input 
-                    type="checkbox"
-                    id="rule-active-state"
-                    checked={editingRule.is_active !== undefined ? !!editingRule.is_active : true}
-                    onChange={(e) => setEditingRule(prev => ({ ...prev, is_active: e.target.checked }))}
-                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
+                    type="text"
+                    value={editingRule.builder_name || ""}
+                    onChange={(e) => setEditingRule(prev => ({ ...prev, builder_name: e.target.value }))}
+                    placeholder="E.g., Prestige, DLF, Godrej"
+                    className="w-full px-3 py-2 border border-slate-250 rounded-xl text-xs outline-hidden font-bold"
                   />
-                  <label htmlFor="rule-active-state" className="font-extrabold text-slate-800 cursor-pointer select-none">
-                    Enable and enforce this tax rate immediately
-                  </label>
+                </div>
+
+                {/* Active Status Check */}
+                <div className="col-span-2 p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col gap-3">
+                  <div className="flex items-center gap-3">
+                    <input 
+                      type="checkbox"
+                      id="rule-active-state"
+                      checked={editingRule.is_active !== undefined ? !!editingRule.is_active : true}
+                      onChange={(e) => setEditingRule(prev => ({ ...prev, is_active: e.target.checked }))}
+                      className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
+                    />
+                    <label htmlFor="rule-active-state" className="font-extrabold text-slate-800 cursor-pointer select-none">
+                      Enable and enforce this tax rate immediately
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-3 border-t border-slate-200/60 pt-2">
+                    <input 
+                      type="checkbox"
+                      id="rule-default-state"
+                      checked={editingRule.is_default !== undefined ? !!editingRule.is_default : false}
+                      onChange={(e) => setEditingRule(prev => ({ ...prev, is_default: e.target.checked }))}
+                      className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
+                    />
+                    <label htmlFor="rule-default-state" className="font-extrabold text-slate-800 cursor-pointer select-none">
+                      Mark as tenant-level fallback / default rule
+                    </label>
+                  </div>
                 </div>
 
               </div>
