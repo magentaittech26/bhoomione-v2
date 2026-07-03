@@ -3,6 +3,7 @@ import api from "../lib/api.ts";
 import { UserProfile } from "../types/auth.ts";
 import { CADImportManager } from "./CADImportManager.tsx";
 import InteractiveLayoutViewer from "./InteractiveLayoutViewer.tsx";
+import { EnterpriseTaxConsole } from "./saas/EnterpriseTaxConsole.tsx";
 import {
   Building2,
   FileCode2,
@@ -60,7 +61,7 @@ const tryParseJSON = (val: any, fallback: any = {}) => {
 };
 
 export default function InventoryManager({ user, onAuditLogged }: InventoryManagerProps) {
-  const [activeTab, setActiveTab] = useState<"projects" | "layouts" | "plots" | "cad" | "viewer" | "marketplace">("projects");
+  const [activeTab, setActiveTab] = useState<"projects" | "layouts" | "plots" | "cad" | "viewer" | "marketplace" | "commercial">("projects");
   const [plotDisplayMode, setPlotDisplayMode] = useState<"spreadsheet" | "card">("spreadsheet");
   const hasSetInitialTab = React.useRef(false);
 
@@ -1086,6 +1087,16 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
               <span>Marketplace & Leads</span>
             </button>
           )}
+          <button
+            onClick={() => { setActiveTab("commercial"); setErrorMess(null); }}
+            className={`flex-1 lg:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+              activeTab === "commercial" ? "bg-white text-emerald-700 border border-emerald-200 shadow-xs font-bold" : "text-slate-500 hover:text-slate-900"
+            }`}
+            id="tab-commercial"
+          >
+            <Percent className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Commercial</span>
+          </button>
         </div>
       </div>
 
@@ -1122,7 +1133,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
       </div>
 
       {/* Two-Column split Workspace (Main List Ledger & Technical Spec drawer) */}
-      {activeTab !== "cad" && activeTab !== "viewer" && activeTab !== "marketplace" && (
+      {activeTab !== "cad" && activeTab !== "viewer" && activeTab !== "marketplace" && activeTab !== "commercial" && (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 p-6" id="inv-main-workspace">
         
         {/* LEFT COMPONENT - GRID & ACTIONS LEDGER */}
@@ -2311,6 +2322,63 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
             displaySuccess={(msg) => setSuccessMess(msg)}
             displayError={(msg) => setErrorMess(msg)}
           />
+        </div>
+      )}
+
+      {/* Commercial & Tax Engine Integration */}
+      {activeTab === "commercial" && (
+        <div className="p-6 space-y-6" id="commercial-tab-panel">
+          {/* Tenant Commercial Header */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-xs">
+            <div className="space-y-1">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold">
+                <Percent className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Commercial Operations Console</span>
+              </div>
+              <h2 className="text-xl font-bold text-slate-900 tracking-tight font-sans">Commercial Engine & Tax Management</h2>
+              <p className="text-xs text-slate-500">
+                Configure your real estate development taxes, plot sales levies, TDS rates, and builder-specific state overrides.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Sidebar Sub-Navigation */}
+            <div className="lg:col-span-3 space-y-2">
+              <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs space-y-1">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-3 py-1">COMMERCIAL MENU</p>
+                <button className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg bg-indigo-50 text-indigo-900 border border-indigo-100">
+                  <Percent className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Tax & Charges</span>
+                </button>
+                <button className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-400 hover:bg-slate-50 hover:text-slate-900 transition-all cursor-not-allowed" disabled>
+                  <Building2 className="w-3.5 h-3.5" />
+                  <span>Payment Schedules (🔒)</span>
+                </button>
+                <button className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-400 hover:bg-slate-50 hover:text-slate-900 transition-all cursor-not-allowed" disabled>
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Receipts & Ledgers (🔒)</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Main Console Content */}
+            <div className="lg:col-span-9">
+              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
+                <EnterpriseTaxConsole 
+                  onShowToast={(msg, type) => {
+                    if (type === "success") {
+                      setSuccessMess(msg);
+                      setTimeout(() => setSuccessMess(null), 4000);
+                    } else {
+                      setErrorMess(msg);
+                      setTimeout(() => setErrorMess(null), 4000);
+                    }
+                  }} 
+                />
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

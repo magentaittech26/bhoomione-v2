@@ -5,7 +5,7 @@ import {
   Star, Tag, Terminal, Activity, Zap, Plus, Play, Send, Check, X, Key
 } from "lucide-react";
 import { api } from "../../lib/api";
-import { EnterpriseTaxConsole } from "./EnterpriseTaxConsole";
+import { PlatformTaxConsole, PlatformTaxErrorBoundary } from "./PlatformTaxConsole";
 import { EmailServiceConsole } from "./EmailServiceConsole";
 import { NotificationEngineConsole } from "./NotificationEngineConsole";
 import { PromoCouponsConsole } from "./PromoCouponsConsole";
@@ -36,7 +36,7 @@ const SETTING_GROUPS = [
   { id: "BRANDING", label: "Portal Branding", icon: Sliders, description: "Configure logos and color values." },
   { id: "LOCALIZATION", label: "Localization Info", icon: Globe, description: "Configure timezones and formatting conventions." },
   { id: "CURRENCY", label: "Currency Configuration", icon: CreditCard, description: "Verify INR base currency symbols." },
-  { id: "GST", label: "GST & Tax Configuration", icon: FileText, description: "Manage central GST, TDS, stamp duties, and builder overrides." },
+  { id: "GST", label: "Platform Tax & Invoice Configuration", icon: FileText, description: "Manage BhoomiOne's own taxation for SaaS billing." },
   { id: "BILLING", label: "Billing & Gateway", icon: CreditCard, description: "Configure payment gateways, test credentials, and logs." },
   { id: "COUPONS", label: "Promo Coupons", icon: Tag, description: "Configure corporate discounts and promotional coupons." },
   { id: "PROMOTIONS", label: "Active Campaigns", icon: Star, description: "Manage active upgrade campaigns and banner views." },
@@ -467,7 +467,9 @@ export const SaasSettingsTab: React.FC<SaasSettingsTabProps> = ({
           )}
 
           {activeGroup === "GST" ? (
-            <EnterpriseTaxConsole onShowToast={onShowToast} />
+            <PlatformTaxErrorBoundary>
+              <PlatformTaxConsole onShowToast={onShowToast} />
+            </PlatformTaxErrorBoundary>
           ) : activeGroup === "EMAIL" ? (
             <EmailServiceConsole onShowToast={onShowToast} />
           ) : activeGroup === "COUPONS" ? (
