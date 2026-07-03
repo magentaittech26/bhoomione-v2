@@ -1566,7 +1566,8 @@ class SaasController extends Controller
                         'port' => $row->port,
                         'encryption' => $row->encryption,
                         'username' => $row->username,
-                        'password' => $row->password,
+                        'password' => $row->password ? '********' : null,
+                        'passwordConfigured' => $row->password ? true : false,
                         'senderName' => $row->sender_name,
                         'sender_name' => $row->sender_name,
                         'senderEmail' => $row->sender_email,
@@ -1623,11 +1624,16 @@ class SaasController extends Controller
                 'port' => $port ? (int)$port : null,
                 'encryption' => $encryption,
                 'username' => $username,
-                'password' => $password,
                 'sender_name' => $senderName,
                 'sender_email' => $senderEmail,
                 'custom_params' => $customParams,
             ];
+
+            if ($config && (empty($password) || $password === '********')) {
+                $data['password'] = $config->password;
+            } else {
+                $data['password'] = $password;
+            }
 
             if ($config) {
                 $config->update($data);
@@ -1640,10 +1646,35 @@ class SaasController extends Controller
 
             \DB::commit();
 
+            $configData = [
+                'id' => $config->id,
+                'providerCode' => $config->provider_code,
+                'provider_code' => $config->provider_code,
+                'name' => $config->name,
+                'isEnabled' => (bool)$config->is_enabled,
+                'is_enabled' => (bool)$config->is_enabled,
+                'isDefault' => (bool)$config->is_default,
+                'is_default' => (bool)$config->is_default,
+                'host' => $config->host,
+                'port' => $config->port,
+                'encryption' => $config->encryption,
+                'username' => $config->username,
+                'password' => $config->password ? '********' : null,
+                'passwordConfigured' => $config->password ? true : false,
+                'senderName' => $config->sender_name,
+                'sender_name' => $config->sender_name,
+                'senderEmail' => $config->sender_email,
+                'sender_email' => $config->sender_email,
+                'customParams' => $config->custom_params ?: (object)[],
+                'custom_params' => $config->custom_params ?: (object)[],
+                'status' => $config->status,
+                'createdAt' => $config->created_at ? $config->created_at->toIso8601String() : null,
+            ];
+
             return response()->json([
                 'success' => true,
                 'message' => 'Email provider configuration saved successfully.',
-                'config' => $config
+                'config' => $configData
             ]);
         } catch (\Throwable $e) {
             \DB::rollBack();
@@ -1665,6 +1696,13 @@ class SaasController extends Controller
             $username = $request->input('username');
             $password = $request->input('password');
             $customParams = $request->input('customParams') ?: $request->input('custom_params') ?: [];
+
+            if (empty($password) || $password === '********') {
+                $existing = \App\Models\EmailConfiguration::where('provider_code', $providerCode)->first();
+                if ($existing) {
+                    $password = $existing->password;
+                }
+            }
 
             $config = [
                 'provider_code' => $providerCode,
@@ -1863,16 +1901,48 @@ class SaasController extends Controller
     // NOTIFICATION ENGINE METHODS
     // ==========================================
 
+    private static function getSensitiveKeys()
+    {
+        return [
+            'api_key', 'apiKey',
+            'api_secret', 'apiSecret',
+            'client_secret', 'clientSecret',
+            'access_token', 'accessToken',
+            'bearer_token', 'bearerToken',
+            'private_key', 'privateKey',
+            'webhook_secret', 'webhookSecret',
+            'smtp_password', 'smtpPassword',
+            'auth_key', 'authKey',
+            'auth_token', 'authToken',
+            'password',
+            'secret',
+            'token',
+            'account_sid', 'accountSid',
+            'auth_id', 'authId',
+            'access_key_id', 'accessKeyId',
+            'secret_access_key', 'secretAccessKey',
+        ];
+    }
+
     /**
      * GET /api/v1/admin/notifications/configurations
      */
     public function getNotificationConfigs()
     {
         try {
+            $sensitiveKeys = self::getSensitiveKeys();
             $configs = \App\Models\NotificationConfiguration::orderBy('channel', 'asc')
                 ->orderBy('name', 'asc')
                 ->get()
-                ->map(function ($row) {
+                ->map(function ($row) use ($sensitiveKeys) {
+                    $configParams = $row->config_params ?: [];
+                    if (is_array($configParams)) {
+                        foreach ($configParams as $key => $val) {
+                            if (in_array($key, $sensitiveKeys)) {
+                                $configParams[$key] = !empty($val) ? '********' : null;
+                            }
+                        }
+                    }
                     return [
                         'id' => $row->id,
                         'channel' => $row->channel,
@@ -1883,8 +1953,8 @@ class SaasController extends Controller
                         'is_enabled' => (bool)$row->is_enabled,
                         'isDefault' => (bool)$row->is_default,
                         'is_default' => (bool)$row->is_default,
-                        'configParams' => $row->config_params ?: (object)[],
-                        'config_params' => $row->config_params ?: (object)[],
+                        'configParams' => $configParams ?: (object)[],
+                        'config_params' => $configParams ?: (object)[],
                         'status' => $row->status,
                         'createdAt' => $row->created_at ? $row->created_at->toIso8601String() : null,
                     ];
@@ -1924,6 +1994,21 @@ class SaasController extends Controller
                 ->where('provider_code', $providerCode)
                 ->first();
 
+            if ($config) {
+                $existingParams = $config->config_params ?: [];
+                $sensitiveKeys = self::getSensitiveKeys();
+                foreach ($sensitiveKeys as $key) {
+                    if (array_key_exists($key, $configParams)) {
+                        $incomingVal = $configParams[$key];
+                        if (empty($incomingVal) || $incomingVal === '********') {
+                            if (array_key_exists($key, $existingParams)) {
+                                $configParams[$key] = $existingParams[$key];
+                            }
+                        }
+                    }
+                }
+            }
+
             $data = [
                 'name' => $name,
                 'is_enabled' => (bool)$isEnabled,
@@ -1943,10 +2028,36 @@ class SaasController extends Controller
 
             \DB::commit();
 
+            $configParamsData = $config->config_params ?: [];
+            $sensitiveKeys = self::getSensitiveKeys();
+            if (is_array($configParamsData)) {
+                foreach ($configParamsData as $key => $val) {
+                    if (in_array($key, $sensitiveKeys)) {
+                        $configParamsData[$key] = !empty($val) ? '********' : null;
+                    }
+                }
+            }
+
+            $mappedConfig = [
+                'id' => $config->id,
+                'channel' => $config->channel,
+                'providerCode' => $config->provider_code,
+                'provider_code' => $config->provider_code,
+                'name' => $config->name,
+                'isEnabled' => (bool)$config->is_enabled,
+                'is_enabled' => (bool)$config->is_enabled,
+                'isDefault' => (bool)$config->is_default,
+                'is_default' => (bool)$config->is_default,
+                'configParams' => $configParamsData ?: (object)[],
+                'config_params' => $configParamsData ?: (object)[],
+                'status' => $config->status,
+                'createdAt' => $config->created_at ? $config->created_at->toIso8601String() : null,
+            ];
+
             return response()->json([
                 'success' => true,
                 'message' => 'Notification gateway configuration saved.',
-                'config' => $config
+                'config' => $mappedConfig
             ]);
         } catch (\Throwable $e) {
             \DB::rollBack();
@@ -1963,6 +2074,25 @@ class SaasController extends Controller
             $channel = $request->input('channel');
             $providerCode = $request->input('providerCode') ?: $request->input('provider_code');
             $configParams = $request->input('configParams') ?: $request->input('config_params') ?: [];
+
+            $existing = \App\Models\NotificationConfiguration::where('channel', $channel)
+                ->where('provider_code', $providerCode)
+                ->first();
+
+            if ($existing) {
+                $existingParams = $existing->config_params ?: [];
+                $sensitiveKeys = self::getSensitiveKeys();
+                foreach ($sensitiveKeys as $key) {
+                    if (array_key_exists($key, $configParams)) {
+                        $incomingVal = $configParams[$key];
+                        if (empty($incomingVal) || $incomingVal === '********') {
+                            if (array_key_exists($key, $existingParams)) {
+                                $configParams[$key] = $existingParams[$key];
+                            }
+                        }
+                    }
+                }
+            }
 
             $result = \App\Services\NotificationService::testGateway($channel, $providerCode, $configParams);
             $newStatus = $result['success'] ? 'ACTIVE' : 'FAILED';

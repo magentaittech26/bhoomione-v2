@@ -569,6 +569,72 @@ export async function bootstrapDatabase() {
     await client.query("CREATE INDEX IF NOT EXISTS idx_notification_logs_channel ON notification_logs(channel)");
     await client.query("CREATE INDEX IF NOT EXISTS idx_notification_logs_created ON notification_logs(created_at DESC)");
 
+    // SaaS Invoices and Accounts Receivable tables
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS saas_invoices (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        invoice_number VARCHAR(100) UNIQUE NOT NULL,
+        billing_period VARCHAR(100) NOT NULL,
+        subscription_plan_code VARCHAR(100) NOT NULL,
+        subscription_plan_name VARCHAR(255) NOT NULL,
+        base_amount DECIMAL(15,2) NOT NULL,
+        cgst_amount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+        sgst_amount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+        igst_amount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+        total_tax_amount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+        total_invoice_amount DECIMAL(15,2) NOT NULL,
+        outstanding_balance DECIMAL(15,2) NOT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'UNPAID', -- 'PAID', 'PARTIALLY_PAID', 'UNPAID', 'OVERDUE', 'VOID'
+        created_by VARCHAR(255) DEFAULT 'System',
+        updated_by VARCHAR(255) DEFAULT 'System',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS invoice_payments (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        invoice_id UUID NOT NULL REFERENCES saas_invoices(id) ON DELETE CASCADE,
+        payment_date DATE NOT NULL,
+        amount DECIMAL(15,2) NOT NULL,
+        payment_method VARCHAR(50) NOT NULL, -- 'CASH', 'UPI', 'BANK_TRANSFER', 'CARD', 'GATEWAY'
+        reference_id VARCHAR(100) NULL, -- Transaction/Ref ID
+        remarks TEXT NULL,
+        recorded_by VARCHAR(255) DEFAULT 'System',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS invoice_credits_refunds (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        invoice_id UUID NOT NULL REFERENCES saas_invoices(id) ON DELETE CASCADE,
+        type VARCHAR(50) NOT NULL, -- 'CREDIT_NOTE', 'REFUND'
+        amount DECIMAL(15,2) NOT NULL,
+        reason TEXT NOT NULL,
+        issued_by VARCHAR(255) DEFAULT 'System',
+        issued_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS invoice_audits (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        invoice_id UUID NOT NULL REFERENCES saas_invoices(id) ON DELETE CASCADE,
+        action VARCHAR(100) NOT NULL, -- 'CREATED', 'UPDATED', 'SENT', 'PAYMENT_RECORDED', 'CREDIT_ISSUED', 'REFUND_ISSUED'
+        performed_by VARCHAR(255) NOT NULL,
+        details TEXT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await client.query("CREATE INDEX IF NOT EXISTS idx_saas_invoices_tenant ON saas_invoices(tenant_id)");
+    await client.query("CREATE INDEX IF NOT EXISTS idx_saas_invoices_number ON saas_invoices(invoice_number)");
+    await client.query("CREATE INDEX IF NOT EXISTS idx_invoice_payments_invoice ON invoice_payments(invoice_id)");
+    await client.query("CREATE INDEX IF NOT EXISTS idx_invoice_audits_invoice ON invoice_audits(invoice_id)");
+
     // 24. Alter existing tables to add marketplace columns
     await client.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS publishing_status VARCHAR(50) DEFAULT 'Draft'");
     await client.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT FALSE");
@@ -641,6 +707,10 @@ export async function bootstrapDatabase() {
 
     // --- SEED SECTIONS ---
     // Truncate first to ensure clean seed
+    await client.query("TRUNCATE TABLE invoice_audits CASCADE");
+    await client.query("TRUNCATE TABLE invoice_credits_refunds CASCADE");
+    await client.query("TRUNCATE TABLE invoice_payments CASCADE");
+    await client.query("TRUNCATE TABLE saas_invoices CASCADE");
     await client.query("TRUNCATE TABLE email_logs CASCADE");
     await client.query("TRUNCATE TABLE email_templates CASCADE");
     await client.query("TRUNCATE TABLE email_configurations CASCADE");
@@ -709,6 +779,35 @@ export async function bootstrapDatabase() {
       ('${tenant1Id}', 'dev01.bhoomione.com', true),
       ('${tenant1Id}', 'shaurya.tenant.bhoomione.in', false),
       ('${tenant2Id}', 'dev02.bhoomione.com', true)
+    `);
+
+    // Seed SaaS Invoices
+    await client.query(`
+      INSERT INTO saas_invoices (id, tenant_id, invoice_number, billing_period, subscription_plan_code, subscription_plan_name, base_amount, cgst_amount, sgst_amount, igst_amount, total_tax_amount, total_invoice_amount, outstanding_balance, status, created_by)
+      VALUES
+        ('90100000-0000-0000-0000-000000000001', '${tenant1Id}', 'BO-INV-2026-003', 'Jun 2026 - Jul 2026', 'PROFESSIONAL', 'Professional Tier Plan', 9900.00, 891.00, 891.00, 0.00, 1782.00, 11682.00, 0.00, 'PAID', 'System'),
+        ('90100000-0000-0000-0000-000000000002', '${tenant1Id}', 'BO-INV-2026-002', 'Jun 2026 - Jun 2027', 'ENTERPRISE', 'Enterprise Suite', 99000.00, 8910.00, 8910.00, 0.00, 17820.00, 116820.00, 0.00, 'PAID', 'System'),
+        ('90100000-0000-0000-0000-000000000003', '${tenant2Id}', 'BO-INV-2026-001', 'Jun 2026 - Jul 2026', 'PROFESSIONAL', 'Professional Tier Plan', 9900.00, 891.00, 891.00, 0.00, 1782.00, 11682.00, 11682.00, 'OVERDUE', 'System'),
+        ('90100000-0000-0000-0000-000000000004', '${tenant2Id}', 'BO-INV-2026-TRIAL', '14-Day Free Evaluation', 'STARTER', 'Starter Tier Plan', 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 'PAID', 'System')
+    `);
+
+    // Seed Invoice Payments
+    await client.query(`
+      INSERT INTO invoice_payments (invoice_id, payment_date, amount, payment_method, reference_id, remarks, recorded_by)
+      VALUES
+        ('90100000-0000-0000-0000-000000000001', '2026-06-20', 11682.00, 'UPI', 'TXN-90182749', 'Regular renewal payment received online.', 'Platform Support User'),
+        ('90100000-0000-0000-0000-000000000002', '2026-06-25', 116820.00, 'BANK_TRANSFER', 'TXN-88271104', 'Annual enterprise payment cleared.', 'Platform Support User')
+    `);
+
+    // Seed Invoice Audits
+    await client.query(`
+      INSERT INTO invoice_audits (invoice_id, action, performed_by, details)
+      VALUES
+        ('90100000-0000-0000-0000-000000000001', 'CREATED', 'System', 'Invoice generated automatically by Billing Engine.'),
+        ('90100000-0000-0000-0000-000000000001', 'SENT', 'System', 'Invoice emailed to tenant billing address.'),
+        ('90100000-0000-0000-0000-000000000001', 'PAYMENT_RECORDED', 'Platform Support User', 'Full payment of ₹11,682 recorded.'),
+        ('90100000-0000-0000-0000-000000000002', 'CREATED', 'System', 'Annual enterprise invoice compiled.'),
+        ('90100000-0000-0000-0000-000000000002', 'PAYMENT_RECORDED', 'Platform Support User', 'Full payment of ₹116,820 recorded via direct bank transfer.')
     `);
 
     // 2. Seed DEFAULT USERS

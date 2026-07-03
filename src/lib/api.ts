@@ -554,6 +554,51 @@ class ApiClient {
     });
   }
 
+  async fetchInvoices(): Promise<any[]> {
+    return this.request<any[]>("/admin/invoices", {
+      method: "GET"
+    });
+  }
+
+  async fetchInvoiceDetails(id: string): Promise<any> {
+    return this.request<any>(`/admin/invoices/${id}`, {
+      method: "GET"
+    });
+  }
+
+  async createInvoice(invoice: any): Promise<any> {
+    return this.request<any>("/admin/invoices", {
+      method: "POST",
+      body: JSON.stringify(invoice)
+    });
+  }
+
+  async recordInvoicePayment(id: string, payload: any): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/admin/invoices/${id}/payments`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async issueInvoiceCreditNote(id: string, payload: any): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/admin/invoices/${id}/credit-notes`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async sendInvoiceEmail(id: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/admin/invoices/${id}/send`, {
+      method: "POST"
+    });
+  }
+
+  async fetchTenantLedger(tenantId: string): Promise<any> {
+    return this.request<any>(`/admin/tenants/${tenantId}/ledger`, {
+      method: "GET"
+    });
+  }
+
   // ==========================================
   // PROMO COUPONS & CAMPAIGNS APIs
   // ==========================================

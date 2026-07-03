@@ -32,6 +32,7 @@ class EmailConfiguration extends Model
         'is_enabled' => 'boolean',
         'is_default' => 'boolean',
         'port' => 'integer',
+        'password' => 'encrypted',
         'custom_params' => 'array',
     ];
 }

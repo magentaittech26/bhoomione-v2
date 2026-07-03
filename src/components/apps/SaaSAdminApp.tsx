@@ -19,6 +19,7 @@ import TenantManagementTab from "../saas/TenantManagementTab";
 import TenantOverridesTab from "../saas/TenantOverridesTab.tsx";
 import { SaasSettingsTab } from "../saas/SaasSettingsTab.tsx";
 import AuditLogsTab from "../saas/AuditLogsTab.tsx";
+import InvoiceConsole from "../saas/InvoiceConsole.tsx";
 
 export default function SaaSAdminApp() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -1466,46 +1467,7 @@ export default function SaaSAdminApp() {
         {/* Invoices */}
         {activeTab === "invoices" && (
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs animate-fadeIn font-sans space-y-6">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <div>
-                <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">Corporate Invoices Database</h3>
-                <p className="text-[11px] text-slate-500">Historical database of all corporate subscription charges, trial transitions, and manual overrides.</p>
-              </div>
-            </div>
-
-            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden text-xs">
-              <table className="w-full text-left text-slate-600">
-                <thead className="bg-slate-50 text-slate-500 font-extrabold uppercase text-[10px]">
-                  <tr>
-                    <th className="p-3.5">Invoice Code</th>
-                    <th className="p-3.5">Tenant Company</th>
-                    <th className="p-3.5 text-center">Billing Period</th>
-                    <th className="p-3.5 text-right">Amount (₹)</th>
-                    <th className="p-3.5 text-right">GST (18% Included)</th>
-                    <th className="p-3.5 text-center">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-sans">
-                  {[
-                    { code: "BO-INV-2026-003", tenant: "KRN Developers Hub", period: "Jun 2026 - Jul 2026", amount: 11682, gst: 1782, status: "PAID", statusColor: "bg-emerald-50 text-emerald-800" },
-                    { code: "BO-INV-2026-002", tenant: "Smart Plan Township Hub", period: "Jun 2026 - Jun 2027", amount: 116820, gst: 17820, status: "PAID", statusColor: "bg-emerald-50 text-emerald-800" },
-                    { code: "BO-INV-2026-001", tenant: "Indiana Municipal Infra Corp", period: "Jun 2026 - Jul 2026", amount: 11682, gst: 1782, status: "OVERDUE", statusColor: "bg-red-50 text-red-800" },
-                    { code: "BO-INV-2026-TRIAL", tenant: "Bihar Builders Pvt Ltd", period: "14-Day Free Evaluation", amount: 0, gst: 0, status: "TRIAL_FREE", statusColor: "bg-blue-50 text-blue-800" }
-                  ].map((row, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/50">
-                      <td className="p-3.5 font-mono font-bold text-indigo-600">{row.code}</td>
-                      <td className="p-3.5 font-extrabold text-slate-800">{row.tenant}</td>
-                      <td className="p-3.5 text-center text-slate-500">{row.period}</td>
-                      <td className="p-3.5 text-right font-mono font-bold">₹{row.amount.toLocaleString()}</td>
-                      <td className="p-3.5 text-right font-mono text-slate-400">₹{row.gst.toLocaleString()}</td>
-                      <td className="p-3.5 text-center">
-                        <span className={`inline-block font-bold text-[9px] px-2 py-0.5 rounded-full ${row.statusColor}`}>{row.status}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <InvoiceConsole tenants={tenants} onShowToast={showToast} />
           </div>
         )}
 

@@ -763,4 +763,383 @@ router.post("/admin/email-service/retry/:id", requireAuth, async (req: any, res:
   }
 });
 
+// ==========================================
+// SAAS ACCOUNTS RECEIVABLE / INVOICE ROUTES
+// ==========================================
+
+// GET /api/v1/admin/invoices - Retrieve all SaaS invoices
+router.get("/admin/invoices", requireAuth, async (req: any, res: Response) => {
+  const pool = getPool();
+  try {
+    const result = await pool.query(`
+      SELECT i.*, t.company_name as tenant_name, t.tenant_code
+      FROM saas_invoices i
+      LEFT JOIN tenants t ON i.tenant_id = t.id
+      ORDER BY i.created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (err: any) {
+    console.error("Failed to fetch invoices:", err);
+    res.status(500).json({ error: "Failed to retrieve invoice records from database." });
+  }
+});
+
+// GET /api/v1/admin/invoices/:id - Retrieve detail fields for a single invoice
+router.get("/admin/invoices/:id", requireAuth, async (req: any, res: Response) => {
+  const { id } = req.params;
+  const pool = getPool();
+  try {
+    const invoiceRes = await pool.query(`
+      SELECT i.*, t.company_name as tenant_name, t.tenant_code
+      FROM saas_invoices i
+      LEFT JOIN tenants t ON i.tenant_id = t.id
+      WHERE i.id = $1
+    `, [id]);
+
+    if (invoiceRes.rows.length === 0) {
+      return res.status(404).json({ error: "Invoice not found" });
+    }
+
+    const invoice = invoiceRes.rows[0];
+
+    const paymentsRes = await pool.query(`
+      SELECT * FROM invoice_payments
+      WHERE invoice_id = $1
+      ORDER BY payment_date DESC
+    `, [id]);
+
+    const creditsRes = await pool.query(`
+      SELECT * FROM invoice_credits_refunds
+      WHERE invoice_id = $1
+      ORDER BY issued_at DESC
+    `, [id]);
+
+    const auditsRes = await pool.query(`
+      SELECT * FROM invoice_audits
+      WHERE invoice_id = $1
+      ORDER BY created_at DESC
+    `, [id]);
+
+    res.json({
+      ...invoice,
+      payments: paymentsRes.rows,
+      credits: creditsRes.rows,
+      audits: auditsRes.rows
+    });
+  } catch (err: any) {
+    console.error("Failed to fetch invoice details:", err);
+    res.status(500).json({ error: "Failed to retrieve invoice details from database." });
+  }
+});
+
+// POST /api/v1/admin/invoices - Create / compile a custom SaaS invoice
+router.post("/admin/invoices", requireAuth, async (req: any, res: Response) => {
+  const { tenant_id, invoice_number, billing_period, subscription_plan_code, subscription_plan_name, base_amount, cgst_amount, sgst_amount, igst_amount } = req.body;
+  const pool = getPool();
+  try {
+    const base = parseFloat(base_amount) || 0;
+    const cgst = parseFloat(cgst_amount) || 0;
+    const sgst = parseFloat(sgst_amount) || 0;
+    const igst = parseFloat(igst_amount) || 0;
+    const totalTax = cgst + sgst + igst;
+    const totalAmount = base + totalTax;
+
+    const result = await pool.query(`
+      INSERT INTO saas_invoices (
+        tenant_id, invoice_number, billing_period, subscription_plan_code, subscription_plan_name,
+        base_amount, cgst_amount, sgst_amount, igst_amount, total_tax_amount, total_invoice_amount,
+        outstanding_balance, status, created_by
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'UNPAID', $13)
+      RETURNING *
+    `, [
+      tenant_id, invoice_number, billing_period, subscription_plan_code, subscription_plan_name,
+      base, cgst, sgst, igst, totalTax, totalAmount, totalAmount, req.user?.email || 'System'
+    ]);
+
+    const invoice = result.rows[0];
+
+    // Log audit
+    await pool.query(`
+      INSERT INTO invoice_audits (invoice_id, action, performed_by, details)
+      VALUES ($1, 'CREATED', $2, $3)
+    `, [invoice.id, req.user?.email || 'System', `Invoice ${invoice_number} created with total ₹${totalAmount.toLocaleString('en-IN')}`]);
+
+    res.status(201).json(invoice);
+  } catch (err: any) {
+    console.error("Failed to create invoice:", err);
+    res.status(500).json({ error: "Failed to compile and persist invoice." });
+  }
+});
+
+// POST /api/v1/admin/invoices/:id/payments - Record a full or partial payment
+router.post("/admin/invoices/:id/payments", requireAuth, async (req: any, res: Response) => {
+  const { id } = req.params;
+  const { payment_date, amount, payment_method, reference_id, remarks } = req.body;
+  const pool = getPool();
+  try {
+    const invResult = await pool.query("SELECT * FROM saas_invoices WHERE id = $1", [id]);
+    if (invResult.rows.length === 0) {
+      return res.status(404).json({ error: "Invoice not found" });
+    }
+    const invoice = invResult.rows[0];
+    const payAmount = parseFloat(amount);
+
+    if (isNaN(payAmount) || payAmount <= 0) {
+      return res.status(400).json({ error: "Invalid payment amount. Must be greater than 0." });
+    }
+
+    const currentBalance = parseFloat(invoice.outstanding_balance);
+    const newBalance = Math.max(0, currentBalance - payAmount);
+    let newStatus = 'UNPAID';
+    if (newBalance <= 0) {
+      newStatus = 'PAID';
+    } else if (newBalance < parseFloat(invoice.total_invoice_amount)) {
+      newStatus = 'PARTIALLY_PAID';
+    }
+
+    await pool.query("BEGIN");
+
+    // Insert payment record
+    await pool.query(`
+      INSERT INTO invoice_payments (invoice_id, payment_date, amount, payment_method, reference_id, remarks, recorded_by)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `, [id, payment_date, payAmount, payment_method, reference_id, remarks, req.user?.email || 'System']);
+
+    // Update invoice balance
+    await pool.query(`
+      UPDATE saas_invoices
+      SET outstanding_balance = $1, status = $2, updated_at = NOW(), updated_by = $3
+      WHERE id = $4
+    `, [newBalance, newStatus, req.user?.email || 'System', id]);
+
+    // Insert audit log
+    await pool.query(`
+      INSERT INTO invoice_audits (invoice_id, action, performed_by, details)
+      VALUES ($1, 'PAYMENT_RECORDED', $2, $3)
+    `, [
+      id,
+      req.user?.email || 'System',
+      `Recorded payment of ₹${payAmount.toLocaleString('en-IN')} via ${payment_method}. Remaining balance: ₹${newBalance.toLocaleString('en-IN')}`
+    ]);
+
+    await pool.query("COMMIT");
+
+    res.json({ success: true, message: "Payment recorded and balance updated successfully." });
+  } catch (err: any) {
+    await pool.query("ROLLBACK");
+    console.error("Failed to record payment:", err);
+    res.status(500).json({ error: "Failed to record payment in database." });
+  }
+});
+
+// POST /api/v1/admin/invoices/:id/credit-notes - Issue credit note or refund
+router.post("/admin/invoices/:id/credit-notes", requireAuth, async (req: any, res: Response) => {
+  const { id } = req.params;
+  const { type, amount, reason } = req.body;
+  const pool = getPool();
+  try {
+    const invResult = await pool.query("SELECT * FROM saas_invoices WHERE id = $1", [id]);
+    if (invResult.rows.length === 0) {
+      return res.status(404).json({ error: "Invoice not found" });
+    }
+    const invoice = invResult.rows[0];
+    const creditAmount = parseFloat(amount);
+
+    if (isNaN(creditAmount) || creditAmount <= 0) {
+      return res.status(400).json({ error: "Invalid credit/refund amount." });
+    }
+
+    const currentBalance = parseFloat(invoice.outstanding_balance);
+    let newBalance = currentBalance;
+    let newStatus = invoice.status;
+
+    if (type === 'CREDIT_NOTE') {
+      newBalance = Math.max(0, currentBalance - creditAmount);
+      if (newBalance <= 0) {
+        newStatus = 'PAID';
+      } else if (newBalance < parseFloat(invoice.total_invoice_amount)) {
+        newStatus = 'PARTIALLY_PAID';
+      }
+    }
+
+    await pool.query("BEGIN");
+
+    await pool.query(`
+      INSERT INTO invoice_credits_refunds (invoice_id, type, amount, reason, issued_by)
+      VALUES ($1, $2, $3, $4, $5)
+    `, [id, type, creditAmount, reason, req.user?.email || 'System']);
+
+    if (type === 'CREDIT_NOTE') {
+      await pool.query(`
+        UPDATE saas_invoices
+        SET outstanding_balance = $1, status = $2, updated_at = NOW(), updated_by = $3
+        WHERE id = $4
+      `, [newBalance, newStatus, req.user?.email || 'System', id]);
+    }
+
+    await pool.query(`
+      INSERT INTO invoice_audits (invoice_id, action, performed_by, details)
+      VALUES ($1, $2, $3, $4)
+    `, [
+      id,
+      type === 'CREDIT_NOTE' ? 'CREDIT_ISSUED' : 'REFUND_ISSUED',
+      req.user?.email || 'System',
+      `Issued ${type === 'CREDIT_NOTE' ? 'Credit Note' : 'Refund'} of ₹${creditAmount.toLocaleString('en-IN')}. Reason: ${reason}`
+    ]);
+
+    await pool.query("COMMIT");
+
+    res.json({ success: true, message: `${type} issued successfully.` });
+  } catch (err: any) {
+    await pool.query("ROLLBACK");
+    console.error("Failed to issue credit/refund:", err);
+    res.status(500).json({ error: "Failed to issue credit note or refund." });
+  }
+});
+
+// POST /api/v1/admin/invoices/:id/send - Dispatch invoice email via SMTP Relay
+router.post("/admin/invoices/:id/send", requireAuth, async (req: any, res: Response) => {
+  const { id } = req.params;
+  const pool = getPool();
+  try {
+    const invResult = await pool.query(`
+      SELECT i.*, t.company_name as tenant_name, t.tenant_code
+      FROM saas_invoices i
+      LEFT JOIN tenants t ON i.tenant_id = t.id
+      WHERE i.id = $1
+    `, [id]);
+
+    if (invResult.rows.length === 0) {
+      return res.status(404).json({ error: "Invoice not found" });
+    }
+    const invoice = invResult.rows[0];
+
+    const tenantUserResult = await pool.query(`
+      SELECT u.email, u.name
+      FROM tenant_users tu
+      JOIN users u ON tu.user_id = u.id
+      WHERE tu.tenant_id = $1
+      LIMIT 1
+    `, [invoice.tenant_id]);
+
+    let recipient_email = "billing@" + (invoice.tenant_code || "tenant") + ".bhoomione.com";
+    let recipient_name = invoice.tenant_name || "SaaS Tenant Owner";
+
+    if (tenantUserResult.rows.length > 0) {
+      recipient_email = tenantUserResult.rows[0].email;
+      recipient_name = tenantUserResult.rows[0].name;
+    }
+
+    const subject = `Invoice #${invoice.invoice_number} Generated – BhoomiOne V2`;
+    const body_html = `
+      <div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #f0f0f0; border-radius: 12px; background: #ffffff;">
+        <h2 style="color: #4f46e5; margin-bottom: 20px;">New Invoice Generated</h2>
+        <p>Dear ${recipient_name},</p>
+        <p>A new subscription invoice has been compiled and generated for your workspace: <strong>${invoice.tenant_name}</strong>.</p>
+        <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr><td style="padding: 4px 0; font-weight: bold;">Invoice Number:</td><td style="padding: 4px 0; text-align: right;">${invoice.invoice_number}</td></tr>
+            <tr><td style="padding: 4px 0; font-weight: bold;">Billing Period:</td><td style="padding: 4px 0; text-align: right;">${invoice.billing_period}</td></tr>
+            <tr><td style="padding: 4px 0; font-weight: bold;">Subscription Plan:</td><td style="padding: 4px 0; text-align: right;">${invoice.subscription_plan_name}</td></tr>
+            <tr><td style="padding: 4px 0; font-weight: bold;">Base Amount:</td><td style="padding: 4px 0; text-align: right;">₹${parseFloat(invoice.base_amount).toLocaleString('en-IN')}</td></tr>
+            <tr><td style="padding: 4px 0; font-weight: bold;">Tax Amount (GST):</td><td style="padding: 4px 0; text-align: right;">₹${parseFloat(invoice.total_tax_amount).toLocaleString('en-IN')}</td></tr>
+            <tr style="border-top: 1px solid #ddd;"><td style="padding: 8px 0; font-weight: bold; color: #4f46e5;">Total Invoice Amount:</td><td style="padding: 8px 0; text-align: right; font-weight: bold; color: #4f46e5;">₹${parseFloat(invoice.total_invoice_amount).toLocaleString('en-IN')}</td></tr>
+            <tr><td style="padding: 4px 0; font-weight: bold; color: #ef4444;">Outstanding Balance:</td><td style="padding: 4px 0; text-align: right; font-weight: bold; color: #ef4444;">₹${parseFloat(invoice.outstanding_balance).toLocaleString('en-IN')}</td></tr>
+          </table>
+        </div>
+        <p>To settle this invoice, please go to your Billing Control Center and complete the payment using your integrated gateway.</p>
+        <p style="margin-top: 30px;">Regards,<br><strong>BhoomiOne Accounts Receivable Team</strong></p>
+      </div>
+    `;
+
+    const EmailService = (await import("../services/email.ts")).EmailService;
+    await EmailService.queueEmail({
+      recipient_email,
+      recipient_name,
+      subject,
+      body_html,
+      template_key: "INVOICE"
+    });
+
+    await pool.query(`
+      INSERT INTO invoice_audits (invoice_id, action, performed_by, details)
+      VALUES ($1, 'SENT', $2, $3)
+    `, [id, req.user?.email || 'System', `Invoice emailed to ${recipient_email} (${recipient_name})`]);
+
+    res.json({ success: true, message: `Invoice successfully queued to send via email to ${recipient_email}.` });
+  } catch (err: any) {
+    console.error("Failed to send invoice:", err);
+    res.status(500).json({ error: "Failed to dispatch invoice email." });
+  }
+});
+
+// GET /api/v1/admin/tenants/:tenantId/ledger - Complete ledger report for a tenant
+router.get("/admin/tenants/:tenantId/ledger", requireAuth, async (req: any, res: Response) => {
+  const { tenantId } = req.params;
+  const pool = getPool();
+  try {
+    const invoicesRes = await pool.query(`
+      SELECT * FROM saas_invoices
+      WHERE tenant_id = $1
+      ORDER BY created_at DESC
+    `, [tenantId]);
+
+    const paymentsRes = await pool.query(`
+      SELECT p.*, i.invoice_number
+      FROM invoice_payments p
+      JOIN saas_invoices i ON p.invoice_id = i.id
+      WHERE i.tenant_id = $1
+      ORDER BY p.payment_date DESC
+    `, [tenantId]);
+
+    const creditsRes = await pool.query(`
+      SELECT c.*, i.invoice_number
+      FROM invoice_credits_refunds c
+      JOIN saas_invoices i ON c.invoice_id = i.id
+      WHERE i.tenant_id = $1
+      ORDER BY c.issued_at DESC
+    `, [tenantId]);
+
+    let totalInvoiced = 0;
+    let totalPaid = 0;
+    let totalCredited = 0;
+    let totalRefunded = 0;
+
+    invoicesRes.rows.forEach((inv: any) => {
+      totalInvoiced += parseFloat(inv.total_invoice_amount);
+    });
+
+    paymentsRes.rows.forEach((pay: any) => {
+      totalPaid += parseFloat(pay.amount);
+    });
+
+    creditsRes.rows.forEach((cred: any) => {
+      if (cred.type === 'CREDIT_NOTE') {
+        totalCredited += parseFloat(cred.amount);
+      } else if (cred.type === 'REFUND') {
+        totalRefunded += parseFloat(cred.amount);
+      }
+    });
+
+    const outstandingBalance = totalInvoiced - totalPaid - totalCredited;
+
+    res.json({
+      summary: {
+        totalInvoiced,
+        totalPaid,
+        totalCredited,
+        totalRefunded,
+        outstandingBalance
+      },
+      invoices: invoicesRes.rows,
+      payments: paymentsRes.rows,
+      credits: creditsRes.rows
+    });
+  } catch (err: any) {
+    console.error("Failed to fetch tenant financial ledger:", err);
+    res.status(500).json({ error: "Failed to compile financial ledger." });
+  }
+});
+
 export default router;
