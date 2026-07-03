@@ -77,9 +77,87 @@ const TAX_TYPES = [
 
 const COLORS = ["#4f46e5", "#06b6d4", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
 
-export const EnterpriseTaxConsole: React.FC<EnterpriseTaxConsoleProps> = ({ onShowToast }) => {
+// Response normalization utility helpers
+const normalizeArray = (val: any): any[] => {
+  if (!val) return [];
+  if (Array.isArray(val)) return val;
+  if (val.data && Array.isArray(val.data)) return val.data;
+  if (val.items && Array.isArray(val.items)) return val.items;
+  if (typeof val === "object") {
+    for (const key of Object.keys(val)) {
+      if (Array.isArray(val[key])) {
+        return val[key];
+      }
+    }
+  }
+  return [];
+};
+
+const normalizeRule = (r: any): TaxRule => {
+  if (!r) return {} as TaxRule;
+  return {
+    id: r.id,
+    tenant_id: r.tenant_id !== undefined ? r.tenant_id : (r.tenantId !== undefined ? r.tenantId : null),
+    tenant_name: r.tenant_name !== undefined ? r.tenant_name : (r.tenantName !== undefined ? r.tenantName : ""),
+    tax_type: r.tax_type !== undefined ? r.tax_type : (r.taxType !== undefined ? r.taxType : "CGST"),
+    name: r.name || "",
+    rate_percentage: r.rate_percentage !== undefined ? Number(r.rate_percentage) : (r.ratePercentage !== undefined ? Number(r.ratePercentage) : 0),
+    state_code: r.state_code !== undefined ? r.state_code : (r.stateCode !== undefined ? r.stateCode : "ALL"),
+    effective_from: r.effective_from !== undefined ? r.effective_from : (r.effectiveFrom !== undefined ? r.effectiveFrom : ""),
+    is_active: r.is_active !== undefined ? !!r.is_active : (r.isActive !== undefined ? !!r.isActive : true),
+    effective_to: r.effective_to !== undefined ? r.effective_to : (r.effectiveTo !== undefined ? r.effectiveTo : null),
+    is_default: r.is_default !== undefined ? !!r.is_default : (r.isDefault !== undefined ? !!r.isDefault : false),
+    builder_name: r.builder_name !== undefined ? r.builder_name : (r.builderName !== undefined ? r.builderName : null),
+    amount_type: r.amount_type !== undefined ? r.amount_type : (r.amountType !== undefined ? r.amountType : "percentage"),
+    fixed_amount: r.fixed_amount !== undefined ? Number(r.fixed_amount) : (r.fixedAmount !== undefined ? Number(r.fixedAmount) : 0),
+    created_at: r.created_at !== undefined ? r.created_at : (r.createdAt !== undefined ? r.createdAt : undefined),
+  };
+};
+
+const normalizeTransaction = (l: any): TaxTransaction => {
+  if (!l) return {} as TaxTransaction;
+  return {
+    id: l.id || "",
+    tenant_id: l.tenant_id !== undefined ? l.tenant_id : (l.tenantId !== undefined ? l.tenantId : ""),
+    tenant_name: l.tenant_name !== undefined ? l.tenant_name : (l.tenantName !== undefined ? l.tenantName : ""),
+    invoice_number: l.invoice_number !== undefined ? l.invoice_number : (l.invoiceNumber !== undefined ? l.invoiceNumber : ""),
+    customer_name: l.customer_name !== undefined ? l.customer_name : (l.customerName !== undefined ? l.customerName : ""),
+    state_code: l.state_code !== undefined ? l.state_code : (l.stateCode !== undefined ? l.stateCode : ""),
+    base_amount: l.base_amount !== undefined ? Number(l.base_amount) : (l.baseAmount !== undefined ? Number(l.baseAmount) : 0),
+    cgst_amount: l.cgst_amount !== undefined ? Number(l.cgst_amount) : (l.cgstAmount !== undefined ? Number(l.cgstAmount) : 0),
+    sgst_amount: l.sgst_amount !== undefined ? Number(l.sgst_amount) : (l.sgstAmount !== undefined ? Number(l.sgstAmount) : 0),
+    igst_amount: l.igst_amount !== undefined ? Number(l.igst_amount) : (l.igstAmount !== undefined ? Number(l.igstAmount) : 0),
+    tds_amount: l.tds_amount !== undefined ? Number(l.tds_amount) : (l.tdsAmount !== undefined ? Number(l.tdsAmount) : 0),
+    stamp_duty_amount: l.stamp_duty_amount !== undefined ? Number(l.stamp_duty_amount) : (l.stampDutyAmount !== undefined ? Number(l.stampDutyAmount) : 0),
+    registration_charges: l.registration_charges !== undefined ? Number(l.registration_charges) : (l.registrationCharges !== undefined ? Number(l.registrationCharges) : 0),
+    other_charges: l.other_charges !== undefined ? Number(l.other_charges) : (l.otherCharges !== undefined ? Number(l.otherCharges) : 0),
+    total_tax_amount: l.total_tax_amount !== undefined ? Number(l.total_tax_amount) : (l.totalTaxAmount !== undefined ? Number(l.totalTaxAmount) : 0),
+    total_invoice_amount: l.total_invoice_amount !== undefined ? Number(l.total_invoice_amount) : (l.totalInvoiceAmount !== undefined ? Number(l.totalInvoiceAmount) : 0),
+    created_at: l.created_at !== undefined ? l.created_at : (l.createdAt !== undefined ? l.createdAt : ""),
+  };
+};
+
+const normalizeStateSummary = (val: any): any[] => {
+  const arr = normalizeArray(val);
+  return arr.map((s: any) => ({
+    state_code: s.state_code !== undefined ? s.state_code : (s.stateCode !== undefined ? s.stateCode : "ALL"),
+    total_tax: s.total_tax !== undefined ? Number(s.total_tax) : (s.totalTax !== undefined ? Number(s.totalTax) : 0),
+    total_base: s.total_base !== undefined ? Number(s.total_base) : (s.totalBase !== undefined ? Number(s.totalBase) : 0),
+  }));
+};
+
+const normalizeMonthlySummary = (val: any): any[] => {
+  const arr = normalizeArray(val);
+  return arr.map((m: any) => ({
+    month: m.month || "",
+    total_tax: m.total_tax !== undefined ? Number(m.total_tax) : (m.totalTax !== undefined ? Number(m.totalTax) : 0),
+  }));
+};
+
+export const EnterpriseTaxConsoleInner: React.FC<EnterpriseTaxConsoleProps> = ({ onShowToast }) => {
   const [activeSubTab, setActiveSubTab] = useState<"rules" | "calculator" | "ledger" | "analytics">("rules");
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<boolean>(false);
   const [rules, setRules] = useState<TaxRule[]>([]);
   const [ledger, setLedger] = useState<TaxTransaction[]>([]);
@@ -113,17 +191,23 @@ export const EnterpriseTaxConsole: React.FC<EnterpriseTaxConsoleProps> = ({ onSh
 
   const loadTaxConsoleData = async () => {
     setLoading(true);
+    setError(null);
     try {
       const rData = await api.fetchTaxRules();
-      setRules(rData);
+      const rulesArray = normalizeArray(rData);
+      setRules(rulesArray.map(normalizeRule));
 
       const reportData = await api.fetchTaxReports();
       setAnalytics(reportData);
       if (reportData && reportData.transactions) {
-        setLedger(reportData.transactions);
+        const transactionsArray = normalizeArray(reportData.transactions);
+        setLedger(transactionsArray.map(normalizeTransaction));
+      } else {
+        setLedger([]);
       }
     } catch (err: any) {
       console.error("Error loading tax configurations:", err);
+      setError(err.message || "Failed to retrieve tax schemas and statistics from compliance ledger backend.");
       onShowToast("Failed to retrieve tax schemas and statistics.", "error");
     } finally {
       setLoading(false);
@@ -147,8 +231,19 @@ export const EnterpriseTaxConsole: React.FC<EnterpriseTaxConsoleProps> = ({ onSh
         builderState: calcBuilderState,
         tenantId: calcTenantId !== "NONE" ? calcTenantId : undefined
       });
-      if (res.success) {
-        setCalcResults(res.breakdown);
+      if (res.success && res.breakdown) {
+        setCalcResults({
+          ...res.breakdown,
+          baseAmount: Number(res.breakdown.baseAmount || 0),
+          taxes: normalizeArray(res.breakdown.taxes).map((t: any) => ({
+            type: t.type || "",
+            name: t.name || "",
+            rate: Number(t.rate || 0),
+            amount: Number(t.amount || 0)
+          })),
+          totalTaxAmount: Number(res.breakdown.totalTaxAmount || 0),
+          totalInvoiceAmount: Number(res.breakdown.totalInvoiceAmount || 0)
+        });
       }
     } catch (err) {
       console.error("Calculation failed:", err);
@@ -263,6 +358,9 @@ export const EnterpriseTaxConsole: React.FC<EnterpriseTaxConsoleProps> = ({ onSh
     return matchesState && matchesBuilder;
   });
 
+  const stateSummary = normalizeStateSummary(analytics?.stateSummary);
+  const monthlySummary = normalizeMonthlySummary(analytics?.monthlySummary);
+
   return (
     <div className="space-y-6" id="enterprise-tax-console">
       {/* Header Info Panel */}
@@ -351,7 +449,29 @@ export const EnterpriseTaxConsole: React.FC<EnterpriseTaxConsoleProps> = ({ onSh
         </button>
       </div>
 
-      {loading ? (
+      {error ? (
+        <div className="p-8 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col items-center justify-center text-center space-y-4 select-none">
+          <div className="p-3 bg-rose-50 border border-rose-100 text-rose-600 rounded-2xl">
+            <AlertCircle className="w-8 h-8 animate-pulse" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider">Compliance API Connection Error</h3>
+            <p className="text-xs text-slate-500 leading-relaxed max-w-md">
+              Unable to reach the centralized compliance database. This could be due to network latency, session expiration, or backend maintenance.
+            </p>
+            <p className="text-[10px] font-mono text-rose-650 bg-rose-50/50 border border-rose-150 px-3 py-1.5 rounded-lg max-w-full overflow-x-auto">
+              {error}
+            </p>
+          </div>
+          <button
+            onClick={loadTaxConsoleData}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-5 py-2.5 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer border border-indigo-500 shadow-lg shadow-indigo-500/10"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>Retry Connection</span>
+          </button>
+        </div>
+      ) : loading ? (
         <div className="flex flex-col items-center justify-center p-20 space-y-3 bg-slate-50 border border-slate-200 rounded-2xl">
           <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin" />
           <p className="text-xs font-black uppercase text-indigo-950 tracking-wider">Retrieving centralized tax parameters...</p>
@@ -709,13 +829,13 @@ export const EnterpriseTaxConsole: React.FC<EnterpriseTaxConsoleProps> = ({ onSh
                     <div className="grid grid-cols-2 gap-4">
                       <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-1">
                         <span className="text-[9px] font-bold uppercase text-slate-400">Aggregated Taxes</span>
-                        <p className="text-lg font-black text-slate-950 font-mono">₹{calcResults.totalTaxAmount.toLocaleString("en-IN")}</p>
-                        <span className="text-[9px] text-slate-500 font-sans block">Effective tax rate: {((calcResults.totalTaxAmount / calcResults.baseAmount)*100).toFixed(2)}%</span>
+                        <p className="text-lg font-black text-slate-950 font-mono">₹{Number(calcResults.totalTaxAmount || 0).toLocaleString("en-IN")}</p>
+                        <span className="text-[9px] text-slate-500 font-sans block">Effective tax rate: {calcResults.baseAmount > 0 ? ((calcResults.totalTaxAmount / calcResults.baseAmount) * 100).toFixed(2) : "0.00"}%</span>
                       </div>
                       <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-1">
                         <span className="text-[9px] font-bold uppercase text-slate-400">Total Billable Invoice</span>
-                        <p className="text-lg font-black text-indigo-700 font-mono">₹{calcResults.totalInvoiceAmount.toLocaleString("en-IN")}</p>
-                        <span className="text-[9px] text-slate-500 font-sans block">Base: ₹{calcResults.baseAmount.toLocaleString("en-IN")}</span>
+                        <p className="text-lg font-black text-indigo-700 font-mono">₹{Number(calcResults.totalInvoiceAmount || 0).toLocaleString("en-IN")}</p>
+                        <span className="text-[9px] text-slate-500 font-sans block">Base: ₹{Number(calcResults.baseAmount || 0).toLocaleString("en-IN")}</span>
                       </div>
                     </div>
 
@@ -870,7 +990,7 @@ export const EnterpriseTaxConsole: React.FC<EnterpriseTaxConsoleProps> = ({ onSh
                 <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-1 shadow-2xs">
                   <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Total Registered Sales</span>
                   <p className="text-xl font-black text-slate-900 font-mono">
-                    ₹{ledger.reduce((acc, l) => acc + Number(l.base_amount), 0).toLocaleString("en-IN")}
+                    ₹{ledger.reduce((acc, l) => acc + Number(l.base_amount || 0), 0).toLocaleString("en-IN")}
                   </p>
                   <p className="text-[9px] text-emerald-600 font-extrabold flex items-center gap-0.5">
                     <TrendingUp className="w-3 h-3" />
@@ -881,7 +1001,7 @@ export const EnterpriseTaxConsole: React.FC<EnterpriseTaxConsoleProps> = ({ onSh
                 <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-1 shadow-2xs">
                   <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">CGST + SGST Ledger</span>
                   <p className="text-xl font-black text-emerald-800 font-mono">
-                    ₹{ledger.reduce((acc, l) => acc + Number(l.cgst_amount) + Number(l.sgst_amount), 0).toLocaleString("en-IN")}
+                    ₹{ledger.reduce((acc, l) => acc + Number(l.cgst_amount || 0) + Number(l.sgst_amount || 0), 0).toLocaleString("en-IN")}
                   </p>
                   <p className="text-[9px] text-slate-400 font-medium">Mapped from regional dual-tax states</p>
                 </div>
@@ -889,7 +1009,7 @@ export const EnterpriseTaxConsole: React.FC<EnterpriseTaxConsoleProps> = ({ onSh
                 <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-1 shadow-2xs">
                   <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">IGST Split Ledger</span>
                   <p className="text-xl font-black text-amber-800 font-mono">
-                    ₹{ledger.reduce((acc, l) => acc + Number(l.igst_amount), 0).toLocaleString("en-IN")}
+                    ₹{ledger.reduce((acc, l) => acc + Number(l.igst_amount || 0), 0).toLocaleString("en-IN")}
                   </p>
                   <p className="text-[9px] text-slate-400 font-medium">Out-of-state customer registries</p>
                 </div>
@@ -897,76 +1017,74 @@ export const EnterpriseTaxConsole: React.FC<EnterpriseTaxConsoleProps> = ({ onSh
                 <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-1 shadow-2xs">
                   <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">TDS + Stamp Duty + Fees</span>
                   <p className="text-xl font-black text-indigo-700 font-mono">
-                    ₹{ledger.reduce((acc, l) => acc + Number(l.tds_amount) + Number(l.stamp_duty_amount) + Number(l.registration_charges) + Number(l.other_charges), 0).toLocaleString("en-IN")}
+                    ₹{ledger.reduce((acc, l) => acc + Number(l.tds_amount || 0) + Number(l.stamp_duty_amount || 0) + Number(l.registration_charges || 0) + Number(l.other_charges || 0), 0).toLocaleString("en-IN")}
                   </p>
                   <p className="text-[9px] text-slate-400 font-medium">Under Section 194IA and State Acts</p>
                 </div>
               </div>
 
               {/* Recharts Graphical reports */}
-              {analytics ? (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                
+                {/* State-wise Tax Breakdown Chart */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3">
+                  <div>
+                    <h4 className="text-xs font-black uppercase text-slate-900 tracking-wider">Tax Collections Grouped by State</h4>
+                    <p className="text-[10px] text-slate-450">Consolidated CGST, SGST, IGST and stamp levies across operating regions.</p>
+                  </div>
                   
-                  {/* State-wise Tax Breakdown Chart */}
-                  <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3">
-                    <div>
-                      <h4 className="text-xs font-black uppercase text-slate-900 tracking-wider">Tax Collections Grouped by State</h4>
-                      <p className="text-[10px] text-slate-450">Consolidated CGST, SGST, IGST and stamp levies across operating regions.</p>
-                    </div>
-                    
-                    <div className="h-64">
-                      {analytics.stateSummary?.length > 0 ? (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={analytics.stateSummary.map((s: any) => ({
-                            state: s.state_code,
-                            Tax: Number(s.total_tax),
-                            BaseSales: Number(s.total_base)
-                          }))}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                            <XAxis dataKey="state" stroke="#94a3b8" fontSize={10} tickLine={false} />
-                            <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} />
-                            <Tooltip formatter={(value: any) => [`₹${Number(value).toLocaleString("en-IN")}`]} />
-                            <Legend wrapperStyle={{ fontSize: 10, paddingTop: 10 }} />
-                            <Bar dataKey="Tax" fill="#4f46e5" radius={[4, 4, 0, 0]} name="Compliance Taxes" />
-                            <Bar dataKey="BaseSales" fill="#06b6d4" radius={[4, 4, 0, 0]} name="Base land value" />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      ) : (
-                        <div className="flex h-full items-center justify-center text-xs text-slate-400 italic">No region-wise metadata recorded.</div>
-                      )}
-                    </div>
+                  <div className="h-64">
+                    {stateSummary.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={stateSummary.map((s: any) => ({
+                          state: s.state_code,
+                          Tax: Number(s.total_tax),
+                          BaseSales: Number(s.total_base)
+                        }))}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="state" stroke="#94a3b8" fontSize={10} tickLine={false} />
+                          <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} />
+                          <Tooltip formatter={(value: any) => [`₹${Number(value).toLocaleString("en-IN")}`]} />
+                          <Legend wrapperStyle={{ fontSize: 10, paddingTop: 10 }} />
+                          <Bar dataKey="Tax" fill="#4f46e5" radius={[4, 4, 0, 0]} name="Compliance Taxes" />
+                          <Bar dataKey="BaseSales" fill="#06b6d4" radius={[4, 4, 0, 0]} name="Base land value" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-xs text-slate-400 italic">No region-wise metadata recorded.</div>
+                    )}
                   </div>
-
-                  {/* Monthly Collections Trend */}
-                  <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3">
-                    <div>
-                      <h4 className="text-xs font-black uppercase text-slate-900 tracking-wider">Monthly Tax Volume Performance</h4>
-                      <p className="text-[10px] text-slate-450">Chronological trend analysis tracking statutory liabilities.</p>
-                    </div>
-
-                    <div className="h-64">
-                      {analytics.monthlySummary?.length > 0 ? (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={analytics.monthlySummary.map((m: any) => ({
-                            month: m.month,
-                            TaxAmount: Number(m.total_tax)
-                          }))}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                            <XAxis dataKey="month" stroke="#94a3b8" fontSize={10} tickLine={false} />
-                            <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} />
-                            <Tooltip formatter={(value: any) => [`₹${Number(value).toLocaleString("en-IN")}`]} />
-                            <Legend wrapperStyle={{ fontSize: 10 }} />
-                            <Bar dataKey="TaxAmount" fill="#10b981" radius={[4, 4, 0, 0]} name="Statutory Liability (INR)" />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      ) : (
-                        <div className="flex h-full items-center justify-center text-xs text-slate-400 italic">No chronological trends recorded yet.</div>
-                      )}
-                    </div>
-                  </div>
-
                 </div>
-              ) : null}
+
+                {/* Monthly Collections Trend */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3">
+                  <div>
+                    <h4 className="text-xs font-black uppercase text-slate-900 tracking-wider">Monthly Tax Volume Performance</h4>
+                    <p className="text-[10px] text-slate-450">Chronological trend analysis tracking statutory liabilities.</p>
+                  </div>
+
+                  <div className="h-64">
+                    {monthlySummary.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={monthlySummary.map((m: any) => ({
+                          month: m.month,
+                          TaxAmount: Number(m.total_tax)
+                        }))}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="month" stroke="#94a3b8" fontSize={10} tickLine={false} />
+                          <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} />
+                          <Tooltip formatter={(value: any) => [`₹${Number(value).toLocaleString("en-IN")}`]} />
+                          <Legend wrapperStyle={{ fontSize: 10 }} />
+                          <Bar dataKey="TaxAmount" fill="#10b981" radius={[4, 4, 0, 0]} name="Statutory Liability (INR)" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-xs text-slate-400 italic">No chronological trends recorded yet.</div>
+                    )}
+                  </div>
+                </div>
+
+              </div>
 
               {/* Bottom statutory legal footnote */}
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3 text-xs text-slate-550 leading-relaxed select-none">
@@ -1196,5 +1314,75 @@ export const EnterpriseTaxConsole: React.FC<EnterpriseTaxConsoleProps> = ({ onSh
       )}
 
     </div>
+  );
+};
+
+// ==========================================
+// LOCAL COMPLIANCE ERROR BOUNDARY
+// ==========================================
+import { Component, ErrorInfo, ReactNode } from "react";
+
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class TaxConsoleErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  public override state: ErrorBoundaryState = {
+    hasError: false,
+    error: null
+  };
+
+  public static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  public override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("Uncaught error in EnterpriseTaxConsole:", error, errorInfo);
+  }
+
+  public override render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-6 bg-rose-50 border border-rose-200 rounded-2xl space-y-4 font-sans select-none" id="tax-error-boundary">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-rose-100 rounded-lg text-rose-600">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-sm font-black uppercase text-rose-950 tracking-wider">Tax Console Runtime Exception</h3>
+              <p className="text-xs text-rose-700 leading-relaxed">
+                A critical rendering error occurred within the GST & Tax Configuration layout. The main application remains active.
+              </p>
+              {this.state.error && (
+                <pre className="text-[10px] font-mono text-rose-800 bg-rose-100/50 p-2.5 rounded-lg border border-rose-200 max-w-full overflow-x-auto">
+                  {this.state.error.toString()}
+                </pre>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={() => this.setState({ hasError: false, error: null })}
+            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-all cursor-pointer border border-rose-500 shadow-md shadow-rose-500/10"
+          >
+            Clear Exception & Reset Console
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+export const EnterpriseTaxConsole: React.FC<EnterpriseTaxConsoleProps> = (props) => {
+  return (
+    <TaxConsoleErrorBoundary>
+      <EnterpriseTaxConsoleInner {...props} />
+    </TaxConsoleErrorBoundary>
   );
 };
