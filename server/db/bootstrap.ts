@@ -583,9 +583,26 @@ export async function bootstrapDatabase() {
     await client.query("ALTER TABLE plots ADD COLUMN IF NOT EXISTS reserved_by VARCHAR(255) NULL");
 
     // Promo Coupons and Campaigns support columns for Lifecycle, Soft Deletes, etc.
-    await client.query("ALTER TABLE promo_coupons ADD COLUMN IF NOT EXISTS start_date DATE");
-    await client.query("ALTER TABLE promo_coupons ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE");
+    await client.query("ALTER TABLE promo_campaigns ADD COLUMN IF NOT EXISTS start_date DATE");
+    await client.query("ALTER TABLE promo_campaigns ADD COLUMN IF NOT EXISTS end_date DATE");
+    await client.query("ALTER TABLE promo_campaigns ADD COLUMN IF NOT EXISTS spend DECIMAL(12,2) DEFAULT 0.00");
+    await client.query("ALTER TABLE promo_campaigns ADD COLUMN IF NOT EXISTS revenue DECIMAL(12,2) DEFAULT 0.00");
+    await client.query("ALTER TABLE promo_campaigns ADD COLUMN IF NOT EXISTS leads INTEGER DEFAULT 0");
+    await client.query("ALTER TABLE promo_campaigns ADD COLUMN IF NOT EXISTS conversions INTEGER DEFAULT 0");
+    await client.query("ALTER TABLE promo_campaigns ADD COLUMN IF NOT EXISTS target_audience TEXT");
+    await client.query("ALTER TABLE promo_campaigns ADD COLUMN IF NOT EXISTS timezone VARCHAR(100) DEFAULT 'Asia/Kolkata'");
     await client.query("ALTER TABLE promo_campaigns ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE");
+
+    await client.query("ALTER TABLE promo_coupons ADD COLUMN IF NOT EXISTS start_date DATE");
+    await client.query("ALTER TABLE promo_coupons ADD COLUMN IF NOT EXISTS expiry_date DATE");
+    await client.query("ALTER TABLE promo_coupons ADD COLUMN IF NOT EXISTS max_uses INTEGER DEFAULT 100");
+    await client.query("ALTER TABLE promo_coupons ADD COLUMN IF NOT EXISTS current_uses INTEGER DEFAULT 0");
+    await client.query("ALTER TABLE promo_coupons ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(100)");
+    await client.query("ALTER TABLE promo_coupons ADD COLUMN IF NOT EXISTS builder_name VARCHAR(255)");
+    await client.query("ALTER TABLE promo_coupons ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'ACTIVE'");
+    await client.query("ALTER TABLE promo_coupons ADD COLUMN IF NOT EXISTS discount_type VARCHAR(50)");
+    await client.query("ALTER TABLE promo_coupons ADD COLUMN IF NOT EXISTS discount_value DECIMAL(12,2)");
+    await client.query("ALTER TABLE promo_coupons ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE");
 
     // Notification Engine Media Message support columns
     await client.query("ALTER TABLE notification_templates ADD COLUMN IF NOT EXISTS whatsapp_media_url VARCHAR(512) NULL");
