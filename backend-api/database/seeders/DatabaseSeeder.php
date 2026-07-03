@@ -16,6 +16,7 @@ class DatabaseSeeder extends Seeder
             SaasSubscriptionSeeder::class,
             SaasPlatformSettingsSeeder::class,
             PaymentGatewaySeeder::class,
+            EmailInfrastructureSeeder::class,
         ]);
     }
 }

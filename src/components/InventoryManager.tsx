@@ -34,7 +34,8 @@ import {
   Activity,
   LayoutGrid,
   Download,
-  List
+  List,
+  Percent
 } from "lucide-react";
 
 interface InventoryManagerProps {
