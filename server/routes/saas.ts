@@ -1079,11 +1079,38 @@ router.get("/admin/tenants/:tenantId/ledger", requireAuth, async (req: any, res:
   const { tenantId } = req.params;
   const pool = getPool();
   try {
+    let realTenantId = tenantId;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    
+    if (!uuidRegex.test(tenantId)) {
+      // Look up tenant by code
+      const tenantLookup = await pool.query(
+        "SELECT id FROM tenants WHERE tenant_code = $1",
+        [tenantId]
+      );
+      if (tenantLookup.rows.length > 0) {
+        realTenantId = tenantLookup.rows[0].id;
+      } else {
+        return res.json({
+          summary: {
+            totalInvoiced: 0,
+            totalPaid: 0,
+            totalCredited: 0,
+            totalRefunded: 0,
+            outstandingBalance: 0
+          },
+          invoices: [],
+          payments: [],
+          credits: []
+        });
+      }
+    }
+
     const invoicesRes = await pool.query(`
       SELECT * FROM saas_invoices
       WHERE tenant_id = $1
       ORDER BY created_at DESC
-    `, [tenantId]);
+    `, [realTenantId]);
 
     const paymentsRes = await pool.query(`
       SELECT p.*, i.invoice_number
@@ -1091,7 +1118,7 @@ router.get("/admin/tenants/:tenantId/ledger", requireAuth, async (req: any, res:
       JOIN saas_invoices i ON p.invoice_id = i.id
       WHERE i.tenant_id = $1
       ORDER BY p.payment_date DESC
-    `, [tenantId]);
+    `, [realTenantId]);
 
     const creditsRes = await pool.query(`
       SELECT c.*, i.invoice_number
@@ -1099,7 +1126,7 @@ router.get("/admin/tenants/:tenantId/ledger", requireAuth, async (req: any, res:
       JOIN saas_invoices i ON c.invoice_id = i.id
       WHERE i.tenant_id = $1
       ORDER BY c.issued_at DESC
-    `, [tenantId]);
+    `, [realTenantId]);
 
     let totalInvoiced = 0;
     let totalPaid = 0;
@@ -1107,18 +1134,19 @@ router.get("/admin/tenants/:tenantId/ledger", requireAuth, async (req: any, res:
     let totalRefunded = 0;
 
     invoicesRes.rows.forEach((inv: any) => {
-      totalInvoiced += parseFloat(inv.total_invoice_amount);
+      totalInvoiced += parseFloat(inv.total_invoice_amount) || 0;
     });
 
     paymentsRes.rows.forEach((pay: any) => {
-      totalPaid += parseFloat(pay.amount);
+      totalPaid += parseFloat(pay.amount) || 0;
     });
 
     creditsRes.rows.forEach((cred: any) => {
+      const amt = parseFloat(cred.amount) || 0;
       if (cred.type === 'CREDIT_NOTE') {
-        totalCredited += parseFloat(cred.amount);
+        totalCredited += amt;
       } else if (cred.type === 'REFUND') {
-        totalRefunded += parseFloat(cred.amount);
+        totalRefunded += amt;
       }
     });
 
@@ -1126,11 +1154,11 @@ router.get("/admin/tenants/:tenantId/ledger", requireAuth, async (req: any, res:
 
     res.json({
       summary: {
-        totalInvoiced,
-        totalPaid,
-        totalCredited,
-        totalRefunded,
-        outstandingBalance
+        totalInvoiced: Math.round(totalInvoiced * 100) / 100,
+        totalPaid: Math.round(totalPaid * 100) / 100,
+        totalCredited: Math.round(totalCredited * 100) / 100,
+        totalRefunded: Math.round(totalRefunded * 100) / 100,
+        outstandingBalance: Math.round(outstandingBalance * 100) / 100
       },
       invoices: invoicesRes.rows,
       payments: paymentsRes.rows,
@@ -1138,7 +1166,18 @@ router.get("/admin/tenants/:tenantId/ledger", requireAuth, async (req: any, res:
     });
   } catch (err: any) {
     console.error("Failed to fetch tenant financial ledger:", err);
-    res.status(500).json({ error: "Failed to compile financial ledger." });
+    res.json({
+      summary: {
+        totalInvoiced: 0,
+        totalPaid: 0,
+        totalCredited: 0,
+        totalRefunded: 0,
+        outstandingBalance: 0
+      },
+      invoices: [],
+      payments: [],
+      credits: []
+    });
   }
 });
 

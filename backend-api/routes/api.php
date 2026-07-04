@@ -408,6 +408,15 @@ Route::prefix('v1')->group(function () {
     Route::post('/admin/tenants/{id}/subscription/lifecycle', [SaasController::class, 'updateLifecycle'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
     Route::post('/admin/tenants/{id}/subscription/overrides', [SaasController::class, 'saveOverrides'])->middleware([PermissionRequirementMiddleware::class . ':tenants.manage']);
 
+    // SAAS ACCOUNTS RECEIVABLE / INVOICE ROUTES (Sprint 4)
+    Route::get('/admin/invoices', [SaasController::class, 'getInvoices'])->middleware([PermissionRequirementMiddleware::class . ':subscriptions.view']);
+    Route::get('/admin/invoices/{id}', [SaasController::class, 'getInvoiceDetails'])->middleware([PermissionRequirementMiddleware::class . ':subscriptions.view']);
+    Route::post('/admin/invoices', [SaasController::class, 'createInvoice'])->middleware([PermissionRequirementMiddleware::class . ':subscriptions.manage']);
+    Route::post('/admin/invoices/{id}/payments', [SaasController::class, 'recordInvoicePayment'])->middleware([PermissionRequirementMiddleware::class . ':subscriptions.manage']);
+    Route::post('/admin/invoices/{id}/credit-notes', [SaasController::class, 'issueInvoiceCreditNote'])->middleware([PermissionRequirementMiddleware::class . ':subscriptions.manage']);
+    Route::post('/admin/invoices/{id}/send', [SaasController::class, 'sendInvoiceEmail'])->middleware([PermissionRequirementMiddleware::class . ':subscriptions.manage']);
+    Route::get('/admin/tenants/{tenantId}/ledger', [SaasController::class, 'getTenantLedger'])->middleware([PermissionRequirementMiddleware::class . ':subscriptions.view']);
+
     // Tenant-level route checking for tenant-level permission
     Route::get('/tenant/subscription-summary', [SaasController::class, 'getMySubscriptionSummary'])->middleware([TenantResolverMiddleware::class]);
     Route::get('/tenant/commercial/plans', [SaasController::class, 'getCommercialPlans'])->middleware([TenantResolverMiddleware::class]);

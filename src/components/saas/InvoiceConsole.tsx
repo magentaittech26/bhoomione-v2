@@ -195,6 +195,53 @@ export default function InvoiceConsole({ tenants, onShowToast }: InvoiceConsoleP
     }
   };
 
+  // Helper to generate next unique invoice code
+  const generateNextInvoiceCode = (existingInvoices: any[]): string => {
+    const year = new Date().getFullYear();
+    const prefix = `BO-INV-${year}-`;
+    
+    let maxNum = 0;
+    const regex = new RegExp(`^BO-INV-${year}-(\\d+)$`);
+    
+    existingInvoices.forEach(inv => {
+      const num = inv.invoice_number;
+      if (num) {
+        const match = regex.exec(num);
+        if (match) {
+          const val = parseInt(match[1], 10);
+          if (val > maxNum) {
+            maxNum = val;
+          }
+        }
+      }
+    });
+    
+    const nextNum = maxNum + 1;
+    const padded = String(nextNum).padStart(3, '0');
+    return `${prefix}${padded}`;
+  };
+
+  // Helper to suggest next code when duplicate is entered
+  const getSuggestedNextCode = (inputCode: string, existingInvoices: any[]): string => {
+    const match = inputCode.match(/^(.*?)(\d+)$/);
+    if (match) {
+      const base = match[1];
+      let maxNum = parseInt(match[2], 10);
+      
+      existingInvoices.forEach(inv => {
+        if (inv.invoice_number && inv.invoice_number.startsWith(base)) {
+          const numPart = inv.invoice_number.slice(base.length);
+          const parsed = parseInt(numPart, 10);
+          if (!isNaN(parsed) && parsed > maxNum) {
+            maxNum = parsed;
+          }
+        }
+      });
+      return `${base}${String(maxNum + 1).padStart(match[2].length, '0')}`;
+    }
+    return generateNextInvoiceCode(existingInvoices);
+  };
+
   // Compile Dynamic Invoice
   const handleCompileInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -202,8 +249,17 @@ export default function InvoiceConsole({ tenants, onShowToast }: InvoiceConsoleP
       onShowToast("Please select a target Tenant Workspace.", "warning");
       return;
     }
-    if (!compileForm.invoice_number.trim()) {
+    const invNum = compileForm.invoice_number.trim();
+    if (!invNum) {
       onShowToast("Please enter a unique Invoice Code.", "warning");
+      return;
+    }
+
+    // Check for duplicate invoice code
+    const isDuplicate = invoices.some(inv => inv.invoice_number.toLowerCase() === invNum.toLowerCase());
+    if (isDuplicate) {
+      const suggestion = getSuggestedNextCode(invNum, invoices);
+      onShowToast(`Invoice code already exists. Suggested next code: ${suggestion}`, "warning");
       return;
     }
 
@@ -520,7 +576,14 @@ export default function InvoiceConsole({ tenants, onShowToast }: InvoiceConsoleP
           <div className="flex gap-2">
             <button
               id="btn-compile-invoice-open"
-              onClick={() => setCompileModalOpen(true)}
+              onClick={() => {
+                const nextCode = generateNextInvoiceCode(invoices);
+                setCompileForm(prev => ({
+                  ...prev,
+                  invoice_number: nextCode
+                }));
+                setCompileModalOpen(true);
+              }}
               className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-extrabold text-[11px] flex items-center gap-1.5 transition-all shadow-xs"
             >
               <Plus className="w-3.5 h-3.5" />
