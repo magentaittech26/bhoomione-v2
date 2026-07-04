@@ -35,7 +35,10 @@ import {
   LayoutGrid,
   Download,
   List,
-  Percent
+  Percent,
+  Archive,
+  RotateCcw,
+  Copy
 } from "lucide-react";
 
 interface InventoryManagerProps {
@@ -176,14 +179,16 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
     name: "", code: "", developer_name: "", location: "", status: "PLANNING",
     rera_number: "", approval_status: "PENDING", approval_authority: "",
     launch_date: "", possession_target_date: "", approvals_metadata: "{}",
-    project_type: "RESIDENTIAL", state: "", description: ""
+    project_type: "RESIDENTIAL", state: "", description: "",
+    village: "", taluk: "", district: "", country: "INDIA", pincode: "",
+    latitude: "", longitude: ""
   });
 
   const [formLay, setFormLay] = useState({
     project_id: "", name: "", code: "", layout_type: "RESIDENTIAL",
     approval_number: "", approval_date: "", total_area_value: "",
     total_area_unit_id: "", measurement_unit_id: "", status: "DRAFT",
-    survey_number: ""
+    survey_number: "", phase: "", description: ""
   });
 
   const [formPlot, setFormPlot] = useState({
@@ -507,6 +512,8 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
 
   // --- CRUD ACTION HANDLERS ---
   
+  // --- CRUD ACTION HANDLERS ---
+  
   // 1. Projects Actions
   const handleSaveProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -516,17 +523,24 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
       parsedMetadata.project_type = formProj.project_type;
       parsedMetadata.state = formProj.state;
       parsedMetadata.description = formProj.description;
+      parsedMetadata.village = formProj.village;
+      parsedMetadata.taluk = formProj.taluk;
+      parsedMetadata.district = formProj.district;
+      parsedMetadata.country = formProj.country;
+      parsedMetadata.pincode = formProj.pincode;
+      parsedMetadata.latitude = formProj.latitude;
+      parsedMetadata.longitude = formProj.longitude;
 
       const payload = {
-        name: formProj.name,
-        code: formProj.code,
-        developer_name: formProj.developer_name,
-        location: formProj.location,
+        name: formProj.name.trim(),
+        code: formProj.code.trim().toUpperCase(),
+        developer_name: formProj.developer_name.trim(),
+        location: formProj.location.trim(),
         status: formProj.status,
         approval_status: formProj.approval_status,
-        approval_authority: formProj.approval_authority,
+        approval_authority: formProj.approval_authority.trim(),
         approvals_metadata: parsedMetadata,
-        rera_number: formProj.rera_number || null,
+        rera_number: formProj.rera_number.trim() || null,
         launch_date: formProj.launch_date || null,
         possession_target_date: formProj.possession_target_date || null,
       };
@@ -551,11 +565,11 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
     setEditId(p.id);
     const meta = tryParseJSON(p.approvals_metadata, {});
     setFormProj({
-      name: p.name,
-      code: p.code,
-      developer_name: p.developer_name,
-      location: p.location,
-      status: p.status,
+      name: p.name || "",
+      code: p.code || "",
+      developer_name: p.developer_name || "",
+      location: p.location || "",
+      status: p.status || "PLANNING",
       rera_number: p.rera_number || "",
       approval_status: p.approval_status || "PENDING",
       approval_authority: p.approval_authority || "",
@@ -564,7 +578,14 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
       approvals_metadata: JSON.stringify(meta, null, 2),
       project_type: meta.project_type || "RESIDENTIAL",
       state: meta.state || "",
-      description: meta.description || ""
+      description: meta.description || "",
+      village: meta.village || "",
+      taluk: meta.taluk || "",
+      district: meta.district || "",
+      country: meta.country || "INDIA",
+      pincode: meta.pincode || "",
+      latitude: meta.latitude || "",
+      longitude: meta.longitude || ""
     });
     setCurrModal("edit_project");
   };
@@ -584,7 +605,138 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
     }
   };
 
+  const handleArchiveProject = async (id: string, currentStatus: string) => {
+    if (!window.confirm("Are you sure you want to Archive this Project? Status will change to ARCHIVED.")) return;
+    setErrorMess(null);
+    try {
+      const p = projects.find(proj => proj.id === id);
+      if (!p) return;
+      const meta = tryParseJSON(p.approvals_metadata, {});
+      meta.original_status = currentStatus;
+      
+      const payload = {
+        name: p.name,
+        code: p.code,
+        developer_name: p.developer_name,
+        location: p.location,
+        status: "ARCHIVED",
+        approval_status: p.approval_status,
+        approval_authority: p.approval_authority,
+        approvals_metadata: meta,
+        rera_number: p.rera_number,
+        launch_date: p.launch_date ? p.launch_date.split("T")[0] : null,
+        possession_target_date: p.possession_target_date ? p.possession_target_date.split("T")[0] : null,
+      };
+      await api.updateProject(id, payload);
+      displaySuccess(`Project '${p.code}' successfully archived.`);
+      dispatchAuditLog("PROJECT_ARCHIVE", "projects", id, `Archived Project: ${p.code}`);
+      await loadData();
+    } catch (err: any) {
+      setErrorMess(err.message || "Failed to archive project.");
+    }
+  };
+
+  const handleRestoreProject = async (id: string) => {
+    setErrorMess(null);
+    try {
+      const p = projects.find(proj => proj.id === id);
+      if (!p) return;
+      const meta = tryParseJSON(p.approvals_metadata, {});
+      const targetStatus = meta.original_status || "PLANNING";
+      delete meta.original_status;
+
+      const payload = {
+        name: p.name,
+        code: p.code,
+        developer_name: p.developer_name,
+        location: p.location,
+        status: targetStatus,
+        approval_status: p.approval_status,
+        approval_authority: p.approval_authority,
+        approvals_metadata: meta,
+        rera_number: p.rera_number,
+        launch_date: p.launch_date ? p.launch_date.split("T")[0] : null,
+        possession_target_date: p.possession_target_date ? p.possession_target_date.split("T")[0] : null,
+      };
+      await api.updateProject(id, payload);
+      displaySuccess(`Project '${p.code}' successfully restored to status '${targetStatus}'.`);
+      dispatchAuditLog("PROJECT_RESTORE", "projects", id, `Restored Project: ${p.code}`);
+      await loadData();
+    } catch (err: any) {
+      setErrorMess(err.message || "Failed to restore project.");
+    }
+  };
+
+  const handleDuplicateProject = async (id: string) => {
+    if (!window.confirm("Are you sure you want to Duplicate this Project record?")) return;
+    setErrorMess(null);
+    try {
+      const p = projects.find(proj => proj.id === id);
+      if (!p) return;
+      const meta = tryParseJSON(p.approvals_metadata, {});
+      
+      const newCode = `${p.code}_DUP`.slice(0, 100);
+      const newName = `${p.name} (Copy)`;
+
+      const payload = {
+        name: newName,
+        code: newCode,
+        developer_name: p.developer_name,
+        location: p.location,
+        status: p.status,
+        approval_status: p.approval_status,
+        approval_authority: p.approval_authority,
+        approvals_metadata: meta,
+        rera_number: p.rera_number,
+        launch_date: p.launch_date ? p.launch_date.split("T")[0] : null,
+        possession_target_date: p.possession_target_date ? p.possession_target_date.split("T")[0] : null,
+      };
+      const res = await api.createProject(payload);
+      displaySuccess(`Project duplicated as '${newCode}' successfully!`);
+      dispatchAuditLog("PROJECT_DUPLICATE", "projects", res.id, `Duplicated Project '${p.code}' to '${newCode}'`);
+      await loadData();
+    } catch (err: any) {
+      setErrorMess(err.message || "Failed to duplicate project.");
+    }
+  };
+
   // 2. Layouts Actions
+  const packApprovalNumber = (apprNum: string, survey: string, phase: string, desc: string) => {
+    const parts = [];
+    if (apprNum?.trim()) parts.push(`Ap:${apprNum.trim()}`);
+    if (phase?.trim()) parts.push(`Ph:${phase.trim()}`);
+    if (survey?.trim()) parts.push(`Sy:${survey.trim()}`);
+    if (desc?.trim()) parts.push(`De:${desc.trim()}`);
+    return parts.join(" | ").slice(0, 149);
+  };
+
+  const unpackApprovalNumber = (packedStr: string) => {
+    const res = { approval_number: "", phase: "", survey_number: "", description: "" };
+    if (!packedStr) return res;
+    
+    if (!packedStr.includes(" | ") && !packedStr.includes("Ap:") && !packedStr.includes("Ph:")) {
+      const match = packedStr.match(/(.*?)\s*\(Survey:\s*(.*?)\)/);
+      if (match) {
+        res.approval_number = match[1].trim();
+        res.survey_number = match[2].trim();
+      } else {
+        res.approval_number = packedStr;
+      }
+      return res;
+    }
+
+    const parts = packedStr.split(" | ");
+    parts.forEach(part => {
+      const [key, ...valParts] = part.split(":");
+      const val = valParts.join(":").trim();
+      if (key === "Ap") res.approval_number = val;
+      else if (key === "Ph") res.phase = val;
+      else if (key === "Sy") res.survey_number = val;
+      else if (key === "De") res.description = val;
+    });
+    return res;
+  };
+
   const handleSaveLayout = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMess(null);
@@ -613,17 +765,20 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
         return;
       }
 
-      // Safe packing of Survey numbers into approval_number text field to survive schema restrictions
-      const fullApprovalNum = formLay.survey_number.trim()
-        ? `${formLay.approval_number.trim() || "Approved Layout"} (Survey: ${formLay.survey_number.trim()})`
-        : formLay.approval_number.trim();
+      // Safe packing of Survey numbers and other extra fields into approval_number text field to survive schema restrictions
+      const packedStr = packApprovalNumber(
+        formLay.approval_number,
+        formLay.survey_number,
+        formLay.phase,
+        formLay.description
+      );
 
       const payload = {
         project_id: formLay.project_id,
         name: formLay.name.trim(),
         code: formLay.code.trim().toUpperCase(),
         layout_type: formLay.layout_type,
-        approval_number: fullApprovalNum || null,
+        approval_number: packedStr || null,
         approval_date: formLay.approval_date || null,
         total_area_value: formLay.total_area_value ? Number(formLay.total_area_value) : null,
         total_area_unit_id: formLay.total_area_unit_id || formLay.measurement_unit_id || null,
@@ -651,23 +806,17 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
     setEditId(l.id);
     
     // Unpacking approval_number and survey_number from structured string representation safely
-    let approvalNumberOnly = l.approval_number || "";
-    let surveyNumberOnly = "";
-    if (l.approval_number) {
-      const match = l.approval_number.match(/(.*?)\s*\(Survey:\s*(.*?)\)/);
-      if (match) {
-        approvalNumberOnly = match[1].trim();
-        surveyNumberOnly = match[2].trim();
-      }
-    }
+    const unpacked = unpackApprovalNumber(l.approval_number || "");
 
     setFormLay({
       project_id: l.project_id,
       name: l.name,
       code: l.code,
       layout_type: l.layout_type,
-      approval_number: approvalNumberOnly,
-      survey_number: surveyNumberOnly,
+      approval_number: unpacked.approval_number,
+      survey_number: unpacked.survey_number,
+      phase: unpacked.phase,
+      description: unpacked.description,
       approval_date: l.approval_date ? l.approval_date.split("T")[0] : "",
       total_area_value: l.total_area_value ? String(l.total_area_value) : "",
       total_area_unit_id: l.total_area_unit_id || "",
@@ -688,6 +837,120 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
       await loadData();
     } catch (err: any) {
       setErrorMess(err.message || "Relational error purging layout phase indices.");
+    }
+  };
+
+  const handleArchiveLayout = async (id: string, currentStatus: string) => {
+    if (!window.confirm("Are you sure you want to Archive this Layout?")) return;
+    setErrorMess(null);
+    try {
+      const l = lookupLayouts.find(lay => lay.id === id);
+      if (!l) return;
+      
+      const unpacked = unpackApprovalNumber(l.approval_number || "");
+      const packedStr = packApprovalNumber(
+        unpacked.approval_number,
+        unpacked.survey_number,
+        unpacked.phase,
+        unpacked.description + ` (OS:${currentStatus})`
+      );
+
+      const payload = {
+        project_id: l.project_id,
+        name: l.name,
+        code: l.code,
+        layout_type: l.layout_type,
+        approval_number: packedStr,
+        approval_date: l.approval_date ? l.approval_date.split("T")[0] : null,
+        total_area_value: l.total_area_value ? Number(l.total_area_value) : null,
+        total_area_unit_id: l.total_area_unit_id,
+        measurement_unit_id: l.measurement_unit_id,
+        status: "ARCHIVED"
+      };
+
+      await api.updateLayout(id, payload);
+      displaySuccess(`Layout phase '${l.name}' archived.`);
+      dispatchAuditLog("LAYOUT_ARCHIVE", "layouts", id, `Archived layout phase: ${l.code}`);
+      await loadData();
+    } catch (err: any) {
+      setErrorMess(err.message || "Failed to archive layout.");
+    }
+  };
+
+  const handleRestoreLayout = async (id: string) => {
+    setErrorMess(null);
+    try {
+      const l = lookupLayouts.find(lay => lay.id === id);
+      if (!l) return;
+
+      const unpacked = unpackApprovalNumber(l.approval_number || "");
+      let targetStatus = "DRAFT";
+      if (unpacked.description.includes("(OS:")) {
+        const match = unpacked.description.match(/\(OS:(.*?)\)/);
+        if (match) {
+          targetStatus = match[1].trim();
+          unpacked.description = unpacked.description.replace(/\(OS:(.*?)\)/, "").trim();
+        }
+      }
+
+      const packedStr = packApprovalNumber(
+        unpacked.approval_number,
+        unpacked.survey_number,
+        unpacked.phase,
+        unpacked.description
+      );
+
+      const payload = {
+        project_id: l.project_id,
+        name: l.name,
+        code: l.code,
+        layout_type: l.layout_type,
+        approval_number: packedStr,
+        approval_date: l.approval_date ? l.approval_date.split("T")[0] : null,
+        total_area_value: l.total_area_value ? Number(l.total_area_value) : null,
+        total_area_unit_id: l.total_area_unit_id,
+        measurement_unit_id: l.measurement_unit_id,
+        status: targetStatus
+      };
+
+      await api.updateLayout(id, payload);
+      displaySuccess(`Layout phase '${l.name}' restored to '${targetStatus}'.`);
+      dispatchAuditLog("LAYOUT_RESTORE", "layouts", id, `Restored layout phase: ${l.code}`);
+      await loadData();
+    } catch (err: any) {
+      setErrorMess(err.message || "Failed to restore layout.");
+    }
+  };
+
+  const handleDuplicateLayout = async (id: string) => {
+    if (!window.confirm("Are you sure you want to Duplicate this Layout?")) return;
+    setErrorMess(null);
+    try {
+      const l = lookupLayouts.find(lay => lay.id === id);
+      if (!l) return;
+
+      const newCode = `${l.code}_DUP`.slice(0, 100);
+      const newName = `${l.name} (Copy)`;
+
+      const payload = {
+        project_id: l.project_id,
+        name: newName,
+        code: newCode,
+        layout_type: l.layout_type,
+        approval_number: l.approval_number,
+        approval_date: l.approval_date ? l.approval_date.split("T")[0] : null,
+        total_area_value: l.total_area_value ? Number(l.total_area_value) : null,
+        total_area_unit_id: l.total_area_unit_id,
+        measurement_unit_id: l.measurement_unit_id,
+        status: l.status
+      };
+
+      const res = await api.createLayout(payload);
+      displaySuccess(`Layout phase duplicated as '${newCode}' successfully!`);
+      dispatchAuditLog("LAYOUT_DUPLICATE", "layouts", res.id, `Duplicated layout phase '${l.code}' to '${newCode}'`);
+      await loadData();
+    } catch (err: any) {
+      setErrorMess(err.message || "Failed to duplicate layout.");
     }
   };
 
@@ -1166,7 +1429,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                 </div>
                 {hasProjManage && (
                   <button
-                    onClick={() => { setEditId(null); setFormProj({ name: "", code: "", developer_name: "", location: "", status: "PLANNING", rera_number: "", approval_status: "PENDING", approval_authority: "", launch_date: "", possession_target_date: "", approvals_metadata: "{}", project_type: "RESIDENTIAL", state: "", description: "" }); setCurrModal("create_project"); }}
+                    onClick={() => { setEditId(null); setFormProj({ name: "", code: "", developer_name: "", location: "", status: "PLANNING", rera_number: "", approval_status: "PENDING", approval_authority: "", launch_date: "", possession_target_date: "", approvals_metadata: "{}", project_type: "RESIDENTIAL", state: "", description: "", village: "", taluk: "", district: "", country: "INDIA", pincode: "", latitude: "", longitude: "" }); setCurrModal("create_project"); }}
                     className="inline-flex items-center gap-1 bg-indigo-650 text-white font-semibold text-xs px-3 py-2 rounded-xl hover:bg-indigo-750 transition-colors"
                   >
                     <Plus className="w-4 h-4" />
@@ -1311,6 +1574,30 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                                 >
                                   <Edit className="w-3.5 h-3.5" />
                                 </button>
+                                {p.status === "ARCHIVED" ? (
+                                  <button
+                                    onClick={() => handleRestoreProject(p.id)}
+                                    className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"
+                                    title="Restore Project"
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => handleArchiveProject(p.id, p.status)}
+                                    className="p-1 text-slate-400 hover:text-amber-600 transition-colors"
+                                    title="Archive Project"
+                                  >
+                                    <Archive className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => handleDuplicateProject(p.id)}
+                                  className="p-1 text-slate-400 hover:text-teal-600 transition-colors"
+                                  title="Duplicate Project"
+                                >
+                                  <Copy className="w-3.5 h-3.5" />
+                                </button>
                                 <button
                                   onClick={() => handleDeleteProject(p.id, p.code)}
                                   className="p-1 text-slate-400 hover:text-rose-600 transition-colors"
@@ -1375,7 +1662,9 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                         total_area_value: "",
                         total_area_unit_id: units[0]?.id || "",
                         measurement_unit_id: units[0]?.id || "",
-                        status: "DRAFT"
+                        status: "DRAFT",
+                        phase: "",
+                        description: ""
                       });
                       setCurrModal("create_layout");
                     }}
@@ -1543,6 +1832,30 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                                   title="Edit layout details"
                                 >
                                   <Edit className="w-3.5 h-3.5" />
+                                </button>
+                                {l.status === "ARCHIVED" ? (
+                                  <button
+                                    onClick={() => handleRestoreLayout(l.id)}
+                                    className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"
+                                    title="Restore Layout"
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => handleArchiveLayout(l.id, l.status)}
+                                    className="p-1 text-slate-400 hover:text-amber-600 transition-colors"
+                                    title="Archive Layout"
+                                  >
+                                    <Archive className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => handleDuplicateLayout(l.id)}
+                                  className="p-1 text-slate-400 hover:text-teal-600 transition-colors"
+                                  title="Duplicate Layout"
+                                >
+                                  <Copy className="w-3.5 h-3.5" />
                                 </button>
                                 <button
                                   onClick={() => handleDeleteLayout(l.id, l.code)}
@@ -2067,31 +2380,69 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
 
           {/* PROJECT DETAIL SCREEN */}
           {activeTab === "projects" && selectedProject ? (
-            <div className="space-y-4" id="project-inspector">
-              <div className="flex justify-between items-start">
-                <div>
-                  <span className="bg-indigo-50 border border-indigo-150 text-indigo-700 font-mono text-[9px] font-bold px-2 py-0.5 rounded uppercase">{selectedProject.code}</span>
-                  <h3 className="text-sm font-bold text-slate-900 mt-1">{selectedProject.name}</h3>
-                </div>
-                <button onClick={() => setSelectedProject(null)} className="text-[10px] text-indigo-600 hover:underline">Clear</button>
-              </div>
+            (() => {
+              const meta = tryParseJSON(selectedProject.approvals_metadata, {});
+              const village = meta.village || "N/A";
+              const taluk = meta.taluk || "N/A";
+              const district = meta.district || "N/A";
+              const country = meta.country || "INDIA";
+              const pincode = meta.pincode || "N/A";
+              const latitude = meta.latitude || "N/A";
+              const longitude = meta.longitude || "N/A";
+              const projectDesc = meta.description || selectedProject.description || "No description provided.";
+              const formattedCreated = selectedProject.created_at 
+                ? new Date(selectedProject.created_at).toLocaleString(undefined, { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                : "N/A";
+              const formattedUpdated = selectedProject.updated_at 
+                ? new Date(selectedProject.updated_at).toLocaleString(undefined, { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                : "N/A";
 
-              <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-3 text-xs">
-                <p className="font-bold text-[10px] text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1">Basic Information</p>
-                <div className="space-y-1 text-[11px]">
-                  <p className="flex justify-between"><span>Developer Name:</span> <span className="font-semibold text-slate-800">{selectedProject.developer_name}</span></p>
-                  <p className="flex justify-between"><span>Location Matrix:</span> <span className="font-semibold text-slate-800">{selectedProject.location}</span></p>
-                  <p className="flex justify-between"><span>Active Status:</span> <span className="font-semibold text-slate-800">{selectedProject.status}</span></p>
-                </div>
+              return (
+                <div className="space-y-4" id="project-inspector">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className="bg-indigo-50 border border-indigo-150 text-indigo-700 font-mono text-[9px] font-bold px-2 py-0.5 rounded uppercase">{selectedProject.code}</span>
+                      <h3 className="text-sm font-bold text-slate-900 mt-1">{selectedProject.name}</h3>
+                    </div>
+                    <button onClick={() => setSelectedProject(null)} className="text-[10px] text-indigo-600 hover:underline">Clear</button>
+                  </div>
 
-                <p className="font-bold text-[10px] text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1 pt-1">Approval Information</p>
-                <div className="space-y-1 text-[11px] font-sans">
-                  <p className="flex justify-between"><span>RERA Registration:</span> <span className="font-medium text-slate-800">{selectedProject.rera_number || "PENDING"}</span></p>
-                  <p className="flex justify-between"><span>Regulatory Status:</span> <span className="font-medium text-slate-850">{selectedProject.approval_status}</span></p>
-                  <p className="flex justify-between"><span>Approval Authority:</span> <span className="font-medium text-slate-800">{selectedProject.approval_authority || "N/A"}</span></p>
-                  <p className="flex justify-between"><span>Launch date:</span> <span className="font-medium text-slate-800">{selectedProject.launch_date ? selectedProject.launch_date.split("T")[0] : "N/A"}</span></p>
-                  <p className="flex justify-between"><span>Possession target:</span> <span className="font-medium text-slate-800">{selectedProject.possession_target_date ? selectedProject.possession_target_date.split("T")[0] : "N/A"}</span></p>
-                </div>
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-3 text-xs">
+                    <p className="font-bold text-[10px] text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1">Basic Information</p>
+                    <div className="space-y-1 text-[11px]">
+                      <p className="flex justify-between"><span>Developer Name:</span> <span className="font-semibold text-slate-800">{selectedProject.developer_name}</span></p>
+                      <p className="flex justify-between"><span>Location Matrix:</span> <span className="font-semibold text-slate-800">{selectedProject.location}</span></p>
+                      <p className="flex justify-between"><span>Active Status:</span> <span className="font-semibold text-slate-800">{selectedProject.status}</span></p>
+                    </div>
+
+                    <p className="font-bold text-[10px] text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1 pt-1">Location Details</p>
+                    <div className="space-y-1 text-[11px]">
+                      <p className="flex justify-between"><span>Village:</span> <span className="font-semibold text-slate-800">{village}</span></p>
+                      <p className="flex justify-between"><span>Taluk:</span> <span className="font-semibold text-slate-800">{taluk}</span></p>
+                      <p className="flex justify-between"><span>District:</span> <span className="font-semibold text-slate-800">{district}</span></p>
+                      <p className="flex justify-between"><span>Country:</span> <span className="font-semibold text-slate-800">{country}</span></p>
+                      <p className="flex justify-between"><span>PIN Code:</span> <span className="font-semibold text-slate-800">{pincode}</span></p>
+                      <p className="flex justify-between"><span>Coordinates:</span> <span className="font-mono font-semibold text-indigo-600">{latitude}, {longitude}</span></p>
+                    </div>
+
+                    <p className="font-bold text-[10px] text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1 pt-1">Description</p>
+                    <p className="text-[11px] text-slate-600 leading-relaxed italic bg-slate-50 p-2 rounded-lg border border-slate-100">{projectDesc}</p>
+
+                    <p className="font-bold text-[10px] text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1 pt-1">Approval Information</p>
+                    <div className="space-y-1 text-[11px] font-sans">
+                      <p className="flex justify-between"><span>RERA Registration:</span> <span className="font-medium text-slate-800">{selectedProject.rera_number || "PENDING"}</span></p>
+                      <p className="flex justify-between"><span>Regulatory Status:</span> <span className="font-medium text-slate-850">{selectedProject.approval_status}</span></p>
+                      <p className="flex justify-between"><span>Approval Authority:</span> <span className="font-medium text-slate-800">{selectedProject.approval_authority || "N/A"}</span></p>
+                      <p className="flex justify-between"><span>Launch date:</span> <span className="font-medium text-slate-800">{selectedProject.launch_date ? selectedProject.launch_date.split("T")[0] : "N/A"}</span></p>
+                      <p className="flex justify-between"><span>Possession target:</span> <span className="font-medium text-slate-800">{selectedProject.possession_target_date ? selectedProject.possession_target_date.split("T")[0] : "N/A"}</span></p>
+                    </div>
+
+                    <p className="font-bold text-[10px] text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1 pt-1">Chronology</p>
+                    <div className="space-y-1 text-[11px]">
+                      <p className="flex justify-between"><span>Created Date:</span> <span className="font-mono text-slate-600">{formattedCreated}</span></p>
+                      <p className="flex justify-between"><span>Last Updated:</span> <span className="font-mono text-slate-600">{formattedUpdated}</span></p>
+                      <p className="flex justify-between"><span>Created By:</span> <span className="font-medium text-slate-700">System Admin</span></p>
+                    </div>
 
                 <p className="font-bold text-[10px] text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1 pt-1">Sub layout subdivisions summary</p>
                 <div className="space-y-2 max-h-32 overflow-y-auto pt-1">
@@ -2120,18 +2471,16 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                 </div>
               </div>
             </div>
+              );
+            })()
           ) : activeTab === "layouts" && selectedLayout ? (
             (() => {
-              // Unpack approval and survey metadata on-the-fly safely
-              let approvalNumberOnly = selectedLayout.approval_number || "";
-              let surveyNumberOnly = "N/A";
-              if (selectedLayout.approval_number) {
-                const match = selectedLayout.approval_number.match(/(.*?)\s*\(Survey:\s*(.*?)\)/);
-                if (match) {
-                  approvalNumberOnly = match[1].trim();
-                  surveyNumberOnly = match[2].trim();
-                }
-              }
+              // Unpack approval and survey metadata safely using helper
+              const unpacked = unpackApprovalNumber(selectedLayout.approval_number);
+              const approvalNumberOnly = unpacked.approval_number || "N/A";
+              const surveyNumberOnly = unpacked.survey_number || selectedLayout.survey_number || "N/A";
+              const phaseOnly = unpacked.phase || "N/A";
+              const layoutDescription = unpacked.description || "N/A";
 
               const formattedCreated = selectedLayout.created_at 
                 ? new Date(selectedLayout.created_at).toLocaleString(undefined, { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' })
@@ -2156,8 +2505,12 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                       <p className="flex justify-between"><span>Phase Code:</span> <span className="font-mono font-bold text-slate-900">{selectedLayout.code}</span></p>
                       <p className="flex justify-between"><span>Parent Project:</span> <span className="font-semibold text-slate-800">{selectedLayout.project_name || selectedLayout.project?.name || "N/A"}</span></p>
                       <p className="flex justify-between"><span>Survey Numbers:</span> <span className="font-mono font-bold text-indigo-600 bg-indigo-50/50 px-1.5 py-0.2 rounded">{surveyNumberOnly}</span></p>
+                      <p className="flex justify-between"><span>Development Phase:</span> <span className="font-semibold text-slate-800">{phaseOnly}</span></p>
                       <p className="flex justify-between"><span>Lifecycle State:</span> <span className="font-bold font-mono text-indigo-700">{selectedLayout.status}</span></p>
                     </div>
+
+                    <p className="font-bold text-[10px] text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1 pt-1">Description</p>
+                    <p className="text-[11px] text-slate-600 leading-relaxed italic bg-slate-50 p-2 rounded-lg border border-slate-100">{layoutDescription}</p>
 
                     <p className="font-bold text-[10px] text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1 pt-1 ml-0">Area Information</p>
                     <div className="space-y-1.5 text-[11px]">
@@ -2453,6 +2806,40 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                   <input required type="text" value={formProj.state} onChange={(e) => setFormProj({ ...formProj, state: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-3.5">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Village</label>
+                  <input type="text" value={formProj.village} onChange={(e) => setFormProj({ ...formProj, village: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Taluk</label>
+                  <input type="text" value={formProj.taluk} onChange={(e) => setFormProj({ ...formProj, taluk: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3.5">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">District</label>
+                  <input type="text" value={formProj.district} onChange={(e) => setFormProj({ ...formProj, district: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Country</label>
+                  <input type="text" value={formProj.country} onChange={(e) => setFormProj({ ...formProj, country: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">PIN Code</label>
+                  <input type="text" value={formProj.pincode} onChange={(e) => setFormProj({ ...formProj, pincode: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3.5">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Latitude</label>
+                  <input type="text" value={formProj.latitude} onChange={(e) => setFormProj({ ...formProj, latitude: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono" placeholder="e.g. 12.9716" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Longitude</label>
+                  <input type="text" value={formProj.longitude} onChange={(e) => setFormProj({ ...formProj, longitude: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono" placeholder="e.g. 77.5946" />
+                </div>
+              </div>
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Description (Optional)</label>
                 <textarea rows={2} value={formProj.description} onChange={(e) => setFormProj({ ...formProj, description: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" placeholder="Enter brief project description..." />
@@ -2541,6 +2928,40 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                 <div>
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">State *</label>
                   <input required type="text" value={formProj.state} onChange={(e) => setFormProj({ ...formProj, state: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3.5">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Village</label>
+                  <input type="text" value={formProj.village} onChange={(e) => setFormProj({ ...formProj, village: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Taluk</label>
+                  <input type="text" value={formProj.taluk} onChange={(e) => setFormProj({ ...formProj, taluk: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3.5">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">District</label>
+                  <input type="text" value={formProj.district} onChange={(e) => setFormProj({ ...formProj, district: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Country</label>
+                  <input type="text" value={formProj.country} onChange={(e) => setFormProj({ ...formProj, country: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">PIN Code</label>
+                  <input type="text" value={formProj.pincode} onChange={(e) => setFormProj({ ...formProj, pincode: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3.5">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Latitude</label>
+                  <input type="text" value={formProj.latitude} onChange={(e) => setFormProj({ ...formProj, latitude: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono" placeholder="e.g. 12.9716" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Longitude</label>
+                  <input type="text" value={formProj.longitude} onChange={(e) => setFormProj({ ...formProj, longitude: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono" placeholder="e.g. 77.5946" />
                 </div>
               </div>
               <div>
@@ -2656,6 +3077,16 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Survey Numbers (comma separated) *</label>
                 <input type="text" value={formLay.survey_number} onChange={(e) => setFormLay({ ...formLay, survey_number: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono font-medium" placeholder="e.g. 145/2, 145/3, 146" />
+              </div>
+              <div className="grid grid-cols-2 gap-3.5">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Development Phase / Sector</label>
+                  <input type="text" value={formLay.phase} onChange={(e) => setFormLay({ ...formLay, phase: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono" placeholder="e.g. Phase 1, Block A" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Layout Details / Description</label>
+                  <input type="text" value={formLay.description} onChange={(e) => setFormLay({ ...formLay, description: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" placeholder="e.g. Near main park entrance" />
+                </div>
               </div>
               <div className="flex justify-end gap-2.5 pt-3">
                 <button type="button" onClick={() => setCurrModal(null)} className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-50">Cancel</button>
