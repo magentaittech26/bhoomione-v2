@@ -27,6 +27,8 @@ interface InteractiveLayoutViewerProps {
   user: UserProfile;
   initialLayoutId?: string | null;
   onAuditLogged?: (log: any) => void;
+  highlightedPlotId?: string | null;
+  onPlotSelected?: (plot: any) => void;
 }
 
 const defaultStyleProfiles: Record<string, any> = {
@@ -40,7 +42,13 @@ const defaultStyleProfiles: Record<string, any> = {
   AMENITY: { fill_color: "#F3E8FF", stroke_color: "#7C3AED", stroke_width: 1.5, opacity: 0.9 }
 };
 
-export default function InteractiveLayoutViewer({ user, initialLayoutId, onAuditLogged }: InteractiveLayoutViewerProps) {
+export default function InteractiveLayoutViewer({
+  user,
+  initialLayoutId,
+  onAuditLogged,
+  highlightedPlotId: externalHighlightedPlotId,
+  onPlotSelected
+}: InteractiveLayoutViewerProps) {
   // Navigation & Data Selection states
   const [projectsList, setProjectsList] = useState<any[]>([]);
   const [layoutsList, setLayoutsList] = useState<any[]>([]);
@@ -73,6 +81,17 @@ export default function InteractiveLayoutViewer({ user, initialLayoutId, onAudit
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [viewportMode, setViewportMode] = useState<"DESKTOP" | "TABLET" | "MOBILE">("DESKTOP");
+
+  // Sync external highlightedPlotId prop
+  useEffect(() => {
+    if (externalHighlightedPlotId) {
+      setHighlightedPlotId(externalHighlightedPlotId);
+      const found = plotsList.find(p => p.id === externalHighlightedPlotId);
+      if (found) {
+        setSelectedPlot(found);
+      }
+    }
+  }, [externalHighlightedPlotId, plotsList]);
   
   // Measurement unit helper
   const getUnitCode = (unitId: string) => {
@@ -241,6 +260,9 @@ export default function InteractiveLayoutViewer({ user, initialLayoutId, onAudit
     if (!plot) return;
     setHighlightedPlotId(plot.id);
     setSelectedPlot(plot);
+    if (onPlotSelected) {
+      onPlotSelected(plot);
+    }
   };
 
   const handleElementDoubleClick = (plot: any) => {
@@ -248,6 +270,9 @@ export default function InteractiveLayoutViewer({ user, initialLayoutId, onAudit
     setHighlightedPlotId(plot.id);
     setSelectedPlot(plot);
     setDrawerOpen(true);
+    if (onPlotSelected) {
+      onPlotSelected(plot);
+    }
   };
 
   // Dynamic Class/Style resolution mapping
@@ -319,6 +344,9 @@ export default function InteractiveLayoutViewer({ user, initialLayoutId, onAudit
       setHighlightedPlotId(matched.id);
       setSelectedPlot(matched);
       setDrawerOpen(true);
+      if (onPlotSelected) {
+        onPlotSelected(matched);
+      }
       setSuccessMessage(`Plot ${matched.plot_number} found and highlighted!`);
       // Auto dismiss success toast
       setTimeout(() => setSuccessMessage(null), 3000);

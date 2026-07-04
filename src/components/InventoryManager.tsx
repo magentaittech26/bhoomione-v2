@@ -2693,6 +2693,24 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                     </div>
                   )}
                 </div>
+
+                <div className="border-t border-slate-150 pt-3 space-y-2">
+                  <p className="font-bold text-[10px] text-slate-400 uppercase tracking-wider block">Visual Navigation</p>
+                  <button
+                    onClick={() => {
+                      const matchedLayout = layouts.find(l => l.id === selectedPlot.layout_id);
+                      if (matchedLayout) {
+                        setSelectedLayout(matchedLayout);
+                      }
+                      setActiveTab("viewer");
+                    }}
+                    className="w-full flex items-center justify-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold text-xs py-2 rounded-xl hover:bg-indigo-100 transition-colors cursor-pointer"
+                  >
+                    <Compass className="w-3.5 h-3.5 text-rose-500" />
+                    <span>Visualize on Interactive Map</span>
+                  </button>
+                </div>
+
                 {plotMeta.remarks && (
                   <div className="border-t border-slate-100 pt-2 text-[10.5px] text-slate-500">
                     <span className="font-bold text-[9.5px] text-slate-400 block uppercase mb-1">Remarks / Remarks:</span>
@@ -2723,6 +2741,14 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
             user={user}
             initialLayoutId={selectedLayout?.id || null}
             onAuditLogged={onAuditLogged}
+            highlightedPlotId={selectedPlot?.id || null}
+            onPlotSelected={(plot) => {
+              setSelectedPlot(plot);
+              if (plot && plot.layout_id) {
+                const lay = layouts.find(l => l.id === plot.layout_id);
+                if (lay) setSelectedLayout(lay);
+              }
+            }}
           />
         </div>
       )}

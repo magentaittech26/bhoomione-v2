@@ -320,6 +320,64 @@ export async function bootstrapDatabase() {
       )
     `);
 
+    // SPRINT 3E Relational SVG Tables
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS svg_documents (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        layout_id UUID NOT NULL REFERENCES layouts(id) ON DELETE CASCADE,
+        generation_batch_id UUID NULL,
+        width DECIMAL NOT NULL DEFAULT 1200,
+        height DECIMAL NOT NULL DEFAULT 800,
+        viewbox VARCHAR(100) NOT NULL DEFAULT '0 0 1200 800',
+        version INTEGER NOT NULL DEFAULT 1,
+        render_profile VARCHAR(50) NOT NULL DEFAULT 'DESKTOP',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS svg_elements (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        svg_document_id UUID NOT NULL REFERENCES svg_documents(id) ON DELETE CASCADE,
+        source_geometry_entity_id VARCHAR(100) NULL,
+        element_type VARCHAR(50) NOT NULL,
+        svg_data TEXT NOT NULL,
+        metadata JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS svg_style_profiles (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        profile_key VARCHAR(100) NOT NULL,
+        fill_color VARCHAR(50) NULL,
+        stroke_color VARCHAR(50) NULL,
+        stroke_width DECIMAL(8,2) NULL,
+        opacity DECIMAL(4,2) NULL,
+        additional_styles JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (tenant_id, profile_key)
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS svg_labels (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        svg_document_id UUID NOT NULL REFERENCES svg_documents(id) ON DELETE CASCADE,
+        source_plot_id UUID NULL REFERENCES plots(id) ON DELETE SET NULL,
+        text VARCHAR(255) NOT NULL,
+        x DECIMAL(12,4) NOT NULL,
+        y DECIMAL(12,4) NOT NULL,
+        rotation DECIMAL NOT NULL DEFAULT 0.00,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // 22. developer_profiles Table (Marketplace Phase 2B)
     await client.query(`
       CREATE TABLE IF NOT EXISTS developer_profiles (
@@ -780,6 +838,32 @@ export async function bootstrapDatabase() {
       ('${tenant1Id}', 'shaurya.tenant.bhoomione.in', false),
       ('${tenant2Id}', 'dev02.bhoomione.com', true)
     `);
+
+    // Truncate and Seed default style profiles
+    await client.query("TRUNCATE TABLE svg_style_profiles CASCADE");
+    const defaultProfiles = [
+      { key: 'PLOT_AVAILABLE', fill: '#F1F5F9', stroke: '#64748B', width: 1.5, opacity: 0.90 },
+      { key: 'PLOT_RESERVED', fill: '#FEF3C7', stroke: '#D97706', width: 1.5, opacity: 0.95 },
+      { key: 'PLOT_BOOKED', fill: '#DBEAFE', stroke: '#2563EB', width: 1.5, opacity: 0.95 },
+      { key: 'PLOT_SOLD', fill: '#D1FAE5', stroke: '#059669', width: 1.5, opacity: 0.95 },
+      { key: 'ROAD_MAIN', fill: '#E2E8F0', stroke: '#94A3B8', width: 2.0, opacity: 1.00 },
+      { key: 'ROAD_INTERNAL', fill: '#F8FAFC', stroke: '#CBD5E1', width: 1.0, opacity: 1.00 },
+      { key: 'PARK', fill: '#DCFCE7', stroke: '#16A34A', width: 1.5, opacity: 0.90 },
+      { key: 'AMENITY', fill: '#F3E8FF', stroke: '#7C3AED', width: 1.5, opacity: 0.90 }
+    ];
+
+    for (const p of defaultProfiles) {
+      await client.query(
+        `INSERT INTO svg_style_profiles (tenant_id, profile_key, fill_color, stroke_color, stroke_width, opacity)
+         VALUES ($1, $2, $3, $4, $5, $6), ($7, $8, $9, $10, $11, $12)
+         ON CONFLICT DO NOTHING`,
+        [
+          tenant1Id, p.key, p.fill, p.stroke, p.width, p.opacity,
+          tenant2Id, p.key, p.fill, p.stroke, p.width, p.opacity
+        ]
+      );
+    }
+    console.log("Seeded default SVG style profiles for all default tenants.");
 
     // Seed SaaS Invoices
     await client.query(`
