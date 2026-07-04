@@ -175,7 +175,8 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
   const [formProj, setFormProj] = useState({
     name: "", code: "", developer_name: "", location: "", status: "PLANNING",
     rera_number: "", approval_status: "PENDING", approval_authority: "",
-    launch_date: "", possession_target_date: "", approvals_metadata: "{}"
+    launch_date: "", possession_target_date: "", approvals_metadata: "{}",
+    project_type: "RESIDENTIAL", state: "", description: ""
   });
 
   const [formLay, setFormLay] = useState({
@@ -205,13 +206,14 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
   const [enabledFeatures, setEnabledFeatures] = useState<string[]>([]);
 
   // Permissions validation
-  const hasProjView = user.permissions?.includes("projects.view") || false;
-  const hasProjManage = user.permissions?.includes("projects.manage") || false;
-  const hasLayView = user.permissions?.includes("layouts.view") || false;
-  const hasLayManage = user.permissions?.includes("layouts.manage") || false;
-  const hasPlotView = user.permissions?.includes("plots.view") || false;
-  const hasPlotManage = user.permissions?.includes("plots.manage") || false;
-  const hasDxfView = user.permissions?.includes("dxf.view") || false;
+  const isTenantOwnerOrAdmin = user.role === "DEVELOPER_OWNER" || user.role === "DEVELOPER_ADMIN" || user.role === "PROJECT_MANAGER" || user.role === "PLATFORM_ADMIN";
+  const hasProjView = user.permissions?.includes("projects.view") || isTenantOwnerOrAdmin || false;
+  const hasProjManage = user.permissions?.includes("projects.manage") || isTenantOwnerOrAdmin || false;
+  const hasLayView = user.permissions?.includes("layouts.view") || isTenantOwnerOrAdmin || false;
+  const hasLayManage = user.permissions?.includes("layouts.manage") || isTenantOwnerOrAdmin || false;
+  const hasPlotView = user.permissions?.includes("plots.view") || isTenantOwnerOrAdmin || false;
+  const hasPlotManage = user.permissions?.includes("plots.manage") || isTenantOwnerOrAdmin || false;
+  const hasDxfView = user.permissions?.includes("dxf.view") || isTenantOwnerOrAdmin || false;
 
   // Measurement Units reference caching helper
   const getUnitCode = (unitId: string) => {
@@ -511,11 +513,20 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
     setErrorMess(null);
     try {
       const parsedMetadata = tryParseJSON(formProj.approvals_metadata);
+      parsedMetadata.project_type = formProj.project_type;
+      parsedMetadata.state = formProj.state;
+      parsedMetadata.description = formProj.description;
+
       const payload = {
-        ...formProj,
+        name: formProj.name,
+        code: formProj.code,
+        developer_name: formProj.developer_name,
+        location: formProj.location,
+        status: formProj.status,
+        approval_status: formProj.approval_status,
+        approval_authority: formProj.approval_authority,
         approvals_metadata: parsedMetadata,
         rera_number: formProj.rera_number || null,
-        approval_authority: formProj.approval_authority || null,
         launch_date: formProj.launch_date || null,
         possession_target_date: formProj.possession_target_date || null,
       };
@@ -538,6 +549,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
 
   const handleStartEditProject = (p: any) => {
     setEditId(p.id);
+    const meta = tryParseJSON(p.approvals_metadata, {});
     setFormProj({
       name: p.name,
       code: p.code,
@@ -549,7 +561,10 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
       approval_authority: p.approval_authority || "",
       launch_date: p.launch_date ? p.launch_date.split("T")[0] : "",
       possession_target_date: p.possession_target_date ? p.possession_target_date.split("T")[0] : "",
-      approvals_metadata: JSON.stringify(tryParseJSON(p.approvals_metadata, {}), null, 2)
+      approvals_metadata: JSON.stringify(meta, null, 2),
+      project_type: meta.project_type || "RESIDENTIAL",
+      state: meta.state || "",
+      description: meta.description || ""
     });
     setCurrModal("edit_project");
   };
@@ -1151,7 +1166,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                 </div>
                 {hasProjManage && (
                   <button
-                    onClick={() => { setEditId(null); setFormProj({ name: "", code: "", developer_name: "", location: "", status: "PLANNING", rera_number: "", approval_status: "PENDING", approval_authority: "", launch_date: "", possession_target_date: "", approvals_metadata: "{}" }); setCurrModal("create_project"); }}
+                    onClick={() => { setEditId(null); setFormProj({ name: "", code: "", developer_name: "", location: "", status: "PLANNING", rera_number: "", approval_status: "PENDING", approval_authority: "", launch_date: "", possession_target_date: "", approvals_metadata: "{}", project_type: "RESIDENTIAL", state: "", description: "" }); setCurrModal("create_project"); }}
                     className="inline-flex items-center gap-1 bg-indigo-650 text-white font-semibold text-xs px-3 py-2 rounded-xl hover:bg-indigo-750 transition-colors"
                   >
                     <Plus className="w-4 h-4" />
@@ -2393,7 +2408,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl max-h-[85vh] overflow-y-auto">
             <h4 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">Catalog New Real estate Project</h4>
-            <form onSubmit={handleSaveProject} className="space-y-3 test-xs text-left">
+            <form onSubmit={handleSaveProject} className="space-y-3 text-xs text-left">
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Project Name *</label>
                 <input required type="text" value={formProj.name} onChange={(e) => setFormProj({ ...formProj, name: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
@@ -2408,9 +2423,39 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                   <input required type="text" value={formProj.developer_name} onChange={(e) => setFormProj({ ...formProj, developer_name: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-3.5">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Project Type *</label>
+                  <select required value={formProj.project_type} onChange={(e) => setFormProj({ ...formProj, project_type: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs">
+                    <option value="RESIDENTIAL">RESIDENTIAL</option>
+                    <option value="COMMERCIAL">COMMERCIAL</option>
+                    <option value="MIXED_USE">MIXED USE</option>
+                    <option value="INDUSTRIAL">INDUSTRIAL</option>
+                    <option value="PLOTTED">PLOTTED</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Status *</label>
+                  <select required value={formProj.status} onChange={(e) => setFormProj({ ...formProj, status: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs">
+                    <option value="PLANNING">PLANNING</option>
+                    <option value="ACTIVE">ACTIVE</option>
+                    <option value="COMPLETED">COMPLETED</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3.5">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Location / City *</label>
+                  <input required type="text" value={formProj.location} onChange={(e) => setFormProj({ ...formProj, location: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">State *</label>
+                  <input required type="text" value={formProj.state} onChange={(e) => setFormProj({ ...formProj, state: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
+                </div>
+              </div>
               <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Location *</label>
-                <input required type="text" value={formProj.location} onChange={(e) => setFormProj({ ...formProj, location: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Description (Optional)</label>
+                <textarea rows={2} value={formProj.description} onChange={(e) => setFormProj({ ...formProj, description: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" placeholder="Enter brief project description..." />
               </div>
               <div className="grid grid-cols-2 gap-3.5">
                 <div>
@@ -2453,7 +2498,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl max-h-[85vh] overflow-y-auto">
             <h4 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">Edit Project Specifications</h4>
-            <form onSubmit={handleSaveProject} className="space-y-3.5 test-xs text-left">
+            <form onSubmit={handleSaveProject} className="space-y-3.5 text-xs text-left">
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Project Name *</label>
                 <input required type="text" value={formProj.name} onChange={(e) => setFormProj({ ...formProj, name: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
@@ -2468,18 +2513,20 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                   <input required type="text" value={formProj.developer_name} onChange={(e) => setFormProj({ ...formProj, developer_name: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
                 </div>
               </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Location *</label>
-                <input required type="text" value={formProj.location} onChange={(e) => setFormProj({ ...formProj, location: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
-              </div>
               <div className="grid grid-cols-2 gap-3.5">
                 <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">RERA Validation No.</label>
-                  <input type="text" value={formProj.rera_number} onChange={(e) => setFormProj({ ...formProj, rera_number: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono" />
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Project Type *</label>
+                  <select required value={formProj.project_type} onChange={(e) => setFormProj({ ...formProj, project_type: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs">
+                    <option value="RESIDENTIAL">RESIDENTIAL</option>
+                    <option value="COMMERCIAL">COMMERCIAL</option>
+                    <option value="MIXED_USE">MIXED USE</option>
+                    <option value="INDUSTRIAL">INDUSTRIAL</option>
+                    <option value="PLOTTED">PLOTTED</option>
+                  </select>
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Project status</label>
-                  <select value={formProj.status} onChange={(e) => setFormProj({ ...formProj, status: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Project Status *</label>
+                  <select required value={formProj.status} onChange={(e) => setFormProj({ ...formProj, status: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs">
                     <option value="PLANNING">PLANNING</option>
                     <option value="ACTIVE">ACTIVE</option>
                     <option value="COMPLETED">COMPLETED</option>
@@ -2488,6 +2535,24 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
               </div>
               <div className="grid grid-cols-2 gap-3.5">
                 <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Location / City *</label>
+                  <input required type="text" value={formProj.location} onChange={(e) => setFormProj({ ...formProj, location: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">State *</label>
+                  <input required type="text" value={formProj.state} onChange={(e) => setFormProj({ ...formProj, state: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Description (Optional)</label>
+                <textarea rows={2} value={formProj.description} onChange={(e) => setFormProj({ ...formProj, description: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" placeholder="Enter brief project description..." />
+              </div>
+              <div className="grid grid-cols-2 gap-3.5">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">RERA Validation No.</label>
+                  <input type="text" value={formProj.rera_number} onChange={(e) => setFormProj({ ...formProj, rera_number: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono" />
+                </div>
+                <div>
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Approval Status</label>
                   <select value={formProj.approval_status} onChange={(e) => setFormProj({ ...formProj, approval_status: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs">
                     <option value="PENDING">PENDING</option>
@@ -2495,10 +2560,10 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                     <option value="REJECTED">REJECTED</option>
                   </select>
                 </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Approval Authority</label>
-                  <input type="text" value={formProj.approval_authority} onChange={(e) => setFormProj({ ...formProj, approval_authority: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
-                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Approval Authority</label>
+                <input type="text" value={formProj.approval_authority} onChange={(e) => setFormProj({ ...formProj, approval_authority: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
               </div>
               <div className="grid grid-cols-2 gap-3.5">
                 <div>
