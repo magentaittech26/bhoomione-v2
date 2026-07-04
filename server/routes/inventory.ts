@@ -371,27 +371,123 @@ router.get("/plots", requireAuth, async (req: AuthenticatedRequest, res: Respons
     const tenantId = req.user?.tenantId;
     if (!tenantId) return res.status(400).json({ error: "No active tenant." });
 
-    const layoutId = req.query.layout_id;
     const db = getPool();
 
-    let query = `
+    // Parse filters
+    const {
+      page = 1,
+      per_page = 6,
+      search,
+      status,
+      facing,
+      corner_plot,
+      layout_id,
+      road_width_min,
+      area_min,
+      area_max,
+      sort_by,
+      sort_direction,
+    } = req.query;
+
+    const pLimit = parseInt(String(per_page), 10) || 6;
+    const pOffset = (parseInt(String(page), 10) - 1) * pLimit;
+
+    // Base clauses
+    let whereClauses = ["prj.tenant_id = $1"];
+    const params: any[] = [tenantId];
+
+    if (layout_id && layout_id !== "ALL") {
+      params.push(layout_id);
+      whereClauses.push(`p.layout_id = $${params.length}`);
+    }
+
+    if (status && status !== "ALL") {
+      params.push(status);
+      whereClauses.push(`p.status = $${params.length}`);
+    }
+
+    if (facing && facing !== "ALL") {
+      params.push(facing);
+      whereClauses.push(`p.facing = $${params.length}`);
+    }
+
+    if (corner_plot !== undefined && corner_plot !== "" && corner_plot !== "ALL") {
+      const isCorner = String(corner_plot) === "true";
+      params.push(isCorner);
+      whereClauses.push(`p.corner_plot = $${params.length}`);
+    }
+
+    if (road_width_min && road_width_min !== "") {
+      const rw = parseFloat(String(road_width_min));
+      if (!isNaN(rw)) {
+        params.push(rw);
+        whereClauses.push(`p.road_width >= $${params.length}`);
+      }
+    }
+
+    if (area_min && area_min !== "") {
+      const amin = parseFloat(String(area_min));
+      if (!isNaN(amin)) {
+        params.push(amin);
+        whereClauses.push(`p.area_value >= $${params.length}`);
+      }
+    }
+
+    if (area_max && area_max !== "") {
+      const amax = parseFloat(String(area_max));
+      if (!isNaN(amax)) {
+        params.push(amax);
+        whereClauses.push(`p.area_value <= $${params.length}`);
+      }
+    }
+
+    if (search && String(search).trim() !== "") {
+      params.push(`%${String(search).trim()}%`);
+      whereClauses.push(`(p.plot_number ILIKE $${params.length} OR l.name ILIKE $${params.length})`);
+    }
+
+    const whereSql = whereClauses.join(" AND ");
+
+    // Count query for total
+    const countSql = `
+      SELECT COUNT(*) as total 
+      FROM plots p
+      JOIN layouts l ON p.layout_id = l.id
+      JOIN projects prj ON l.project_id = prj.id
+      WHERE ${whereSql}
+    `;
+    const countRes = await db.query(countSql, params);
+    const totalCount = parseInt(countRes.rows[0].total, 10) || 0;
+
+    // Sorting
+    let orderBySql = "p.plot_number ASC";
+    const allowedSortColumns = ["plot_number", "area_value", "status", "facing", "road_width", "created_at"];
+    const sortCol = String(sort_by || "plot_number").toLowerCase();
+    const sortDir = String(sort_direction || "asc").toLowerCase() === "desc" ? "DESC" : "ASC";
+
+    if (allowedSortColumns.includes(sortCol)) {
+      orderBySql = `p.${sortCol} ${sortDir}`;
+    }
+
+    // Paginated results query
+    const dataSql = `
       SELECT p.*, l.name as layout_name 
       FROM plots p
       JOIN layouts l ON p.layout_id = l.id
       JOIN projects prj ON l.project_id = prj.id
-      WHERE prj.tenant_id = $1
+      WHERE ${whereSql}
+      ORDER BY ${orderBySql}
+      LIMIT ${pLimit} OFFSET ${pOffset}
     `;
-    const params: any[] = [tenantId];
 
-    if (layoutId) {
-      query += " AND p.layout_id = $2";
-      params.push(layoutId);
-    }
+    const result = await db.query(dataSql, params);
 
-    query += " ORDER BY p.plot_number ASC";
-
-    const result = await db.query(query, params);
-    res.json({ data: result.rows });
+    res.json({
+      data: result.rows,
+      total: totalCount,
+      page: parseInt(String(page), 10),
+      per_page: pLimit
+    });
   } catch (err: any) {
     console.error("fetchPlots Error:", err);
     res.status(500).json({ error: "Failed to collect plots list." });
@@ -433,7 +529,13 @@ router.post("/plots", requireAuth, async (req: AuthenticatedRequest, res: Respon
       plot_number,
       area_value,
       measurement_unit_id,
-      premium_type,
+      length,
+      width,
+      road_width,
+      corner_plot,
+      facing,
+      dimensions,
+      dimensions_metadata,
       status,
     } = req.body;
 
@@ -449,16 +551,45 @@ router.post("/plots", requireAuth, async (req: AuthenticatedRequest, res: Respon
       return res.status(403).json({ error: "Unauthorized layout sector plot assignment." });
     }
 
+    // Validation: Unique Plot Number inside Layout
+    const collision = await db.query(
+      `SELECT id FROM plots WHERE layout_id = $1 AND LOWER(TRIM(plot_number)) = LOWER(TRIM($2))`,
+      [layout_id, plot_number]
+    );
+    if (collision.rowCount > 0) {
+      return res.status(400).json({ error: `Validation Error: A plot with number '${plot_number}' already exists in this layout.` });
+    }
+
+    // Area Validation
+    const areaVal = area_value ? parseFloat(area_value) : 0;
+    if (areaVal <= 0) {
+      return res.status(400).json({ error: "Validation Error: Plot physical Area size must be a positive numeric value larger than 0." });
+    }
+
+    // Road Width Validation
+    const roadWid = road_width ? parseFloat(road_width) : 0;
+    if (roadWid < 0) {
+      return res.status(400).json({ error: "Validation Error: Access road width must be non-negative." });
+    }
+
+    const finalDimensions = dimensions || `${length || 0}x${width || 0}`;
+
     const result = await db.query(
       `INSERT INTO plots (
-        layout_id, plot_number, area_value, measurement_unit_id, premium_type, status
-      ) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        layout_id, plot_number, area_value, measurement_unit_id, length, width, road_width, corner_plot, facing, dimensions, dimensions_metadata, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
       [
         layout_id,
         sanitizeString(plot_number),
-        area_value ? parseFloat(area_value) : 0,
+        areaVal,
         measurement_unit_id || null,
-        sanitizeString(premium_type),
+        length ? parseFloat(length) : null,
+        width ? parseFloat(width) : null,
+        roadWid,
+        !!corner_plot,
+        facing || "NORTH",
+        sanitizeString(finalDimensions),
+        typeof dimensions_metadata === "object" ? JSON.stringify(dimensions_metadata) : (dimensions_metadata || "{}"),
         status || "AVAILABLE",
       ]
     );
@@ -475,21 +606,84 @@ router.put("/plots/:id", requireAuth, async (req: AuthenticatedRequest, res: Res
     const tenantId = req.user?.tenantId;
     if (!tenantId) return res.status(400).json({ error: "Tenant context required." });
 
-    const { plot_number, area_value, measurement_unit_id, premium_type, status } = req.body;
+    const {
+      plot_number,
+      area_value,
+      measurement_unit_id,
+      length,
+      width,
+      road_width,
+      corner_plot,
+      facing,
+      dimensions,
+      dimensions_metadata,
+      status,
+    } = req.body;
 
     const db = getPool();
+
+    // Check if plot exists and layout belongs to tenant
+    const existing = await db.query(
+      `SELECT layout_id FROM plots WHERE id = $1`,
+      [req.params.id]
+    );
+    if (existing.rowCount === 0) {
+      return res.status(404).json({ error: "Plot not found." });
+    }
+    const layout_id = existing.rows[0].layout_id;
+
+    // Validation: Unique Plot Number inside Layout
+    const collision = await db.query(
+      `SELECT id FROM plots WHERE layout_id = $1 AND LOWER(TRIM(plot_number)) = LOWER(TRIM($2)) AND id <> $3`,
+      [layout_id, plot_number, req.params.id]
+    );
+    if (collision.rowCount > 0) {
+      return res.status(400).json({ error: `Validation Error: A plot with number '${plot_number}' already exists in this layout.` });
+    }
+
+    // Area Validation
+    const areaVal = area_value ? parseFloat(area_value) : 0;
+    if (areaVal <= 0) {
+      return res.status(400).json({ error: "Validation Error: Plot physical Area size must be a positive numeric value larger than 0." });
+    }
+
+    // Road Width Validation
+    const roadWid = road_width ? parseFloat(road_width) : 0;
+    if (roadWid < 0) {
+      return res.status(400).json({ error: "Validation Error: Access road width must be non-negative." });
+    }
+
+    const finalDimensions = dimensions || `${length || 0}x${width || 0}`;
+
     const result = await db.query(
       `UPDATE plots SET
-        plot_number = $1, area_value = $2, measurement_unit_id = $3, premium_type = $4, status = $5, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $6 AND layout_id IN (
-         SELECT l.id FROM layouts l JOIN projects p ON l.project_id = p.id WHERE p.tenant_id = $7
+        plot_number = $1,
+        area_value = $2,
+        measurement_unit_id = $3,
+        length = $4,
+        width = $5,
+        road_width = $6,
+        corner_plot = $7,
+        facing = $8,
+        dimensions = $9,
+        dimensions_metadata = $10,
+        status = $11,
+        updated_at = CURRENT_TIMESTAMP
+       WHERE id = $12 AND layout_id IN (
+         SELECT l.id FROM layouts l JOIN projects p ON l.project_id = p.id WHERE p.tenant_id = $13
        )
        RETURNING *`,
       [
         sanitizeString(plot_number),
-        area_value ? parseFloat(area_value) : 0,
+        areaVal,
         measurement_unit_id || null,
-        sanitizeString(premium_type),
+        length ? parseFloat(length) : null,
+        width ? parseFloat(width) : null,
+        roadWid,
+        !!corner_plot,
+        facing || "NORTH",
+        sanitizeString(finalDimensions),
+        typeof dimensions_metadata === "object" ? JSON.stringify(dimensions_metadata) : (dimensions_metadata || "{}"),
         status,
         req.params.id,
         tenantId,
@@ -512,16 +706,26 @@ router.delete("/plots/:id", requireAuth, async (req: AuthenticatedRequest, res: 
     if (!tenantId) return res.status(400).json({ error: "Tenant context mismatch." });
 
     const db = getPool();
+
+    // Check if plot is used in marketplace leads
+    const checkLead = await db.query(
+      `SELECT COUNT(*) as count FROM marketplace_leads WHERE plot_id = $1`,
+      [req.params.id]
+    );
+    if (checkLead.rows[0] && parseInt(checkLead.rows[0].count, 10) > 0) {
+      return res.status(400).json({ error: "Validation Error: This plot cannot be deleted as it is already used/associated with marketplace leads." });
+    }
+
     const result = await db.query(
       `DELETE FROM plots 
        WHERE id = $1 AND layout_id IN (
          SELECT l.id FROM layouts l JOIN projects p ON l.project_id = p.id WHERE p.tenant_id = $2
-       )`,
+       ) RETURNING *`,
       [req.params.id, tenantId]
     );
 
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: "Plot not found." });
+      return res.status(404).json({ error: "Plot not found or unauthorized delete." });
     }
     res.json({ success: true });
   } catch (err: any) {

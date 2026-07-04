@@ -194,7 +194,8 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
   const [formPlot, setFormPlot] = useState({
     layout_id: "", plot_number: "", area_value: "", measurement_unit_id: "",
     length: "", width: "", road_width: "", corner_plot: false,
-    facing: "NORTH", dimensions: "", dimensions_metadata: "{}", status: "AVAILABLE"
+    facing: "NORTH", dimensions: "", dimensions_metadata: "{}", status: "AVAILABLE",
+    plc: "", remarks: "", latitude: "", longitude: "", polygon_ref: ""
   });
 
   // Bulk parameters states
@@ -1005,7 +1006,15 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
         return;
       }
 
-      const parsedDimMeta = tryParseJSON(formPlot.dimensions_metadata);
+      const existingMeta = tryParseJSON(formPlot.dimensions_metadata, {});
+      const parsedDimMeta = {
+        ...existingMeta,
+        plc: formPlot.plc || "",
+        remarks: formPlot.remarks || "",
+        latitude: formPlot.latitude || "",
+        longitude: formPlot.longitude || "",
+        polygon_ref: formPlot.polygon_ref || ""
+      };
       const payload = {
         ...formPlot,
         area_value: areaVal,
@@ -1034,6 +1043,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
 
   const handleStartEditPlot = (pl: any) => {
     setEditId(pl.id);
+    const meta = tryParseJSON(pl.dimensions_metadata, {});
     setFormPlot({
       layout_id: pl.layout_id,
       plot_number: pl.plot_number,
@@ -1045,8 +1055,13 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
       corner_plot: !!pl.corner_plot,
       facing: pl.facing || "NORTH",
       dimensions: pl.dimensions || "",
-      dimensions_metadata: JSON.stringify(tryParseJSON(pl.dimensions_metadata, {}), null, 2),
-      status: pl.status || "AVAILABLE"
+      dimensions_metadata: JSON.stringify(meta, null, 2),
+      status: pl.status || "AVAILABLE",
+      plc: meta.plc || "",
+      remarks: meta.remarks || "",
+      latitude: meta.latitude || "",
+      longitude: meta.longitude || "",
+      polygon_ref: meta.polygon_ref || ""
     });
     setCurrModal("edit_plot");
   };
@@ -1916,7 +1931,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                       <span>Bulk Create</span>
                     </button>
                     <button
-                      onClick={() => { setEditId(null); setFormPlot(prev => ({ ...prev, plot_number: "", area_value: "", length: "", width: "", road_width: "", corner_plot: false, dimensions: "", status: "AVAILABLE" })); setCurrModal("create_plot"); }}
+                      onClick={() => { setEditId(null); setFormPlot(prev => ({ ...prev, plot_number: "", area_value: "", length: "", width: "", road_width: "", corner_plot: false, dimensions: "", status: "AVAILABLE", plc: "", remarks: "", latitude: "", longitude: "", polygon_ref: "" })); setCurrModal("create_plot"); }}
                       className="inline-flex items-center gap-1 bg-indigo-650 text-white font-semibold text-xs px-3 py-2 rounded-xl hover:bg-indigo-750 transition-colors"
                     >
                       <Plus className="w-4 h-4" />
@@ -2570,6 +2585,10 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                   <p className="flex justify-between"><span className="font-sans text-slate-500">Access Road width:</span> <span className="font-medium text-slate-800">{selectedPlot.road_width || "0"} m</span></p>
                   <p className="flex justify-between"><span className="font-sans text-slate-500">Total Net Area Size:</span> <span className="font-sans font-extrabold text-indigo-700">{selectedPlot.area_value} {getUnitCode(selectedPlot.measurement_unit_id)}</span></p>
                   <p className="flex justify-between"><span className="font-sans text-slate-500">Boundary corner:</span> <span className="font-bold font-sans text-slate-900">{selectedPlot.corner_plot ? "Yes" : "No"}</span></p>
+                  <p className="flex justify-between"><span className="font-sans text-slate-500">PLC Charges:</span> <span className="font-bold font-sans text-amber-700">{plotMeta.plc || "None"}</span></p>
+                  <p className="flex justify-between"><span className="font-sans text-slate-500">Latitude:</span> <span className="font-medium text-slate-850">{plotMeta.latitude || "N/A"}</span></p>
+                  <p className="flex justify-between"><span className="font-sans text-slate-500">Longitude:</span> <span className="font-medium text-slate-850">{plotMeta.longitude || "N/A"}</span></p>
+                  <p className="flex justify-between"><span className="font-sans text-slate-500">Polygon Ref (Future):</span> <span className="font-mono text-slate-600">{plotMeta.polygon_ref || "N/A"}</span></p>
                 </div>
 
                 <p className="font-bold text-[10px] text-slate-400 uppercase tracking-wider block border-b border-slate-100 pb-1">Extensible Custom attributes</p>
@@ -2651,6 +2670,33 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                         </button>
                       </form>
                     </div>
+                  </div>
+                )}
+
+                {/* Future Booking Action Link */}
+                <div className="border-t border-slate-150 pt-3 space-y-2">
+                  <p className="font-bold text-[10px] text-slate-400 uppercase tracking-wider block">Booking & Leads Workflow</p>
+                  {selectedPlot.status === "AVAILABLE" ? (
+                    <button
+                      onClick={() => {
+                        displaySuccess(`Future Booking Flow initiated for Plot ${selectedPlot.plot_number}! (Placed in 15-minute developer lock)`);
+                        dispatchAuditLog("PLOT_BOOKING_INITIATED", "plots", selectedPlot.id, `Initiated customer booking request for Plot: ${selectedPlot.plot_number}`);
+                      }}
+                      className="w-full flex items-center justify-center gap-2 bg-emerald-650 hover:bg-emerald-700 text-white font-bold text-xs py-2 rounded-xl transition-colors shadow-xs"
+                    >
+                      <Calendar className="w-3.5 h-3.5" />
+                      <span>Initiate Future Booking</span>
+                    </button>
+                  ) : (
+                    <div className="text-[11px] text-slate-500 bg-slate-50 p-2.5 rounded-lg border border-slate-150 text-center">
+                      This plot is currently <strong>{selectedPlot.status}</strong>. Bookings are only eligible for AVAILABLE inventory tracts.
+                    </div>
+                  )}
+                </div>
+                {plotMeta.remarks && (
+                  <div className="border-t border-slate-100 pt-2 text-[10.5px] text-slate-500">
+                    <span className="font-bold text-[9.5px] text-slate-400 block uppercase mb-1">Remarks / Remarks:</span>
+                    <p className="italic bg-amber-50/50 p-2 rounded-lg border border-amber-100/60 leading-relaxed text-slate-600">{plotMeta.remarks}</p>
                   </div>
                 )}
               </div>
@@ -3194,6 +3240,30 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Text Dimensions label</label>
                 <input type="text" placeholder="e.g. 30 x 45" value={formPlot.dimensions} onChange={(e) => setFormPlot({ ...formPlot, dimensions: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
+              </div>
+              <div className="grid grid-cols-2 gap-3.5">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">PLC (Preferential Location Charges)</label>
+                  <input type="text" placeholder="e.g. 10% Corner Premium" value={formPlot.plc} onChange={(e) => setFormPlot({ ...formPlot, plc: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Polygon Reference (Future)</label>
+                  <input type="text" placeholder="e.g. polygon_ref_098" value={formPlot.polygon_ref} onChange={(e) => setFormPlot({ ...formPlot, polygon_ref: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3.5">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Latitude coordinate</label>
+                  <input type="text" placeholder="e.g. 12.9716" value={formPlot.latitude} onChange={(e) => setFormPlot({ ...formPlot, latitude: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Longitude coordinate</label>
+                  <input type="text" placeholder="e.g. 77.5946" value={formPlot.longitude} onChange={(e) => setFormPlot({ ...formPlot, longitude: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Plot Remarks / Notes</label>
+                <textarea rows={2} placeholder="Add specific catalog details, trees, gradient comments..." value={formPlot.remarks} onChange={(e) => setFormPlot({ ...formPlot, remarks: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs focus:outline-none" />
               </div>
               <div className="flex justify-end gap-2.5 pt-3">
                 <button type="button" onClick={() => setCurrModal(null)} className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-50">Cancel</button>
