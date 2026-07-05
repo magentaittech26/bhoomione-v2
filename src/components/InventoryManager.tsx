@@ -122,6 +122,192 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
   const [errorMess, setErrorMess] = useState<string | null>(null);
   const [successMess, setSuccessMess] = useState<string | null>(null);
 
+  const handleStateChange = async (stateIdOrOther: string) => {
+    if (stateIdOrOther === "OTHER" || !stateIdOrOther) {
+      setSelectedStateId(stateIdOrOther);
+      setSelectedDistrictId("");
+      setSelectedTalukId("");
+      setDistricts([]);
+      setTaluks([]);
+      setCities([]);
+      setVillages([]);
+      setManualState(stateIdOrOther === "OTHER");
+      setManualDistrict(true);
+      setManualTaluk(true);
+      setManualCity(true);
+      setManualVillage(true);
+      setFormProj((prev) => ({
+        ...prev,
+        state: stateIdOrOther === "OTHER" ? prev.state : "",
+        district: "",
+        taluk: "",
+        location: "",
+        village: ""
+      }));
+      return;
+    }
+
+    const stateObj = states.find((s) => String(s.id) === stateIdOrOther);
+    setSelectedStateId(stateIdOrOther);
+    setSelectedDistrictId("");
+    setSelectedTalukId("");
+    setManualState(false);
+    setManualDistrict(false);
+    setDistricts([]);
+    setTaluks([]);
+    setCities([]);
+    setVillages([]);
+    setFormProj((prev) => ({
+      ...prev,
+      state: stateObj ? stateObj.name : "",
+      district: "",
+      taluk: "",
+      location: "",
+      village: ""
+    }));
+
+    setLoadingLoc((prev) => ({ ...prev, districts: true }));
+    setLocationApiError(null);
+    try {
+      const res = await api.fetchDistricts(stateIdOrOther);
+      setDistricts(res.data || res || []);
+    } catch (err) {
+      console.error("Error loading districts:", err);
+      setLocationApiError("Failed to fetch districts.");
+    } finally {
+      setLoadingLoc((prev) => ({ ...prev, districts: false }));
+    }
+  };
+
+  const handleDistrictChange = async (districtIdOrOther: string) => {
+    if (districtIdOrOther === "OTHER" || !districtIdOrOther) {
+      setSelectedDistrictId(districtIdOrOther);
+      setSelectedTalukId("");
+      setTaluks([]);
+      setCities([]);
+      setVillages([]);
+      setManualDistrict(districtIdOrOther === "OTHER");
+      setManualTaluk(true);
+      setManualCity(true);
+      setManualVillage(true);
+      setFormProj((prev) => ({
+        ...prev,
+        district: districtIdOrOther === "OTHER" ? prev.district : "",
+        taluk: "",
+        location: "",
+        village: ""
+      }));
+      return;
+    }
+
+    const distObj = districts.find((d) => String(d.id) === districtIdOrOther);
+    setSelectedDistrictId(districtIdOrOther);
+    setSelectedTalukId("");
+    setManualDistrict(false);
+    setManualTaluk(false);
+    setManualCity(false);
+    setTaluks([]);
+    setCities([]);
+    setVillages([]);
+    setFormProj((prev) => ({
+      ...prev,
+      district: distObj ? distObj.name : "",
+      taluk: "",
+      location: "",
+      village: ""
+    }));
+
+    setLoadingLoc((prev) => ({ ...prev, taluks: true, cities: true }));
+    setLocationApiError(null);
+    try {
+      const [talukRes, cityRes] = await Promise.all([
+        api.fetchTaluks(districtIdOrOther),
+        api.fetchCities(districtIdOrOther)
+      ]);
+      setTaluks(talukRes.data || talukRes || []);
+      setCities(cityRes.data || cityRes || []);
+    } catch (err) {
+      console.error("Error loading taluks/cities:", err);
+      setLocationApiError("Failed to fetch taluks and cities.");
+    } finally {
+      setLoadingLoc((prev) => ({ ...prev, taluks: false, cities: false }));
+    }
+  };
+
+  const handleTalukChange = async (talukIdOrOther: string) => {
+    if (talukIdOrOther === "OTHER" || !talukIdOrOther) {
+      setSelectedTalukId(talukIdOrOther);
+      setVillages([]);
+      setManualTaluk(talukIdOrOther === "OTHER");
+      setManualVillage(true);
+      setFormProj((prev) => ({
+        ...prev,
+        taluk: talukIdOrOther === "OTHER" ? prev.taluk : "",
+        village: ""
+      }));
+      return;
+    }
+
+    const talukObj = taluks.find((t) => String(t.id) === talukIdOrOther);
+    setSelectedTalukId(talukIdOrOther);
+    setManualTaluk(false);
+    setManualVillage(false);
+    setVillages([]);
+    setFormProj((prev) => ({
+      ...prev,
+      taluk: talukObj ? talukObj.name : "",
+      village: ""
+    }));
+
+    setLoadingLoc((prev) => ({ ...prev, villages: true }));
+    setLocationApiError(null);
+    try {
+      const res = await api.fetchVillages(talukIdOrOther);
+      setVillages(res.data || res || []);
+    } catch (err) {
+      console.error("Error loading villages:", err);
+      setLocationApiError("Failed to fetch villages.");
+    } finally {
+      setLoadingLoc((prev) => ({ ...prev, villages: false }));
+    }
+  };
+
+  const handleCityChange = (cityIdOrOther: string) => {
+    if (cityIdOrOther === "OTHER" || !cityIdOrOther) {
+      setManualCity(cityIdOrOther === "OTHER");
+      setFormProj((prev) => ({
+        ...prev,
+        location: cityIdOrOther === "OTHER" ? prev.location : ""
+      }));
+      return;
+    }
+
+    const cityObj = cities.find((c) => String(c.id) === cityIdOrOther || c.name === cityIdOrOther);
+    setManualCity(false);
+    setFormProj((prev) => ({
+      ...prev,
+      location: cityObj ? cityObj.name : cityIdOrOther
+    }));
+  };
+
+  const handleVillageChange = (villageIdOrOther: string) => {
+    if (villageIdOrOther === "OTHER" || !villageIdOrOther) {
+      setManualVillage(villageIdOrOther === "OTHER");
+      setFormProj((prev) => ({
+        ...prev,
+        village: villageIdOrOther === "OTHER" ? prev.village : ""
+      }));
+      return;
+    }
+
+    const vilObj = villages.find((v) => String(v.id) === villageIdOrOther || v.name === villageIdOrOther);
+    setManualVillage(false);
+    setFormProj((prev) => ({
+      ...prev,
+      village: vilObj ? vilObj.name : villageIdOrOther
+    }));
+  };
+
   // Inspection Drawer Focus
   const [selectedProject, setSelectedProject] = useState<any | null>(null);
   const [selectedLayout, setSelectedLayout] = useState<any | null>(null);
@@ -184,6 +370,179 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
     village: "", taluk: "", district: "", country: "INDIA", pincode: "",
     latitude: "", longitude: ""
   });
+
+  // India Location Master states
+  const [states, setStates] = useState<any[]>([]);
+  const [districts, setDistricts] = useState<any[]>([]);
+  const [taluks, setTaluks] = useState<any[]>([]);
+  const [cities, setCities] = useState<any[]>([]);
+  const [villages, setVillages] = useState<any[]>([]);
+
+  const [selectedStateId, setSelectedStateId] = useState<string | number>("");
+  const [selectedDistrictId, setSelectedDistrictId] = useState<string | number>("");
+  const [selectedTalukId, setSelectedTalukId] = useState<string | number>("");
+
+  const [manualState, setManualState] = useState<boolean>(false);
+  const [manualDistrict, setManualDistrict] = useState<boolean>(false);
+  const [manualTaluk, setManualTaluk] = useState<boolean>(false);
+  const [manualCity, setManualCity] = useState<boolean>(false);
+  const [manualVillage, setManualVillage] = useState<boolean>(false);
+
+  const [loadingLoc, setLoadingLoc] = useState({
+    states: false,
+    districts: false,
+    taluks: false,
+    cities: false,
+    villages: false,
+  });
+  const [locationApiError, setLocationApiError] = useState<string | null>(null);
+
+  const loadStates = async () => {
+    setLoadingLoc((prev) => ({ ...prev, states: true }));
+    setLocationApiError(null);
+    try {
+      const res = await api.fetchStates();
+      const list = res.data || res || [];
+      setStates(list);
+      
+      // If we are editing, auto-populate cascading levels
+      if (currModal === "edit_project") {
+        await autoPopulateLocationHierarchy(
+          formProj.state,
+          formProj.district,
+          formProj.taluk,
+          formProj.location,
+          formProj.village,
+          list
+        );
+      }
+    } catch (err) {
+      console.error("Error loading states:", err);
+      setLocationApiError("Failed to load location hierarchy. Please check your database/network.");
+    } finally {
+      setLoadingLoc((prev) => ({ ...prev, states: false }));
+    }
+  };
+
+  const autoPopulateLocationHierarchy = async (
+    stateName: string,
+    districtName: string,
+    talukName: string,
+    cityName: string,
+    villageName: string,
+    allStates: any[]
+  ) => {
+    setLocationApiError(null);
+    try {
+      // Find matching state
+      const matchedState = allStates.find((s) => s.name.toLowerCase() === (stateName || "").trim().toLowerCase());
+      if (!matchedState) {
+        setManualState(true);
+        setManualDistrict(true);
+        setManualTaluk(true);
+        setManualCity(true);
+        setManualVillage(true);
+        return;
+      }
+
+      setManualState(false);
+      setSelectedStateId(matchedState.id);
+
+      // Fetch districts
+      setLoadingLoc((prev) => ({ ...prev, districts: true }));
+      const distRes = await api.fetchDistricts(matchedState.id);
+      const distList = distRes.data || distRes || [];
+      setDistricts(distList);
+      setLoadingLoc((prev) => ({ ...prev, districts: false }));
+
+      const matchedDist = distList.find((d: any) => d.name.toLowerCase() === (districtName || "").trim().toLowerCase());
+      if (!matchedDist) {
+        setManualDistrict(true);
+        setManualTaluk(true);
+        setManualCity(true);
+        setManualVillage(true);
+        return;
+      }
+
+      setManualDistrict(false);
+      setSelectedDistrictId(matchedDist.id);
+
+      // Fetch taluks and cities in parallel
+      setLoadingLoc((prev) => ({ ...prev, taluks: true, cities: true }));
+      const [talukRes, cityRes] = await Promise.all([
+        api.fetchTaluks(matchedDist.id),
+        api.fetchCities(matchedDist.id)
+      ]);
+      const talukList = talukRes.data || talukRes || [];
+      const cityList = cityRes.data || cityRes || [];
+      setTaluks(talukList);
+      setCities(cityList);
+      setLoadingLoc((prev) => ({ ...prev, taluks: false, cities: false }));
+
+      // Check matched city
+      const matchedCity = cityList.find((c: any) => c.name.toLowerCase() === (cityName || "").trim().toLowerCase());
+      if (!matchedCity) {
+        setManualCity(true);
+      } else {
+        setManualCity(false);
+      }
+
+      // Check matched taluk
+      const matchedTaluk = talukList.find((t: any) => t.name.toLowerCase() === (talukName || "").trim().toLowerCase());
+      if (!matchedTaluk) {
+        setManualTaluk(true);
+        setManualVillage(true);
+        return;
+      }
+
+      setManualTaluk(false);
+      setSelectedTalukId(matchedTaluk.id);
+
+      // Fetch villages
+      setLoadingLoc((prev) => ({ ...prev, villages: true }));
+      const vilRes = await api.fetchVillages(matchedTaluk.id);
+      const vilList = vilRes.data || vilRes || [];
+      setVillages(vilList);
+      setLoadingLoc((prev) => ({ ...prev, villages: false }));
+
+      const matchedVil = vilList.find((v: any) => v.name.toLowerCase() === (villageName || "").trim().toLowerCase());
+      if (!matchedVil) {
+        setManualVillage(true);
+      } else {
+        setManualVillage(false);
+      }
+    } catch (err) {
+      console.error("Error auto-populating location hierarchy:", err);
+      setLocationApiError("Failed to fetch cascading master locations. Defaulted to manual fields.");
+      setManualState(true);
+      setManualDistrict(true);
+      setManualTaluk(true);
+      setManualCity(true);
+      setManualVillage(true);
+    }
+  };
+
+  useEffect(() => {
+    if (currModal === "create_project" || currModal === "edit_project") {
+      loadStates();
+      if (currModal === "create_project") {
+        setSelectedStateId("");
+        setSelectedDistrictId("");
+        setSelectedTalukId("");
+        setManualState(false);
+        setManualDistrict(false);
+        setManualTaluk(false);
+        setManualCity(false);
+        setManualVillage(false);
+        setDistricts([]);
+        setTaluks([]);
+        setCities([]);
+        setVillages([]);
+      }
+    }
+  }, [currModal]);
+
+
 
   const [formLay, setFormLay] = useState({
     project_id: "", name: "", code: "", layout_type: "RESIDENTIAL",
@@ -2848,259 +3207,432 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
       {`============================================================`}
       
       {/* 1. Project modal overlay (Create/Edit) */}
-      {currModal === "create_project" && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl max-h-[85vh] overflow-y-auto">
-            <h4 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">Catalog New Real estate Project</h4>
-            <form onSubmit={handleSaveProject} className="space-y-3 text-xs text-left">
+      {(currModal === "create_project" || currModal === "edit_project") && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+            {/* Sticky Header */}
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Project Name *</label>
-                <input required type="text" value={formProj.name} onChange={(e) => setFormProj({ ...formProj, name: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
+                <h4 className="text-sm font-bold text-slate-900">
+                  {currModal === "create_project" ? "Create New Project Registry" : "Edit Project Specifications"}
+                </h4>
+                <p className="text-[10px] text-slate-400 mt-0.5">Define geographic bounds, compliance parameters and India location hierarchy</p>
               </div>
-              <div className="grid grid-cols-2 gap-3.5">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Project Code *</label>
-                  <input required type="text" value={formProj.code} onChange={(e) => setFormProj({ ...formProj, code: e.target.value.toUpperCase() })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono font-bold" />
+              <button 
+                type="button" 
+                onClick={() => setCurrModal(null)} 
+                className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-1.5 rounded-lg transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Scrollable Content Container */}
+            <div className="p-5 overflow-y-auto flex-1 space-y-4">
+              
+              {/* Local API Error / Retry alert */}
+              {locationApiError && (
+                <div className="bg-red-50 border border-red-100 text-red-600 p-3 rounded-xl text-xs flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4 shrink-0 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <span>{locationApiError}</span>
+                  </div>
+                  <button 
+                    type="button" 
+                    onClick={loadStates} 
+                    className="bg-white border border-red-200 hover:bg-red-50 text-red-700 px-2.5 py-1 rounded-md font-bold transition-colors"
+                  >
+                    Retry
+                  </button>
                 </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Developer Name *</label>
-                  <input required type="text" value={formProj.developer_name} onChange={(e) => setFormProj({ ...formProj, developer_name: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
+              )}
+
+              <form id="project-form" onSubmit={handleSaveProject} className="space-y-4 text-xs text-left">
+                {/* Core Specifications section */}
+                <div className="space-y-3.5">
+                  <h5 className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider border-b border-slate-100 pb-1">Core Specifications</h5>
+                  
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Project Name *</label>
+                    <input 
+                      required 
+                      type="text" 
+                      value={formProj.name} 
+                      onChange={(e) => setFormProj({ ...formProj, name: e.target.value })} 
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none" 
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    <div>
+                      {currModal === "create_project" ? (
+                        <>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Project Code *</label>
+                          <input 
+                            required 
+                            type="text" 
+                            value={formProj.code} 
+                            onChange={(e) => setFormProj({ ...formProj, code: e.target.value.toUpperCase() })} 
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono font-bold focus:ring-1 focus:ring-indigo-500 focus:outline-none" 
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Project Code (ReadOnly)</label>
+                          <input 
+                            disabled 
+                            type="text" 
+                            value={formProj.code} 
+                            className="w-full bg-slate-100 border border-slate-200 rounded-lg p-2 text-xs font-mono font-bold text-slate-400 cursor-not-allowed" 
+                          />
+                        </>
+                      )}
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Developer Name *</label>
+                      <input 
+                        required 
+                        type="text" 
+                        value={formProj.developer_name} 
+                        onChange={(e) => setFormProj({ ...formProj, developer_name: e.target.value })} 
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none" 
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Project Type *</label>
+                      <select 
+                        required 
+                        value={formProj.project_type} 
+                        onChange={(e) => setFormProj({ ...formProj, project_type: e.target.value })} 
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                      >
+                        <option value="RESIDENTIAL">RESIDENTIAL</option>
+                        <option value="COMMERCIAL">COMMERCIAL</option>
+                        <option value="MIXED_USE">MIXED USE</option>
+                        <option value="INDUSTRIAL">INDUSTRIAL</option>
+                        <option value="PLOTTED">PLOTTED</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Status *</label>
+                      <select 
+                        required 
+                        value={formProj.status} 
+                        onChange={(e) => setFormProj({ ...formProj, status: e.target.value })} 
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                      >
+                        <option value="PLANNING">PLANNING</option>
+                        <option value="ACTIVE">ACTIVE</option>
+                        <option value="COMPLETED">COMPLETED</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3.5">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Project Type *</label>
-                  <select required value={formProj.project_type} onChange={(e) => setFormProj({ ...formProj, project_type: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs">
-                    <option value="RESIDENTIAL">RESIDENTIAL</option>
-                    <option value="COMMERCIAL">COMMERCIAL</option>
-                    <option value="MIXED_USE">MIXED USE</option>
-                    <option value="INDUSTRIAL">INDUSTRIAL</option>
-                    <option value="PLOTTED">PLOTTED</option>
-                  </select>
+
+                {/* Geography & Location master hierarchical selects section */}
+                <div className="space-y-3.5 pt-2">
+                  <h5 className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider border-b border-slate-100 pb-1">Geography & India Location Hierarchy</h5>
+                  
+                  {/* Cascading State & District row */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">State *</label>
+                        {loadingLoc.states && <span className="text-[9px] text-indigo-500 animate-pulse font-medium">Loading...</span>}
+                      </div>
+                      <select
+                        required={!manualState}
+                        value={manualState ? "OTHER" : selectedStateId}
+                        onChange={(e) => handleStateChange(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                      >
+                        <option value="">-- Select State --</option>
+                        {states.map((s) => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                        <option value="OTHER">Other (Enter manually)</option>
+                      </select>
+                      {manualState && (
+                        <input
+                          required
+                          type="text"
+                          placeholder="Enter State Name"
+                          value={formProj.state}
+                          onChange={(e) => setFormProj({ ...formProj, state: e.target.value })}
+                          className="w-full mt-1.5 bg-slate-50 border border-indigo-200 rounded-lg p-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                        />
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">District</label>
+                        {loadingLoc.districts && <span className="text-[9px] text-indigo-500 animate-pulse font-medium">Loading...</span>}
+                      </div>
+                      <select
+                        disabled={!selectedStateId || manualState}
+                        value={manualDistrict ? "OTHER" : selectedDistrictId}
+                        onChange={(e) => handleDistrictChange(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                      >
+                        <option value="">-- Select District --</option>
+                        {districts.map((d) => (
+                          <option key={d.id} value={d.id}>{d.name}</option>
+                        ))}
+                        <option value="OTHER">Other (Enter manually)</option>
+                      </select>
+                      {(manualDistrict || manualState) && (
+                        <input
+                          required={manualDistrict}
+                          type="text"
+                          placeholder="Enter District Name"
+                          value={formProj.district}
+                          onChange={(e) => setFormProj({ ...formProj, district: e.target.value })}
+                          className="w-full mt-1.5 bg-slate-50 border border-indigo-200 rounded-lg p-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Cascading Taluk & City row */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Taluk</label>
+                        {loadingLoc.taluks && <span className="text-[9px] text-indigo-500 animate-pulse font-medium">Loading...</span>}
+                      </div>
+                      <select
+                        disabled={!selectedDistrictId || manualDistrict || manualState}
+                        value={manualTaluk ? "OTHER" : selectedTalukId}
+                        onChange={(e) => handleTalukChange(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                      >
+                        <option value="">-- Select Taluk --</option>
+                        {taluks.map((t) => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                        <option value="OTHER">Other (Enter manually)</option>
+                      </select>
+                      {(manualTaluk || manualDistrict || manualState) && (
+                        <input
+                          type="text"
+                          placeholder="Enter Taluk Name"
+                          value={formProj.taluk}
+                          onChange={(e) => setFormProj({ ...formProj, taluk: e.target.value })}
+                          className="w-full mt-1.5 bg-slate-50 border border-indigo-200 rounded-lg p-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                        />
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Location / City *</label>
+                        {loadingLoc.cities && <span className="text-[9px] text-indigo-500 animate-pulse font-medium">Loading...</span>}
+                      </div>
+                      <select
+                        disabled={!selectedDistrictId || manualDistrict || manualState}
+                        value={manualCity ? "OTHER" : formProj.location}
+                        onChange={(e) => handleCityChange(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                      >
+                        <option value="">-- Select City/Town --</option>
+                        {cities.map((c) => (
+                          <option key={c.id} value={c.name}>{c.name}</option>
+                        ))}
+                        <option value="OTHER">Other (Enter manually)</option>
+                      </select>
+                      {(manualCity || manualDistrict || manualState) && (
+                        <input
+                          required
+                          type="text"
+                          placeholder="Enter City/Town Name"
+                          value={formProj.location}
+                          onChange={(e) => setFormProj({ ...formProj, location: e.target.value })}
+                          className="w-full mt-1.5 bg-slate-50 border border-indigo-200 rounded-lg p-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Cascading Village & PIN row */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Village / Locality</label>
+                        {loadingLoc.villages && <span className="text-[9px] text-indigo-500 animate-pulse font-medium">Loading...</span>}
+                      </div>
+                      <select
+                        disabled={!selectedTalukId || manualTaluk || manualDistrict || manualState}
+                        value={manualVillage ? "OTHER" : formProj.village}
+                        onChange={(e) => handleVillageChange(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                      >
+                        <option value="">-- Select Village/Locality --</option>
+                        {villages.map((v) => (
+                          <option key={v.id} value={v.name}>{v.name}</option>
+                        ))}
+                        <option value="OTHER">Other (Enter manually)</option>
+                      </select>
+                      {(manualVillage || manualTaluk || manualDistrict || manualState) && (
+                        <input
+                          type="text"
+                          placeholder="Enter Village / Locality Name"
+                          value={formProj.village}
+                          onChange={(e) => setFormProj({ ...formProj, village: e.target.value })}
+                          className="w-full mt-1.5 bg-slate-50 border border-indigo-200 rounded-lg p-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                        />
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">PIN Code</label>
+                      <input 
+                        type="text" 
+                        value={formProj.pincode} 
+                        onChange={(e) => setFormProj({ ...formProj, pincode: e.target.value })} 
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono focus:ring-1 focus:ring-indigo-500 focus:outline-none" 
+                      />
+                    </div>
+                  </div>
+
+                  {/* Geolocation Coordinate Inputs */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Latitude</label>
+                      <input 
+                        type="text" 
+                        value={formProj.latitude} 
+                        onChange={(e) => setFormProj({ ...formProj, latitude: e.target.value })} 
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono focus:ring-1 focus:ring-indigo-500 focus:outline-none" 
+                        placeholder="e.g. 12.9716" 
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Longitude</label>
+                      <input 
+                        type="text" 
+                        value={formProj.longitude} 
+                        onChange={(e) => setFormProj({ ...formProj, longitude: e.target.value })} 
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono focus:ring-1 focus:ring-indigo-500 focus:outline-none" 
+                        placeholder="e.g. 77.5946" 
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Status *</label>
-                  <select required value={formProj.status} onChange={(e) => setFormProj({ ...formProj, status: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs">
-                    <option value="PLANNING">PLANNING</option>
-                    <option value="ACTIVE">ACTIVE</option>
-                    <option value="COMPLETED">COMPLETED</option>
-                  </select>
+
+                {/* Additional Metadata, Description & Compliance Section */}
+                <div className="space-y-3.5 pt-2">
+                  <h5 className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider border-b border-slate-100 pb-1">Compliance & Compliance Timelines</h5>
+                  
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Description (Optional)</label>
+                    <textarea 
+                      rows={2} 
+                      value={formProj.description} 
+                      onChange={(e) => setFormProj({ ...formProj, description: e.target.value })} 
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none" 
+                      placeholder="Enter brief project description..." 
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">RERA Validation No.</label>
+                      <input 
+                        type="text" 
+                        value={formProj.rera_number} 
+                        onChange={(e) => setFormProj({ ...formProj, rera_number: e.target.value })} 
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono focus:ring-1 focus:ring-indigo-500 focus:outline-none" 
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Approval Status</label>
+                      <select 
+                        value={formProj.approval_status} 
+                        onChange={(e) => setFormProj({ ...formProj, approval_status: e.target.value })} 
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                      >
+                        <option value="PENDING">PENDING</option>
+                        <option value="APPROVED">APPROVED</option>
+                        <option value="REJECTED">REJECTED</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Approval Authority / Agency</label>
+                    <input 
+                      type="text" 
+                      value={formProj.approval_authority} 
+                      onChange={(e) => setFormProj({ ...formProj, approval_authority: e.target.value })} 
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none" 
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Launch Date</label>
+                      <input 
+                        type="date" 
+                        value={formProj.launch_date} 
+                        onChange={(e) => setFormProj({ ...formProj, launch_date: e.target.value })} 
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none" 
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Possession Target Date</label>
+                      <input 
+                        type="date" 
+                        value={formProj.possession_target_date} 
+                        onChange={(e) => setFormProj({ ...formProj, possession_target_date: e.target.value })} 
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none" 
+                      />
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3.5">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Location / City *</label>
-                  <input required type="text" value={formProj.location} onChange={(e) => setFormProj({ ...formProj, location: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">State *</label>
-                  <input required type="text" value={formProj.state} onChange={(e) => setFormProj({ ...formProj, state: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3.5">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Village</label>
-                  <input type="text" value={formProj.village} onChange={(e) => setFormProj({ ...formProj, village: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Taluk</label>
-                  <input type="text" value={formProj.taluk} onChange={(e) => setFormProj({ ...formProj, taluk: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-3.5">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">District</label>
-                  <input type="text" value={formProj.district} onChange={(e) => setFormProj({ ...formProj, district: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Country</label>
-                  <input type="text" value={formProj.country} onChange={(e) => setFormProj({ ...formProj, country: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">PIN Code</label>
-                  <input type="text" value={formProj.pincode} onChange={(e) => setFormProj({ ...formProj, pincode: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3.5">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Latitude</label>
-                  <input type="text" value={formProj.latitude} onChange={(e) => setFormProj({ ...formProj, latitude: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono" placeholder="e.g. 12.9716" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Longitude</label>
-                  <input type="text" value={formProj.longitude} onChange={(e) => setFormProj({ ...formProj, longitude: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono" placeholder="e.g. 77.5946" />
-                </div>
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Description (Optional)</label>
-                <textarea rows={2} value={formProj.description} onChange={(e) => setFormProj({ ...formProj, description: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" placeholder="Enter brief project description..." />
-              </div>
-              <div className="grid grid-cols-2 gap-3.5">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">RERA Validation No.</label>
-                  <input type="text" value={formProj.rera_number} onChange={(e) => setFormProj({ ...formProj, rera_number: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Approval Status</label>
-                  <select value={formProj.approval_status} onChange={(e) => setFormProj({ ...formProj, approval_status: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs">
-                    <option value="PENDING">PENDING</option>
-                    <option value="APPROVED">APPROVED</option>
-                    <option value="REJECTED">REJECTED</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Approval Authority / Agency</label>
-                <input type="text" value={formProj.approval_authority} onChange={(e) => setFormProj({ ...formProj, approval_authority: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
-              </div>
-              <div className="grid grid-cols-2 gap-3.5">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Launch Date</label>
-                  <input type="date" value={formProj.launch_date} onChange={(e) => setFormProj({ ...formProj, launch_date: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Possession Target Date</label>
-                  <input type="date" value={formProj.possession_target_date} onChange={(e) => setFormProj({ ...formProj, possession_target_date: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
-                </div>
-              </div>
-              <div className="flex justify-end gap-2.5 pt-3">
-                <button type="button" onClick={() => setCurrModal(null)} className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-50">Cancel</button>
-                <button type="submit" disabled={isSavingProject} className={`px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold ${isSavingProject ? "opacity-50 cursor-not-allowed" : ""}`}>
-                  {isSavingProject ? "Saving..." : "Save Project"}
-                </button>
-              </div>
-            </form>
+              </form>
+            </div>
+
+            {/* STICKY FOOTER with Cancel and Save Project / Update Project buttons */}
+            <div className="p-4 border-t border-slate-100 flex justify-end gap-2.5 bg-slate-50">
+              <button 
+                type="button" 
+                onClick={() => setCurrModal(null)} 
+                className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-700 bg-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                type="submit" 
+                form="project-form"
+                disabled={isSavingProject} 
+                className={`px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors flex items-center gap-1.5 ${isSavingProject ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
+                {isSavingProject ? (
+                  <>
+                    <svg className="animate-spin h-3 w-3 text-white" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  currModal === "create_project" ? "Save Project" : "Update Project"
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {currModal === "edit_project" && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl max-h-[85vh] overflow-y-auto">
-            <h4 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">Edit Project Specifications</h4>
-            <form onSubmit={handleSaveProject} className="space-y-3.5 text-xs text-left">
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Project Name *</label>
-                <input required type="text" value={formProj.name} onChange={(e) => setFormProj({ ...formProj, name: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
-              </div>
-              <div className="grid grid-cols-2 gap-3.5">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Project Code (ReadOnly)</label>
-                  <input disabled type="text" value={formProj.code} className="w-full bg-slate-100 border border-slate-200 rounded-lg p-2 text-xs font-mono font-bold text-slate-400" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Developer Name *</label>
-                  <input required type="text" value={formProj.developer_name} onChange={(e) => setFormProj({ ...formProj, developer_name: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3.5">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Project Type *</label>
-                  <select required value={formProj.project_type} onChange={(e) => setFormProj({ ...formProj, project_type: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs">
-                    <option value="RESIDENTIAL">RESIDENTIAL</option>
-                    <option value="COMMERCIAL">COMMERCIAL</option>
-                    <option value="MIXED_USE">MIXED USE</option>
-                    <option value="INDUSTRIAL">INDUSTRIAL</option>
-                    <option value="PLOTTED">PLOTTED</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Project Status *</label>
-                  <select required value={formProj.status} onChange={(e) => setFormProj({ ...formProj, status: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs">
-                    <option value="PLANNING">PLANNING</option>
-                    <option value="ACTIVE">ACTIVE</option>
-                    <option value="COMPLETED">COMPLETED</option>
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3.5">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Location / City *</label>
-                  <input required type="text" value={formProj.location} onChange={(e) => setFormProj({ ...formProj, location: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">State *</label>
-                  <input required type="text" value={formProj.state} onChange={(e) => setFormProj({ ...formProj, state: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3.5">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Village</label>
-                  <input type="text" value={formProj.village} onChange={(e) => setFormProj({ ...formProj, village: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Taluk</label>
-                  <input type="text" value={formProj.taluk} onChange={(e) => setFormProj({ ...formProj, taluk: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-3.5">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">District</label>
-                  <input type="text" value={formProj.district} onChange={(e) => setFormProj({ ...formProj, district: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Country</label>
-                  <input type="text" value={formProj.country} onChange={(e) => setFormProj({ ...formProj, country: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">PIN Code</label>
-                  <input type="text" value={formProj.pincode} onChange={(e) => setFormProj({ ...formProj, pincode: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3.5">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Latitude</label>
-                  <input type="text" value={formProj.latitude} onChange={(e) => setFormProj({ ...formProj, latitude: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono" placeholder="e.g. 12.9716" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Longitude</label>
-                  <input type="text" value={formProj.longitude} onChange={(e) => setFormProj({ ...formProj, longitude: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono" placeholder="e.g. 77.5946" />
-                </div>
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Description (Optional)</label>
-                <textarea rows={2} value={formProj.description} onChange={(e) => setFormProj({ ...formProj, description: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" placeholder="Enter brief project description..." />
-              </div>
-              <div className="grid grid-cols-2 gap-3.5">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">RERA Validation No.</label>
-                  <input type="text" value={formProj.rera_number} onChange={(e) => setFormProj({ ...formProj, rera_number: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-mono" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Approval Status</label>
-                  <select value={formProj.approval_status} onChange={(e) => setFormProj({ ...formProj, approval_status: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs">
-                    <option value="PENDING">PENDING</option>
-                    <option value="APPROVED">APPROVED</option>
-                    <option value="REJECTED">REJECTED</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Approval Authority</label>
-                <input type="text" value={formProj.approval_authority} onChange={(e) => setFormProj({ ...formProj, approval_authority: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
-              </div>
-              <div className="grid grid-cols-2 gap-3.5">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Launch Date</label>
-                  <input type="date" value={formProj.launch_date} onChange={(e) => setFormProj({ ...formProj, launch_date: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Possession Target</label>
-                  <input type="date" value={formProj.possession_target_date} onChange={(e) => setFormProj({ ...formProj, possession_target_date: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
-                </div>
-              </div>
-              <div className="flex justify-end gap-2.5 pt-3">
-                <button type="button" onClick={() => setCurrModal(null)} className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-50">Cancel</button>
-                <button type="submit" disabled={isSavingProject} className={`px-4 py-2 bg-indigo-650 hover:bg-indigo-750 text-white rounded-xl text-xs font-semibold ${isSavingProject ? "opacity-50 cursor-not-allowed" : ""}`}>
-                  {isSavingProject ? "Saving..." : "Save Changes"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 2. Layouts Modal overlay */}
+{/* 2. Layouts Modal overlay */}
       {(currModal === "create_layout" || currModal === "edit_layout") && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl max-h-[85vh] overflow-y-auto">

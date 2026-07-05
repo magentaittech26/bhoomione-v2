@@ -876,6 +876,26 @@ class ApiClient {
     return this.request<any[]>("/measurement-units", { method: "GET" });
   }
 
+  async fetchStates(): Promise<any> {
+    return this.request<any>("/location/states", { method: "GET" });
+  }
+
+  async fetchDistricts(stateId: number | string): Promise<any> {
+    return this.request<any>(`/location/districts?state_id=${stateId}`, { method: "GET" });
+  }
+
+  async fetchTaluks(districtId: number | string): Promise<any> {
+    return this.request<any>(`/location/taluks?district_id=${districtId}`, { method: "GET" });
+  }
+
+  async fetchCities(districtId: number | string): Promise<any> {
+    return this.request<any>(`/location/cities?district_id=${districtId}`, { method: "GET" });
+  }
+
+  async fetchVillages(talukId: number | string): Promise<any> {
+    return this.request<any>(`/location/villages?taluk_id=${talukId}`, { method: "GET" });
+  }
+
   async fetchProjects(params?: Record<string, any>): Promise<any> {
     let endpoint = "/projects";
     if (params) {

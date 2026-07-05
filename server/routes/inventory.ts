@@ -137,6 +137,9 @@ router.post("/projects", requireAuth, async (req: AuthenticatedRequest, res: Res
     res.status(201).json(result.rows[0]);
   } catch (err: any) {
     console.error("createProject Error:", err);
+    if (err.code === "23505") {
+      return res.status(400).json({ error: "Duplicate Project Code! A project with this code already exists for this tenant." });
+    }
     res.status(500).json({ error: "Failed to build project layout record." });
   }
 });
@@ -188,6 +191,9 @@ router.put("/projects/:id", requireAuth, async (req: AuthenticatedRequest, res: 
     res.json(result.rows[0]);
   } catch (err: any) {
     console.error("updateProject Error:", err);
+    if (err.code === "23505") {
+      return res.status(400).json({ error: "Duplicate Project Code! A project with this code already exists for this tenant." });
+    }
     res.status(500).json({ error: "Failed to update project." });
   }
 });
@@ -1752,6 +1758,84 @@ router.post("/dxf/generation-batches/:batchId/compile-svg", requireAuth, async (
     await db.query("ROLLBACK");
     console.error("compileSvgDocument Error:", err);
     res.status(500).json({ error: "Failed to compile SVG representation." });
+  }
+});
+
+// ==========================================
+// LOCATION MASTER ENDPOINTS
+// ==========================================
+router.get("/location/states", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const db = getPool();
+    const result = await db.query("SELECT * FROM location_states ORDER BY name ASC");
+    res.json({ data: result.rows });
+  } catch (err: any) {
+    console.error("fetchStates Error:", err);
+    res.status(500).json({ error: "Failed to fetch states." });
+  }
+});
+
+router.get("/location/districts", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { state_id } = req.query;
+    if (!state_id) return res.status(400).json({ error: "state_id query parameter required." });
+    const db = getPool();
+    const result = await db.query(
+      "SELECT * FROM location_districts WHERE state_id = $1 ORDER BY name ASC",
+      [state_id]
+    );
+    res.json({ data: result.rows });
+  } catch (err: any) {
+    console.error("fetchDistricts Error:", err);
+    res.status(500).json({ error: "Failed to fetch districts." });
+  }
+});
+
+router.get("/location/taluks", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { district_id } = req.query;
+    if (!district_id) return res.status(400).json({ error: "district_id query parameter required." });
+    const db = getPool();
+    const result = await db.query(
+      "SELECT * FROM location_taluks WHERE district_id = $1 ORDER BY name ASC",
+      [district_id]
+    );
+    res.json({ data: result.rows });
+  } catch (err: any) {
+    console.error("fetchTaluks Error:", err);
+    res.status(500).json({ error: "Failed to fetch taluks." });
+  }
+});
+
+router.get("/location/cities", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { district_id } = req.query;
+    if (!district_id) return res.status(400).json({ error: "district_id query parameter required." });
+    const db = getPool();
+    const result = await db.query(
+      "SELECT * FROM location_cities WHERE district_id = $1 ORDER BY name ASC",
+      [district_id]
+    );
+    res.json({ data: result.rows });
+  } catch (err: any) {
+    console.error("fetchCities Error:", err);
+    res.status(500).json({ error: "Failed to fetch cities." });
+  }
+});
+
+router.get("/location/villages", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { taluk_id } = req.query;
+    if (!taluk_id) return res.status(400).json({ error: "taluk_id query parameter required." });
+    const db = getPool();
+    const result = await db.query(
+      "SELECT * FROM location_villages WHERE taluk_id = $1 ORDER BY name ASC",
+      [taluk_id]
+    );
+    res.json({ data: result.rows });
+  } catch (err: any) {
+    console.error("fetchVillages Error:", err);
+    res.status(500).json({ error: "Failed to fetch villages." });
   }
 });
 

@@ -870,7 +870,153 @@ export async function bootstrapDatabase() {
     await client.query("ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS whatsapp_media_url VARCHAR(512) NULL");
     await client.query("ALTER TABLE notification_logs ADD COLUMN IF NOT EXISTS whatsapp_media_type VARCHAR(50) NULL");
 
+    // --- INDIA LOCATION MASTER TABLES ---
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS location_states (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        code VARCHAR(10) NOT NULL UNIQUE
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS location_districts (
+        id SERIAL PRIMARY KEY,
+        state_id INTEGER NOT NULL REFERENCES location_states(id) ON DELETE CASCADE,
+        name VARCHAR(100) NOT NULL
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS location_taluks (
+        id SERIAL PRIMARY KEY,
+        district_id INTEGER NOT NULL REFERENCES location_districts(id) ON DELETE CASCADE,
+        name VARCHAR(100) NOT NULL
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS location_cities (
+        id SERIAL PRIMARY KEY,
+        district_id INTEGER NOT NULL REFERENCES location_districts(id) ON DELETE CASCADE,
+        name VARCHAR(100) NOT NULL
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS location_villages (
+        id SERIAL PRIMARY KEY,
+        taluk_id INTEGER NOT NULL REFERENCES location_taluks(id) ON DELETE CASCADE,
+        name VARCHAR(100) NOT NULL
+      )
+    `);
+
+    // Seed location tables if empty
+    const stateCheck = await client.query("SELECT COUNT(*) FROM location_states");
+    if (parseInt(stateCheck.rows[0].count) === 0) {
+      console.log("🌱 Seeding India Location Master Data...");
+      
+      // States
+      const karnatakaRes = await client.query("INSERT INTO location_states (name, code) VALUES ('Karnataka', 'KA') RETURNING id");
+      const maharashtraRes = await client.query("INSERT INTO location_states (name, code) VALUES ('Maharashtra', 'MH') RETURNING id");
+      const tamilNaduRes = await client.query("INSERT INTO location_states (name, code) VALUES ('Tamil Nadu', 'TN') RETURNING id");
+      const telanganaRes = await client.query("INSERT INTO location_states (name, code) VALUES ('Telangana', 'TG') RETURNING id");
+      const haryanaRes = await client.query("INSERT INTO location_states (name, code) VALUES ('Haryana', 'HR') RETURNING id");
+
+      const kaId = karnatakaRes.rows[0].id;
+      const mhId = maharashtraRes.rows[0].id;
+      const tnId = tamilNaduRes.rows[0].id;
+      const tgId = telanganaRes.rows[0].id;
+      const hrId = haryanaRes.rows[0].id;
+
+      // Karnataka Districts
+      const blrRes = await client.query("INSERT INTO location_districts (state_id, name) VALUES ($1, 'Bangalore Urban') RETURNING id", [kaId]);
+      const mysRes = await client.query("INSERT INTO location_districts (state_id, name) VALUES ($1, 'Mysore') RETURNING id", [kaId]);
+      
+      const blrId = blrRes.rows[0].id;
+      const mysId = mysRes.rows[0].id;
+
+      // Bangalore Taluks
+      const blrNorthRes = await client.query("INSERT INTO location_taluks (district_id, name) VALUES ($1, 'Bangalore North') RETURNING id", [blrId]);
+      const blrEastRes = await client.query("INSERT INTO location_taluks (district_id, name) VALUES ($1, 'Bangalore East') RETURNING id", [blrId]);
+      const blrSouthRes = await client.query("INSERT INTO location_taluks (district_id, name) VALUES ($1, 'Bangalore South') RETURNING id", [blrId]);
+      
+      const blrNorthId = blrNorthRes.rows[0].id;
+      const blrEastId = blrEastRes.rows[0].id;
+      const blrSouthId = blrSouthRes.rows[0].id;
+
+      // Bangalore Cities/Towns
+      await client.query("INSERT INTO location_cities (district_id, name) VALUES ($1, 'Bangalore City')", [blrId]);
+      await client.query("INSERT INTO location_cities (district_id, name) VALUES ($1, 'Yelahanka Town')", [blrId]);
+      await client.query("INSERT INTO location_cities (district_id, name) VALUES ($1, 'Kengeri')", [blrId]);
+
+      // Bangalore North Villages
+      await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Hebbal')", [blrNorthId]);
+      await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Yelahanka')", [blrNorthId]);
+      await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Manyata Tech Park Area')", [blrNorthId]);
+      await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Thanisandra')", [blrNorthId]);
+
+      // Bangalore East Villages
+      await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Whitefield')", [blrEastId]);
+      await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Marathahalli')", [blrEastId]);
+      await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Bellandur')", [blrEastId]);
+      await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Varthur')", [blrEastId]);
+
+      // Bangalore South Villages
+      await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Electronic City Phase 1')", [blrSouthId]);
+      await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Begur')", [blrSouthId]);
+      await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Hulimavu')", [blrSouthId]);
+
+      // Mysore Taluks & Cities
+      const mysTalukRes = await client.query("INSERT INTO location_taluks (district_id, name) VALUES ($1, 'Mysore Taluk') RETURNING id", [mysId]);
+      const mysTalukId = mysTalukRes.rows[0].id;
+      await client.query("INSERT INTO location_cities (district_id, name) VALUES ($1, 'Mysuru')", [mysId]);
+      await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Gokulam')", [mysTalukId]);
+      await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Vijayanagar')", [mysTalukId]);
+      await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Chamundi Hill')", [mysTalukId]);
+
+      // Maharashtra Districts
+      const mumRes = await client.query("INSERT INTO location_districts (state_id, name) VALUES ($1, 'Mumbai Suburban') RETURNING id", [mhId]);
+      const puneRes = await client.query("INSERT INTO location_districts (state_id, name) VALUES ($1, 'Pune') RETURNING id", [mhId]);
+      
+      const mumId = mumRes.rows[0].id;
+      const puneId = puneRes.rows[0].id;
+
+      // Mumbai Taluks & Cities
+      const andheriRes = await client.query("INSERT INTO location_taluks (district_id, name) VALUES ($1, 'Andheri') RETURNING id", [mumId]);
+      const andheriId = andheriRes.rows[0].id;
+      await client.query("INSERT INTO location_cities (district_id, name) VALUES ($1, 'Mumbai')", [mumId]);
+      await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Bandra West')", [andheriId]);
+      await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Juhu')", [andheriId]);
+      await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Lokhandwala')", [andheriId]);
+
+      // Pune Taluks & Cities
+      const haveliRes = await client.query("INSERT INTO location_taluks (district_id, name) VALUES ($1, 'Haveli') RETURNING id", [puneId]);
+      const haveliId = haveliRes.rows[0].id;
+      await client.query("INSERT INTO location_cities (district_id, name) VALUES ($1, 'Pune')", [puneId]);
+      await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Hinjawadi')", [haveliId]);
+      await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Baner')", [haveliId]);
+      await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Hadapsar')", [haveliId]);
+
+      // Haryana Districts
+      const gurgaonRes = await client.query("INSERT INTO location_districts (state_id, name) VALUES ($1, 'Gurgaon') RETURNING id", [hrId]);
+      const gurgaonId = gurgaonRes.rows[0].id;
+      const gurgaonTalukRes = await client.query("INSERT INTO location_taluks (district_id, name) VALUES ($1, 'Gurgaon Taluk') RETURNING id", [gurgaonId]);
+      const gurgaonTalukId = gurgaonTalukRes.rows[0].id;
+      await client.query("INSERT INTO location_cities (district_id, name) VALUES ($1, 'Gurugram')", [gurgaonId]);
+      await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Sector 15')", [gurgaonTalukId]);
+      await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Sector 45')", [gurgaonTalukId]);
+      await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Sohna')", [gurgaonTalukId]);
+
+      console.log("✅ India Location Master Data seeded successfully.");
+    }
+
     // PERFORMANCE INDEXES
+    await client.query("CREATE INDEX IF NOT EXISTS idx_location_districts_state ON location_districts(state_id)");
+    await client.query("CREATE INDEX IF NOT EXISTS idx_location_taluks_district ON location_taluks(district_id)");
+    await client.query("CREATE INDEX IF NOT EXISTS idx_location_cities_district ON location_cities(district_id)");
+    await client.query("CREATE INDEX IF NOT EXISTS idx_location_villages_taluk ON location_villages(taluk_id)");
+
     await client.query("CREATE INDEX IF NOT EXISTS idx_tenant_domains_domain ON tenant_domains(domain_name)");
     await client.query("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)");
     await client.query("CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone)");
