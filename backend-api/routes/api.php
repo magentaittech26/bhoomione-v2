@@ -473,6 +473,18 @@ Route::prefix('v1')->group(function () {
             return response()->json(\App\Models\MeasurementUnit::all());
         })->middleware([PermissionRequirementMiddleware::class . ':projects.view']);
 
+        // Location Master Hierarchy Routes (Sprint 2A Laravel Core)
+        Route::get('/location/states', [\App\Http\Controllers\Api\v1\LocationController::class, 'states'])
+            ->middleware([PermissionRequirementMiddleware::class . ':projects.view']);
+        Route::get('/location/districts', [\App\Http\Controllers\Api\v1\LocationController::class, 'districts'])
+            ->middleware([PermissionRequirementMiddleware::class . ':projects.view']);
+        Route::get('/location/taluks', [\App\Http\Controllers\Api\v1\LocationController::class, 'taluks'])
+            ->middleware([PermissionRequirementMiddleware::class . ':projects.view']);
+        Route::get('/location/cities', [\App\Http\Controllers\Api\v1\LocationController::class, 'cities'])
+            ->middleware([PermissionRequirementMiddleware::class . ':projects.view']);
+        Route::get('/location/villages', [\App\Http\Controllers\Api\v1\LocationController::class, 'villages'])
+            ->middleware([PermissionRequirementMiddleware::class . ':projects.view']);
+
         // DXF Group protected by subscription-level permissions
         Route::middleware([\App\Http\Middleware\SubscriptionFeatureGate::class . ':DXF'])->group(function () {
             Route::get('/dxf/files', [DxfController::class, 'listFiles'])->middleware([PermissionRequirementMiddleware::class . ':dxf.view']);

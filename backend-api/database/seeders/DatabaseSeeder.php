@@ -17,6 +17,7 @@ class DatabaseSeeder extends Seeder
             SaasPlatformSettingsSeeder::class,
             PaymentGatewaySeeder::class,
             EmailInfrastructureSeeder::class,
+            LocationMasterSeeder::class,
         ]);
     }
 }
