@@ -118,6 +118,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
   
   // Loading & Feedback
   const [loading, setLoading] = useState<boolean>(false);
+  const [isSavingProject, setIsSavingProject] = useState<boolean>(false);
   const [errorMess, setErrorMess] = useState<string | null>(null);
   const [successMess, setSuccessMess] = useState<string | null>(null);
 
@@ -530,6 +531,8 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
   // 1. Projects Actions
   const handleSaveProject = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSavingProject) return;
+    setIsSavingProject(true);
     setErrorMess(null);
     try {
       const parsedMetadata = tryParseJSON(formProj.approvals_metadata);
@@ -560,17 +563,20 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
 
       if (editId) {
         const res = await api.updateProject(editId, payload);
+        setCurrModal(null);
         displaySuccess(`Project [${res.code}] updated successfully!`);
         dispatchAuditLog("PROJECT_UPDATE", "projects", res.id, `Modified Project Specifications for ${res.name}`);
       } else {
         const res = await api.createProject(payload);
+        setCurrModal(null);
         displaySuccess(`New Project [${res.code}] created successfully!`);
         dispatchAuditLog("PROJECT_CREATE", "projects", res.id, `Created New Real estate Project registry: ${res.name}`);
       }
-      setCurrModal(null);
       await loadData();
     } catch (err: any) {
       setErrorMess(err.message || "Failed to submit project schema validation.");
+    } finally {
+      setIsSavingProject(false);
     }
   };
 
@@ -2959,7 +2965,9 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
               </div>
               <div className="flex justify-end gap-2.5 pt-3">
                 <button type="button" onClick={() => setCurrModal(null)} className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-50">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold">Save Project</button>
+                <button type="submit" disabled={isSavingProject} className={`px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold ${isSavingProject ? "opacity-50 cursor-not-allowed" : ""}`}>
+                  {isSavingProject ? "Saving..." : "Save Project"}
+                </button>
               </div>
             </form>
           </div>
@@ -3083,7 +3091,9 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
               </div>
               <div className="flex justify-end gap-2.5 pt-3">
                 <button type="button" onClick={() => setCurrModal(null)} className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-50">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-indigo-650 hover:bg-indigo-750 text-white rounded-xl text-xs font-semibold">Save Changes</button>
+                <button type="submit" disabled={isSavingProject} className={`px-4 py-2 bg-indigo-650 hover:bg-indigo-750 text-white rounded-xl text-xs font-semibold ${isSavingProject ? "opacity-50 cursor-not-allowed" : ""}`}>
+                  {isSavingProject ? "Saving..." : "Save Changes"}
+                </button>
               </div>
             </form>
           </div>
