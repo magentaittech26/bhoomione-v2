@@ -38,12 +38,24 @@ export async function bootstrapDatabase() {
         name VARCHAR(255) NOT NULL,
         monthly_rate DECIMAL(12,2) NOT NULL DEFAULT 0.00,
         yearly_rate DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+        monthly_price DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+        yearly_price DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+        trial_days INTEGER NOT NULL DEFAULT 0,
+        status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
+        sort_order INTEGER NOT NULL DEFAULT 0,
         feature_flags JSONB NOT NULL DEFAULT '{}'::jsonb,
         is_active BOOLEAN NOT NULL DEFAULT TRUE,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Guarantee missing columns are present if table already exists from previous runs
+    await client.query("ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS monthly_price DECIMAL(12,2) DEFAULT 0.00");
+    await client.query("ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS yearly_price DECIMAL(12,2) DEFAULT 0.00");
+    await client.query("ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS trial_days INTEGER DEFAULT 0");
+    await client.query("ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'ACTIVE'");
+    await client.query("ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0");
 
     // 3. tenants Table
     await client.query(`
@@ -81,10 +93,20 @@ export async function bootstrapDatabase() {
         plan_id UUID NOT NULL REFERENCES subscription_plans(id) ON DELETE RESTRICT,
         status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
         expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+        subscription_start_date DATE,
+        subscription_expiry_date DATE,
+        trial_expiry_date DATE,
+        renewal_date DATE,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Guarantee missing columns are present if table already exists from previous runs
+    await client.query("ALTER TABLE tenant_subscriptions ADD COLUMN IF NOT EXISTS subscription_start_date DATE");
+    await client.query("ALTER TABLE tenant_subscriptions ADD COLUMN IF NOT EXISTS subscription_expiry_date DATE");
+    await client.query("ALTER TABLE tenant_subscriptions ADD COLUMN IF NOT EXISTS trial_expiry_date DATE");
+    await client.query("ALTER TABLE tenant_subscriptions ADD COLUMN IF NOT EXISTS renewal_date DATE");
 
     // 6. users Table
     await client.query(`
@@ -688,6 +710,93 @@ export async function bootstrapDatabase() {
       )
     `);
 
+    // SPRINT 3 - Additional Relational Subscription and SaaS Tables
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS saas_modules (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        code VARCHAR(100) UNIQUE NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        "group" VARCHAR(100) NOT NULL,
+        description TEXT,
+        status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
+        is_core BOOLEAN NOT NULL DEFAULT FALSE,
+        is_billable BOOLEAN NOT NULL DEFAULT TRUE,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        version VARCHAR(50) NOT NULL DEFAULT '1.0.0',
+        visibility VARCHAR(50) NOT NULL DEFAULT 'PUBLIC',
+        type VARCHAR(50) NOT NULL DEFAULT 'OPTIONAL',
+        dependencies TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS saas_features (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        module_id UUID NOT NULL REFERENCES saas_modules(id) ON DELETE CASCADE,
+        code VARCHAR(100) UNIQUE NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        "group" VARCHAR(100) NOT NULL,
+        description TEXT,
+        status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
+        default_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        is_system BOOLEAN NOT NULL DEFAULT FALSE,
+        is_deprecated BOOLEAN NOT NULL DEFAULT FALSE,
+        is_upgradeable BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS subscription_plan_limits (
+        plan_id UUID NOT NULL REFERENCES subscription_plans(id) ON DELETE CASCADE,
+        limit_key VARCHAR(100) NOT NULL,
+        limit_value INTEGER NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (plan_id, limit_key)
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS subscription_plan_features (
+        plan_id UUID NOT NULL REFERENCES subscription_plans(id) ON DELETE CASCADE,
+        feature_id UUID NOT NULL REFERENCES saas_features(id) ON DELETE CASCADE,
+        access_level VARCHAR(50) NOT NULL DEFAULT 'ENABLED', -- 'ENABLED', 'DISABLED', 'ADDON'
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (plan_id, feature_id)
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS subscription_addons (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        code VARCHAR(100) UNIQUE NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        monthly_price DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+        yearly_price DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+        description TEXT,
+        status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS subscription_plot_slabs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        min_plots INTEGER NOT NULL,
+        max_plots INTEGER NOT NULL,
+        monthly_price DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+        yearly_price DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     await client.query("CREATE INDEX IF NOT EXISTS idx_saas_invoices_tenant ON saas_invoices(tenant_id)");
     await client.query("CREATE INDEX IF NOT EXISTS idx_saas_invoices_number ON saas_invoices(invoice_number)");
     await client.query("CREATE INDEX IF NOT EXISTS idx_invoice_payments_invoice ON invoice_payments(invoice_id)");
@@ -711,6 +820,29 @@ export async function bootstrapDatabase() {
     await client.query("ALTER TABLE plots ADD COLUMN IF NOT EXISTS reserved_by VARCHAR(255) NULL");
 
     // Promo Coupons and Campaigns support columns for Lifecycle, Soft Deletes, etc.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS promo_campaigns (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        code VARCHAR(100) NOT NULL,
+        description TEXT,
+        status VARCHAR(50) DEFAULT 'ACTIVE',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS promo_coupons (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        code VARCHAR(100) NOT NULL,
+        description TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     await client.query("ALTER TABLE promo_campaigns ADD COLUMN IF NOT EXISTS start_date DATE");
     await client.query("ALTER TABLE promo_campaigns ADD COLUMN IF NOT EXISTS end_date DATE");
     await client.query("ALTER TABLE promo_campaigns ADD COLUMN IF NOT EXISTS spend DECIMAL(12,2) DEFAULT 0.00");
@@ -795,6 +927,7 @@ export async function bootstrapDatabase() {
     await client.query("TRUNCATE TABLE users CASCADE");
     await client.query("TRUNCATE TABLE tenant_domains CASCADE");
     await client.query("TRUNCATE TABLE tenants CASCADE");
+    await client.query("TRUNCATE TABLE subscription_plans CASCADE");
     await client.query("TRUNCATE TABLE measurement_units CASCADE");
 
     // Seed geographic measurement units
@@ -813,11 +946,11 @@ export async function bootstrapDatabase() {
     const planCount = await client.query("SELECT COUNT(*) FROM subscription_plans");
     if (parseInt(planCount.rows[0].count, 10) === 0) {
       await client.query(`
-        INSERT INTO subscription_plans (plan_code, name, monthly_rate, yearly_rate, feature_flags) VALUES
-        ('STARTER', 'Starter Tier Plan', 99.00, 990.00, '{"max_users": 5, "feature_gis": false, "feature_api_access": false}'),
-        ('GROWTH', 'Growth Tier Plan', 249.00, 2490.00, '{"max_users": 20, "feature_gis": true, "feature_api_access": false}'),
-        ('PROFESSIONAL', 'Professional Tier Plan', 499.00, 4990.00, '{"max_users": 100, "feature_gis": true, "feature_api_access": true}'),
-        ('ENTERPRISE', 'Enterprise Suite', 999.00, 9990.00, '{"max_users": 1000, "feature_gis": true, "feature_api_access": true}')
+        INSERT INTO subscription_plans (id, plan_code, name, monthly_rate, yearly_rate, feature_flags) VALUES
+        ('11111111-1111-4111-9111-000000000001', 'STARTER', 'Starter Tier Plan', 99.00, 990.00, '{"max_users": 5, "feature_gis": false, "feature_api_access": false}'),
+        ('11111111-1111-4111-9111-000000000002', 'GROWTH', 'Growth Tier Plan', 249.00, 2490.00, '{"max_users": 20, "feature_gis": true, "feature_api_access": false}'),
+        ('11111111-1111-4111-9111-000000000003', 'PROFESSIONAL', 'Professional Tier Plan', 499.00, 4990.00, '{"max_users": 100, "feature_gis": true, "feature_api_access": true}'),
+        ('11111111-1111-4111-9111-000000000004', 'ENTERPRISE', 'Enterprise Suite', 999.00, 9990.00, '{"max_users": 1000, "feature_gis": true, "feature_api_access": true}')
       `);
       console.log("Seeded subscription-plan tiers.");
     }
@@ -1517,19 +1650,19 @@ export async function bootstrapDatabase() {
       await client.query(`
         INSERT INTO email_templates (template_key, name, subject, body_html, body_text)
         VALUES
-          ('WELCOME', 'Welcome Email', 'Welcome to BhoomiOne V2!', '<div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #f0f0f0; border-radius: 12px; background: #ffffff;"><h2 style="color: #4f46e5; margin-bottom: 20px;">Welcome to BhoomiOne V2, {{name}}!</h2><p>Your real estate SaaS platform account is fully set up and ready to go.</p><p style="margin-top: 30px;">Regards,<br><strong>BhoomiOne Team</strong></p></div>', ''Welcome to BhoomiOne V2, {{name}}! Your real estate SaaS platform account is fully set up and ready to go. Regards, BhoomiOne Team''),
+          ('WELCOME', 'Welcome Email', 'Welcome to BhoomiOne V2!', '<div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #f0f0f0; border-radius: 12px; background: #ffffff;"><h2 style="color: #4f46e5; margin-bottom: 20px;">Welcome to BhoomiOne V2, {{name}}!</h2><p>Your real estate SaaS platform account is fully set up and ready to go.</p><p style="margin-top: 30px;">Regards,<br><strong>BhoomiOne Team</strong></p></div>', 'Welcome to BhoomiOne V2, {{name}}! Your real estate SaaS platform account is fully set up and ready to go. Regards, BhoomiOne Team'),
           
-          ('PASSWORD_RESET', 'Password Reset Request', 'Reset Your Password', '<div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #f0f0f0; border-radius: 12px; background: #ffffff;"><h2 style="color: #ef4444; margin-bottom: 20px;">Password Reset Request</h2><p>Click the link below to reset your password. This link will expire in 1 hour.</p><p style="margin: 30px 0;"><a href="{{reset_link}}" style="background: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Reset Password</a></p><p style="color: #666; font-size: 12px;">If you didn''t request this, you can ignore this email.</p></div>', ''Password Reset Request. Click the link below to reset your password: {{reset_link}}''),
+          ('PASSWORD_RESET', 'Password Reset Request', 'Reset Your Password', '<div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #f0f0f0; border-radius: 12px; background: #ffffff;"><h2 style="color: #ef4444; margin-bottom: 20px;">Password Reset Request</h2><p>Click the link below to reset your password. This link will expire in 1 hour.</p><p style="margin: 30px 0;"><a href="{{reset_link}}" style="background: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Reset Password</a></p><p style="color: #666; font-size: 12px;">If you didn''t request this, you can ignore this email.</p></div>', 'Password Reset Request. Click the link below to reset your password: {{reset_link}}'),
           
-          ('TENANT_PROVISIONED', 'Tenant Workspace Provisioned', 'Your Real Estate Builder Tenant Portal is Ready!', '<div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #f0f0f0; border-radius: 12px; background: #ffffff;"><h2 style="color: #10b981; margin-bottom: 20px;">Tenant Workspace Provisioned</h2><p>Your tenant workspace <strong>{{tenant_name}}</strong> ({{tenant_domain}}) is now active.</p><p style="background: #f3f4f6; padding: 15px; border-radius: 8px;">Access URL: <a href="https://{{tenant_domain}}/portal" style="color: #4f46e5; font-weight: bold;">https://{{tenant_domain}}/portal</a></p></div>', ''Tenant Workspace {{tenant_name}} is now active. Access URL: https://{{tenant_domain}}/portal''),
+          ('TENANT_PROVISIONED', 'Tenant Workspace Provisioned', 'Your Real Estate Builder Tenant Portal is Ready!', '<div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #f0f0f0; border-radius: 12px; background: #ffffff;"><h2 style="color: #10b981; margin-bottom: 20px;">Tenant Workspace Provisioned</h2><p>Your tenant workspace <strong>{{tenant_name}}</strong> ({{tenant_domain}}) is now active.</p><p style="background: #f3f4f6; padding: 15px; border-radius: 8px;">Access URL: <a href="https://{{tenant_domain}}/portal" style="color: #4f46e5; font-weight: bold;">https://{{tenant_domain}}/portal</a></p></div>', 'Tenant Workspace {{tenant_name}} is now active. Access URL: https://{{tenant_domain}}/portal'),
           
-          ('SUBSCRIPTION', 'Subscription Upgrades & Changes', 'Subscription Plan Confirmed – BhoomiOne V2', '<div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #f0f0f0; border-radius: 12px; background: #ffffff;"><h2 style="color: #4f46e5; margin-bottom: 20px;">Subscription Active</h2><p>Your subscription to the <strong>{{plan_name}}</strong> has been updated successfully.</p><p style="background: #f3f4f6; padding: 15px; border-radius: 8px;">Billing Period: <strong>{{billing_period}}</strong></p></div>', ''Your subscription to the {{plan_name}} has been updated successfully.''),
+          ('SUBSCRIPTION', 'Subscription Upgrades & Changes', 'Subscription Plan Confirmed – BhoomiOne V2', '<div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #f0f0f0; border-radius: 12px; background: #ffffff;"><h2 style="color: #4f46e5; margin-bottom: 20px;">Subscription Active</h2><p>Your subscription to the <strong>{{plan_name}}</strong> has been updated successfully.</p><p style="background: #f3f4f6; padding: 15px; border-radius: 8px;">Billing Period: <strong>{{billing_period}}</strong></p></div>', 'Your subscription to the {{plan_name}} has been updated successfully.'),
           
-          ('INVOICE', 'Invoice Created', 'New Invoice #{{invoice_number}} – BhoomiOne V2', '<div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #f0f0f0; border-radius: 12px; background: #ffffff;"><h2 style="color: #4f46e5; margin-bottom: 20px;">New Invoice Generated</h2><p>An invoice has been generated for your recent real estate transaction.</p><p style="background: #f3f4f6; padding: 15px; border-radius: 8px;">Invoice Number: <strong>{{invoice_number}}</strong><br>Total Amount: <strong>₹{{amount}}</strong></p></div>', ''An invoice has been generated for your recent transaction: #{{invoice_number}} for ₹{{amount}}''),
+          ('INVOICE', 'Invoice Created', 'New Invoice #{{invoice_number}} – BhoomiOne V2', '<div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #f0f0f0; border-radius: 12px; background: #ffffff;"><h2 style="color: #4f46e5; margin-bottom: 20px;">New Invoice Generated</h2><p>An invoice has been generated for your recent real estate transaction.</p><p style="background: #f3f4f6; padding: 15px; border-radius: 8px;">Invoice Number: <strong>{{invoice_number}}</strong><br>Total Amount: <strong>₹{{amount}}</strong></p></div>', 'An invoice has been generated for your recent transaction: #{{invoice_number}} for ₹{{amount}}'),
           
-          ('RECEIPT', 'Payment Receipt', 'Payment Receipt – Invoice #{{invoice_number}}', '<div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #f0f0f0; border-radius: 12px; background: #ffffff;"><h2 style="color: #10b981; margin-bottom: 20px;">Payment Received</h2><p>Thank you for your payment of <strong>₹{{amount}}</strong>.</p><p style="background: #f3f4f6; padding: 15px; border-radius: 8px;">Transaction ID: <strong>{{transaction_id}}</strong></p></div>', ''Thank you for your payment of ₹{{amount}}. Transaction ID: {{transaction_id}}''),
+          ('RECEIPT', 'Payment Receipt', 'Payment Receipt – Invoice #{{invoice_number}}', '<div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #f0f0f0; border-radius: 12px; background: #ffffff;"><h2 style="color: #10b981; margin-bottom: 20px;">Payment Received</h2><p>Thank you for your payment of <strong>₹{{amount}}</strong>.</p><p style="background: #f3f4f6; padding: 15px; border-radius: 8px;">Transaction ID: <strong>{{transaction_id}}</strong></p></div>', 'Thank you for your payment of ₹{{amount}}. Transaction ID: {{transaction_id}}'),
           
-          ('VERIFICATION', 'Account OTP Verification', 'Verify Your Email Address', '<div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #f0f0f0; border-radius: 12px; background: #ffffff;"><h2 style="color: #4f46e5; margin-bottom: 20px;">Email Verification Required</h2><p>Please enter the code below to verify your email address:</p><p style="font-size: 28px; font-weight: bold; letter-spacing: 6px; color: #4f46e5; text-align: center; background: #f3f4f6; padding: 15px; border-radius: 8px;">{{code}}</p></div>', ''Your email verification OTP is: {{code}}'')
+          ('VERIFICATION', 'Account OTP Verification', 'Verify Your Email Address', '<div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #f0f0f0; border-radius: 12px; background: #ffffff;"><h2 style="color: #4f46e5; margin-bottom: 20px;">Email Verification Required</h2><p>Please enter the code below to verify your email address:</p><p style="font-size: 28px; font-weight: bold; letter-spacing: 6px; color: #4f46e5; text-align: center; background: #f3f4f6; padding: 15px; border-radius: 8px;">{{code}}</p></div>', 'Your email verification OTP is: {{code}}')
       `);
 
       // Seed dummy logs for delivery, bounce, failure charts and lists

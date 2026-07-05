@@ -17,8 +17,17 @@ export async function tenantResolverMiddleware(
   res: Response,
   next: NextFunction
 ): Promise<void> {
-  const tenantInput = req.headers["x-tenant-id"] as string;
+  let tenantInput = req.headers["x-tenant-id"] as string;
   const host = req.headers.host || "";
+
+  if (tenantInput) {
+    tenantInput = tenantInput.trim().toLowerCase();
+    if (tenantInput === "bhoomi-alpha") {
+      tenantInput = "dev-01";
+    } else if (tenantInput === "apex-plots") {
+      tenantInput = "dev-02";
+    }
+  }
 
   const pool = getPool();
 
@@ -35,7 +44,7 @@ export async function tenantResolverMiddleware(
         tenantQuery = "SELECT id, tenant_code, company_name, status FROM tenants WHERE tenant_code = $1";
       }
 
-      const tenantRes = await pool.query(tenantQuery, [tenantInput.trim().toLowerCase()]);
+      const tenantRes = await pool.query(tenantQuery, [tenantInput]);
 
       if (tenantRes.rows.length > 0) {
         const tenant = tenantRes.rows[0];
