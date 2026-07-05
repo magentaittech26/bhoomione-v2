@@ -875,7 +875,14 @@ export async function bootstrapDatabase() {
       CREATE TABLE IF NOT EXISTS location_states (
         id SERIAL PRIMARY KEY,
         name VARCHAR(100) NOT NULL,
-        code VARCHAR(10) NOT NULL UNIQUE
+        code VARCHAR(10) NOT NULL UNIQUE,
+        type VARCHAR(50) NOT NULL DEFAULT 'State',
+        latitude DECIMAL(10, 7) NULL,
+        longitude DECIMAL(10, 7) NULL,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        source_ref VARCHAR(100) NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
@@ -883,7 +890,13 @@ export async function bootstrapDatabase() {
       CREATE TABLE IF NOT EXISTS location_districts (
         id SERIAL PRIMARY KEY,
         state_id INTEGER NOT NULL REFERENCES location_states(id) ON DELETE CASCADE,
-        name VARCHAR(100) NOT NULL
+        name VARCHAR(100) NOT NULL,
+        latitude DECIMAL(10, 7) NULL,
+        longitude DECIMAL(10, 7) NULL,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        source_ref VARCHAR(100) NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
@@ -891,7 +904,13 @@ export async function bootstrapDatabase() {
       CREATE TABLE IF NOT EXISTS location_taluks (
         id SERIAL PRIMARY KEY,
         district_id INTEGER NOT NULL REFERENCES location_districts(id) ON DELETE CASCADE,
-        name VARCHAR(100) NOT NULL
+        name VARCHAR(100) NOT NULL,
+        latitude DECIMAL(10, 7) NULL,
+        longitude DECIMAL(10, 7) NULL,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        source_ref VARCHAR(100) NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
@@ -899,7 +918,13 @@ export async function bootstrapDatabase() {
       CREATE TABLE IF NOT EXISTS location_cities (
         id SERIAL PRIMARY KEY,
         district_id INTEGER NOT NULL REFERENCES location_districts(id) ON DELETE CASCADE,
-        name VARCHAR(100) NOT NULL
+        name VARCHAR(100) NOT NULL,
+        latitude DECIMAL(10, 7) NULL,
+        longitude DECIMAL(10, 7) NULL,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        source_ref VARCHAR(100) NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
@@ -907,9 +932,52 @@ export async function bootstrapDatabase() {
       CREATE TABLE IF NOT EXISTS location_villages (
         id SERIAL PRIMARY KEY,
         taluk_id INTEGER NOT NULL REFERENCES location_taluks(id) ON DELETE CASCADE,
-        name VARCHAR(100) NOT NULL
+        name VARCHAR(100) NOT NULL,
+        latitude DECIMAL(10, 7) NULL,
+        longitude DECIMAL(10, 7) NULL,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        source_ref VARCHAR(100) NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Dynamic schema recovery: guarantee missing columns are added to existing location master tables
+    await client.query("ALTER TABLE location_states ADD COLUMN IF NOT EXISTS type VARCHAR(50) NOT NULL DEFAULT 'State'");
+    await client.query("ALTER TABLE location_states ADD COLUMN IF NOT EXISTS latitude DECIMAL(10, 7) NULL");
+    await client.query("ALTER TABLE location_states ADD COLUMN IF NOT EXISTS longitude DECIMAL(10, 7) NULL");
+    await client.query("ALTER TABLE location_states ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE");
+    await client.query("ALTER TABLE location_states ADD COLUMN IF NOT EXISTS source_ref VARCHAR(100) NULL");
+    await client.query("ALTER TABLE location_states ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP");
+    await client.query("ALTER TABLE location_states ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP");
+
+    await client.query("ALTER TABLE location_districts ADD COLUMN IF NOT EXISTS latitude DECIMAL(10, 7) NULL");
+    await client.query("ALTER TABLE location_districts ADD COLUMN IF NOT EXISTS longitude DECIMAL(10, 7) NULL");
+    await client.query("ALTER TABLE location_districts ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE");
+    await client.query("ALTER TABLE location_districts ADD COLUMN IF NOT EXISTS source_ref VARCHAR(100) NULL");
+    await client.query("ALTER TABLE location_districts ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP");
+    await client.query("ALTER TABLE location_districts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP");
+
+    await client.query("ALTER TABLE location_taluks ADD COLUMN IF NOT EXISTS latitude DECIMAL(10, 7) NULL");
+    await client.query("ALTER TABLE location_taluks ADD COLUMN IF NOT EXISTS longitude DECIMAL(10, 7) NULL");
+    await client.query("ALTER TABLE location_taluks ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE");
+    await client.query("ALTER TABLE location_taluks ADD COLUMN IF NOT EXISTS source_ref VARCHAR(100) NULL");
+    await client.query("ALTER TABLE location_taluks ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP");
+    await client.query("ALTER TABLE location_taluks ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP");
+
+    await client.query("ALTER TABLE location_cities ADD COLUMN IF NOT EXISTS latitude DECIMAL(10, 7) NULL");
+    await client.query("ALTER TABLE location_cities ADD COLUMN IF NOT EXISTS longitude DECIMAL(10, 7) NULL");
+    await client.query("ALTER TABLE location_cities ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE");
+    await client.query("ALTER TABLE location_cities ADD COLUMN IF NOT EXISTS source_ref VARCHAR(100) NULL");
+    await client.query("ALTER TABLE location_cities ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP");
+    await client.query("ALTER TABLE location_cities ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP");
+
+    await client.query("ALTER TABLE location_villages ADD COLUMN IF NOT EXISTS latitude DECIMAL(10, 7) NULL");
+    await client.query("ALTER TABLE location_villages ADD COLUMN IF NOT EXISTS longitude DECIMAL(10, 7) NULL");
+    await client.query("ALTER TABLE location_villages ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE");
+    await client.query("ALTER TABLE location_villages ADD COLUMN IF NOT EXISTS source_ref VARCHAR(100) NULL");
+    await client.query("ALTER TABLE location_villages ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP");
+    await client.query("ALTER TABLE location_villages ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP");
 
     // Seed location tables if empty
     const stateCheck = await client.query("SELECT COUNT(*) FROM location_states");
