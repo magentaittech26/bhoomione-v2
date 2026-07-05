@@ -896,6 +896,17 @@ class ApiClient {
     return this.request<any>(`/location/villages?taluk_id=${talukId}`, { method: "GET" });
   }
 
+  async fetchPincodes(cityId?: number | string, villageId?: number | string): Promise<any> {
+    let qs = '';
+    if (cityId) qs += `city_id=${cityId}`;
+    if (villageId) qs += (qs ? '&' : '') + `village_id=${villageId}`;
+    return this.request<any>(`/location/pincodes` + (qs ? `?${qs}` : ''), { method: "GET" });
+  }
+
+  async searchLocations(q: string): Promise<any> {
+    return this.request<any>(`/location/search?q=${encodeURIComponent(q)}`, { method: "GET" });
+  }
+
   async fetchProjects(params?: Record<string, any>): Promise<any> {
     let endpoint = "/projects";
     if (params) {

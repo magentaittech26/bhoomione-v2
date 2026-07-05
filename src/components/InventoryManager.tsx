@@ -286,8 +286,22 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
     setManualCity(false);
     setFormProj((prev) => ({
       ...prev,
-      location: cityObj ? cityObj.name : cityIdOrOther
+      location: cityObj ? cityObj.name : cityIdOrOther,
+      latitude: cityObj && cityObj.latitude ? String(cityObj.latitude) : prev.latitude,
+      longitude: cityObj && cityObj.longitude ? String(cityObj.longitude) : prev.longitude,
     }));
+
+    if (cityObj) {
+      api.fetchPincodes(cityObj.id, undefined).then((pincodesRes) => {
+        const pincodesList = pincodesRes.data || pincodesRes || [];
+        if (pincodesList.length > 0) {
+          setFormProj((prev) => ({
+            ...prev,
+            pincode: pincodesList[0].pincode,
+          }));
+        }
+      }).catch(err => console.error("Error fetching pincodes for city:", err));
+    }
   };
 
   const handleVillageChange = (villageIdOrOther: string) => {
@@ -304,8 +318,22 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
     setManualVillage(false);
     setFormProj((prev) => ({
       ...prev,
-      village: vilObj ? vilObj.name : villageIdOrOther
+      village: vilObj ? vilObj.name : villageIdOrOther,
+      latitude: vilObj && vilObj.latitude ? String(vilObj.latitude) : prev.latitude,
+      longitude: vilObj && vilObj.longitude ? String(vilObj.longitude) : prev.longitude,
     }));
+
+    if (vilObj) {
+      api.fetchPincodes(undefined, vilObj.id).then((pincodesRes) => {
+        const pincodesList = pincodesRes.data || pincodesRes || [];
+        if (pincodesList.length > 0) {
+          setFormProj((prev) => ({
+            ...prev,
+            pincode: pincodesList[0].pincode,
+          }));
+        }
+      }).catch(err => console.error("Error fetching pincodes for village:", err));
+    }
   };
 
   // Inspection Drawer Focus

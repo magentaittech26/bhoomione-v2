@@ -484,6 +484,10 @@ Route::prefix('v1')->group(function () {
             ->middleware([PermissionRequirementMiddleware::class . ':projects.view']);
         Route::get('/location/villages', [\App\Http\Controllers\Api\v1\LocationController::class, 'villages'])
             ->middleware([PermissionRequirementMiddleware::class . ':projects.view']);
+        Route::get('/location/pincodes', [\App\Http\Controllers\Api\v1\LocationController::class, 'pincodes'])
+            ->middleware([PermissionRequirementMiddleware::class . ':projects.view']);
+        Route::get('/location/search', [\App\Http\Controllers\Api\v1\LocationController::class, 'search'])
+            ->middleware([PermissionRequirementMiddleware::class . ':projects.view']);
 
         // DXF Group protected by subscription-level permissions
         Route::middleware([\App\Http\Middleware\SubscriptionFeatureGate::class . ':DXF'])->group(function () {
