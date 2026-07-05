@@ -58,31 +58,19 @@ class LocationMasterSeeder extends Seeder
 
         $stateIds = [];
         foreach ($states as $s) {
-            $existing = DB::table('location_states')->where('code', $s['code'])->first();
-            if (!$existing) {
-                $id = DB::table('location_states')->insertGetId([
+            DB::table('location_states')->updateOrInsert(
+                ['code' => $s['code']],
+                [
                     'name' => $s['name'],
-                    'code' => $s['code'],
                     'type' => $s['type'],
                     'latitude' => $s['lat'],
                     'longitude' => $s['lng'],
                     'is_active' => true,
                     'source_ref' => 'Government Census 2011',
-                    'created_at' => now(),
                     'updated_at' => now(),
-                ]);
-            } else {
-                $id = $existing->id;
-                // Update properties to ensure they match
-                DB::table('location_states')->where('id', $id)->update([
-                    'name' => $s['name'],
-                    'type' => $s['type'],
-                    'latitude' => $s['lat'],
-                    'longitude' => $s['lng'],
-                    'updated_at' => now(),
-                ]);
-            }
-            $stateIds[$s['code']] = $id;
+                ]
+            );
+            $stateIds[$s['code']] = DB::table('location_states')->where('code', $s['code'])->value('id');
         }
 
         // 2. Karnataka State Deep Seeding (District -> Taluk -> City -> Village -> Pincode)
@@ -98,27 +86,20 @@ class LocationMasterSeeder extends Seeder
 
             $districtIds = [];
             foreach ($districts as $d) {
-                $existing = DB::table('location_districts')->where('state_id', $kaId)->where('name', $d['name'])->first();
-                if (!$existing) {
-                    $id = DB::table('location_districts')->insertGetId([
-                        'state_id' => $kaId,
-                        'name' => $d['name'],
+                DB::table('location_districts')->updateOrInsert(
+                    ['state_id' => $kaId, 'name' => $d['name']],
+                    [
                         'latitude' => $d['lat'],
                         'longitude' => $d['lng'],
                         'is_active' => true,
                         'source_ref' => 'Government Census 2011',
-                        'created_at' => now(),
                         'updated_at' => now(),
-                    ]);
-                } else {
-                    $id = $existing->id;
-                    DB::table('location_districts')->where('id', $id)->update([
-                        'latitude' => $d['lat'],
-                        'longitude' => $d['lng'],
-                        'updated_at' => now(),
-                    ]);
-                }
-                $districtIds[$d['name']] = $id;
+                    ]
+                );
+                $districtIds[$d['name']] = DB::table('location_districts')
+                    ->where('state_id', $kaId)
+                    ->where('name', $d['name'])
+                    ->value('id');
             }
 
             // Bangalore Urban Detail
@@ -132,22 +113,20 @@ class LocationMasterSeeder extends Seeder
                 ];
                 $blrTalukIds = [];
                 foreach ($blrTaluks as $t) {
-                    $existing = DB::table('location_taluks')->where('district_id', $blrId)->where('name', $t['name'])->first();
-                    if (!$existing) {
-                        $id = DB::table('location_taluks')->insertGetId([
-                            'district_id' => $blrId,
-                            'name' => $t['name'],
+                    DB::table('location_taluks')->updateOrInsert(
+                        ['district_id' => $blrId, 'name' => $t['name']],
+                        [
                             'latitude' => $t['lat'],
                             'longitude' => $t['lng'],
                             'is_active' => true,
                             'source_ref' => 'Government Census 2011',
-                            'created_at' => now(),
                             'updated_at' => now(),
-                        ]);
-                    } else {
-                        $id = $existing->id;
-                    }
-                    $blrTalukIds[$t['name']] = $id;
+                        ]
+                    );
+                    $blrTalukIds[$t['name']] = DB::table('location_taluks')
+                        ->where('district_id', $blrId)
+                        ->where('name', $t['name'])
+                        ->value('id');
                 }
 
                 // Cities
@@ -158,22 +137,20 @@ class LocationMasterSeeder extends Seeder
                 ];
                 $blrCityIds = [];
                 foreach ($blrCities as $c) {
-                    $existing = DB::table('location_cities')->where('district_id', $blrId)->where('name', $c['name'])->first();
-                    if (!$existing) {
-                        $id = DB::table('location_cities')->insertGetId([
-                            'district_id' => $blrId,
-                            'name' => $c['name'],
+                    DB::table('location_cities')->updateOrInsert(
+                        ['district_id' => $blrId, 'name' => $c['name']],
+                        [
                             'latitude' => $c['lat'],
                             'longitude' => $c['lng'],
                             'is_active' => true,
                             'source_ref' => 'Government Census 2011',
-                            'created_at' => now(),
                             'updated_at' => now(),
-                        ]);
-                    } else {
-                        $id = $existing->id;
-                    }
-                    $blrCityIds[$c['name']] = $id;
+                        ]
+                    );
+                    $blrCityIds[$c['name']] = DB::table('location_cities')
+                        ->where('district_id', $blrId)
+                        ->where('name', $c['name'])
+                        ->value('id');
                 }
 
                 // Bangalore North Villages
@@ -186,36 +163,32 @@ class LocationMasterSeeder extends Seeder
                         ['name' => 'Thanisandra', 'lat' => 13.0547, 'lng' => 77.6326, 'pin' => '560077'],
                     ];
                     foreach ($bnVillages as $v) {
-                        $existing = DB::table('location_villages')->where('taluk_id', $bnId)->where('name', $v['name'])->first();
-                        if (!$existing) {
-                            $vId = DB::table('location_villages')->insertGetId([
-                                'taluk_id' => $bnId,
-                                'name' => $v['name'],
+                        DB::table('location_villages')->updateOrInsert(
+                            ['taluk_id' => $bnId, 'name' => $v['name']],
+                            [
                                 'latitude' => $v['lat'],
                                 'longitude' => $v['lng'],
                                 'is_active' => true,
                                 'source_ref' => 'Government Census 2011',
-                                'created_at' => now(),
                                 'updated_at' => now(),
-                            ]);
-                        } else {
-                            $vId = $existing->id;
-                        }
+                            ]
+                        );
+                        $vId = DB::table('location_villages')
+                            ->where('taluk_id', $bnId)
+                            ->where('name', $v['name'])
+                            ->value('id');
 
                         // Seed Pincode
-                        $existingPin = DB::table('location_pincodes')->where('village_id', $vId)->where('pincode', $v['pin'])->first();
-                        if (!$existingPin) {
-                            DB::table('location_pincodes')->insert([
-                                'pincode' => $v['pin'],
-                                'village_id' => $vId,
+                        DB::table('location_pincodes')->updateOrInsert(
+                            ['pincode' => $v['pin'], 'village_id' => $vId],
+                            [
                                 'city_id' => $blrCityIds['Bangalore City'] ?? null,
                                 'latitude' => $v['lat'],
                                 'longitude' => $v['lng'],
                                 'is_active' => true,
-                                'created_at' => now(),
                                 'updated_at' => now(),
-                            ]);
-                        }
+                            ]
+                        );
                     }
                 }
 
@@ -229,36 +202,32 @@ class LocationMasterSeeder extends Seeder
                         ['name' => 'Varthur', 'lat' => 12.9389, 'lng' => 77.7412, 'pin' => '560087'],
                     ];
                     foreach ($beVillages as $v) {
-                        $existing = DB::table('location_villages')->where('taluk_id', $beId)->where('name', $v['name'])->first();
-                        if (!$existing) {
-                            $vId = DB::table('location_villages')->insertGetId([
-                                'taluk_id' => $beId,
-                                'name' => $v['name'],
+                        DB::table('location_villages')->updateOrInsert(
+                            ['taluk_id' => $beId, 'name' => $v['name']],
+                            [
                                 'latitude' => $v['lat'],
                                 'longitude' => $v['lng'],
                                 'is_active' => true,
                                 'source_ref' => 'Government Census 2011',
-                                'created_at' => now(),
                                 'updated_at' => now(),
-                            ]);
-                        } else {
-                            $vId = $existing->id;
-                        }
+                            ]
+                        );
+                        $vId = DB::table('location_villages')
+                            ->where('taluk_id', $beId)
+                            ->where('name', $v['name'])
+                            ->value('id');
 
                         // Seed Pincode
-                        $existingPin = DB::table('location_pincodes')->where('village_id', $vId)->where('pincode', $v['pin'])->first();
-                        if (!$existingPin) {
-                            DB::table('location_pincodes')->insert([
-                                'pincode' => $v['pin'],
-                                'village_id' => $vId,
+                        DB::table('location_pincodes')->updateOrInsert(
+                            ['pincode' => $v['pin'], 'village_id' => $vId],
+                            [
                                 'city_id' => $blrCityIds['Bangalore City'] ?? null,
                                 'latitude' => $v['lat'],
                                 'longitude' => $v['lng'],
                                 'is_active' => true,
-                                'created_at' => now(),
                                 'updated_at' => now(),
-                            ]);
-                        }
+                            ]
+                        );
                     }
                 }
 
@@ -271,36 +240,32 @@ class LocationMasterSeeder extends Seeder
                         ['name' => 'Hulimavu', 'lat' => 12.8797, 'lng' => 77.5987, 'pin' => '560076'],
                     ];
                     foreach ($bsVillages as $v) {
-                        $existing = DB::table('location_villages')->where('taluk_id', $bsId)->where('name', $v['name'])->first();
-                        if (!$existing) {
-                            $vId = DB::table('location_villages')->insertGetId([
-                                'taluk_id' => $bsId,
-                                'name' => $v['name'],
+                        DB::table('location_villages')->updateOrInsert(
+                            ['taluk_id' => $bsId, 'name' => $v['name']],
+                            [
                                 'latitude' => $v['lat'],
                                 'longitude' => $v['lng'],
                                 'is_active' => true,
                                 'source_ref' => 'Government Census 2011',
-                                'created_at' => now(),
                                 'updated_at' => now(),
-                            ]);
-                        } else {
-                            $vId = $existing->id;
-                        }
+                            ]
+                        );
+                        $vId = DB::table('location_villages')
+                            ->where('taluk_id', $bsId)
+                            ->where('name', $v['name'])
+                            ->value('id');
 
                         // Seed Pincode
-                        $existingPin = DB::table('location_pincodes')->where('village_id', $vId)->where('pincode', $v['pin'])->first();
-                        if (!$existingPin) {
-                            DB::table('location_pincodes')->insert([
-                                'pincode' => $v['pin'],
-                                'village_id' => $vId,
+                        DB::table('location_pincodes')->updateOrInsert(
+                            ['pincode' => $v['pin'], 'village_id' => $vId],
+                            [
                                 'city_id' => $blrCityIds['Bangalore City'] ?? null,
                                 'latitude' => $v['lat'],
                                 'longitude' => $v['lng'],
                                 'is_active' => true,
-                                'created_at' => now(),
                                 'updated_at' => now(),
-                            ]);
-                        }
+                            ]
+                        );
                     }
                 }
             }
@@ -309,36 +274,34 @@ class LocationMasterSeeder extends Seeder
             $mysId = $districtIds['Mysore'] ?? null;
             if ($mysId) {
                 // Taluks
-                $existingTaluk = DB::table('location_taluks')->where('district_id', $mysId)->where('name', 'Mysore Taluk')->first();
-                if (!$existingTaluk) {
-                    $mysTalukId = DB::table('location_taluks')->insertGetId([
-                        'district_id' => $mysId,
-                        'name' => 'Mysore Taluk',
+                DB::table('location_taluks')->updateOrInsert(
+                    ['district_id' => $mysId, 'name' => 'Mysore Taluk'],
+                    [
                         'latitude' => 12.2958,
                         'longitude' => 76.6394,
                         'is_active' => true,
-                        'created_at' => now(),
                         'updated_at' => now(),
-                    ]);
-                } else {
-                    $mysTalukId = $existingTaluk->id;
-                }
+                    ]
+                );
+                $mysTalukId = DB::table('location_taluks')
+                    ->where('district_id', $mysId)
+                    ->where('name', 'Mysore Taluk')
+                    ->value('id');
 
                 // Cities
-                $existingCity = DB::table('location_cities')->where('district_id', $mysId)->where('name', 'Mysuru')->first();
-                if (!$existingCity) {
-                    $mysCityId = DB::table('location_cities')->insertGetId([
-                        'district_id' => $mysId,
-                        'name' => 'Mysuru',
+                DB::table('location_cities')->updateOrInsert(
+                    ['district_id' => $mysId, 'name' => 'Mysuru'],
+                    [
                         'latitude' => 12.2958,
                         'longitude' => 76.6394,
                         'is_active' => true,
-                        'created_at' => now(),
                         'updated_at' => now(),
-                    ]);
-                } else {
-                    $mysCityId = $existingCity->id;
-                }
+                    ]
+                );
+                $mysCityId = DB::table('location_cities')
+                    ->where('district_id', $mysId)
+                    ->where('name', 'Mysuru')
+                    ->value('id');
 
                 // Villages
                 $mysVillages = [
@@ -347,38 +310,34 @@ class LocationMasterSeeder extends Seeder
                     ['name' => 'Chamundi Hill', 'lat' => 12.2743, 'lng' => 76.6719, 'pin' => '570010'],
                 ];
                 foreach ($mysVillages as $v) {
-                    $existing = DB::table('location_villages')->where('taluk_id', $mysTalukId)->where('name', $v['name'])->first();
-                    if (!$existing) {
-                        $vId = DB::table('location_villages')->insertGetId([
-                            'taluk_id' => $mysTalukId,
-                            'name' => $v['name'],
+                    DB::table('location_villages')->updateOrInsert(
+                        ['taluk_id' => $mysTalukId, 'name' => $v['name']],
+                        [
                             'latitude' => $v['lat'],
                             'longitude' => $v['lng'],
                             'is_active' => true,
-                            'created_at' => now(),
                             'updated_at' => now(),
-                        ]);
-                    } else {
-                        $vId = $existing->id;
-                    }
+                        ]
+                    );
+                    $vId = DB::table('location_villages')
+                        ->where('taluk_id', $mysTalukId)
+                        ->where('name', $v['name'])
+                        ->value('id');
 
-                    $existingPin = DB::table('location_pincodes')->where('village_id', $vId)->where('pincode', $v['pin'])->first();
-                    if (!$existingPin) {
-                        DB::table('location_pincodes')->insert([
-                            'pincode' => $v['pin'],
-                            'village_id' => $vId,
+                    DB::table('location_pincodes')->updateOrInsert(
+                        ['pincode' => $v['pin'], 'village_id' => $vId],
+                        [
                             'city_id' => $mysCityId,
                             'latitude' => $v['lat'],
                             'longitude' => $v['lng'],
                             'is_active' => true,
-                            'created_at' => now(),
                             'updated_at' => now(),
-                        ]);
-                    }
+                        ]
+                    );
                 }
             }
 
-            // Dharwad Detail (REQ: Dharwad district, Hubli / Hubballi, Dharwad, common taluks/villages/localities)
+            // Dharwad Detail
             $dwdId = $districtIds['Dharwad'] ?? null;
             if ($dwdId) {
                 // Taluks
@@ -391,21 +350,19 @@ class LocationMasterSeeder extends Seeder
                 ];
                 $dwdTalukIds = [];
                 foreach ($dwdTaluks as $t) {
-                    $existing = DB::table('location_taluks')->where('district_id', $dwdId)->where('name', $t['name'])->first();
-                    if (!$existing) {
-                        $id = DB::table('location_taluks')->insertGetId([
-                            'district_id' => $dwdId,
-                            'name' => $t['name'],
+                    DB::table('location_taluks')->updateOrInsert(
+                        ['district_id' => $dwdId, 'name' => $t['name']],
+                        [
                             'latitude' => $t['lat'],
                             'longitude' => $t['lng'],
                             'is_active' => true,
-                            'created_at' => now(),
                             'updated_at' => now(),
-                        ]);
-                    } else {
-                        $id = $existing->id;
-                    }
-                    $dwdTalukIds[$t['name']] = $id;
+                        ]
+                    );
+                    $dwdTalukIds[$t['name']] = DB::table('location_taluks')
+                        ->where('district_id', $dwdId)
+                        ->where('name', $t['name'])
+                        ->value('id');
                 }
 
                 // Cities
@@ -417,24 +374,22 @@ class LocationMasterSeeder extends Seeder
                 ];
                 $dwdCityIds = [];
                 foreach ($dwdCities as $c) {
-                    $existing = DB::table('location_cities')->where('district_id', $dwdId)->where('name', $c['name'])->first();
-                    if (!$existing) {
-                        $id = DB::table('location_cities')->insertGetId([
-                            'district_id' => $dwdId,
-                            'name' => $c['name'],
+                    DB::table('location_cities')->updateOrInsert(
+                        ['district_id' => $dwdId, 'name' => $c['name']],
+                        [
                             'latitude' => $c['lat'],
                             'longitude' => $c['lng'],
                             'is_active' => true,
-                            'created_at' => now(),
                             'updated_at' => now(),
-                        ]);
-                    } else {
-                        $id = $existing->id;
-                    }
-                    $dwdCityIds[$c['name']] = $id;
+                        ]
+                    );
+                    $dwdCityIds[$c['name']] = DB::table('location_cities')
+                        ->where('district_id', $dwdId)
+                        ->where('name', $c['name'])
+                        ->value('id');
                 }
 
-                // Hubli Villages / Localities
+                // Hubli Villages
                 $hubliTalukId = $dwdTalukIds['Hubli'] ?? null;
                 if ($hubliTalukId) {
                     $hubliVillages = [
@@ -446,38 +401,34 @@ class LocationMasterSeeder extends Seeder
                         ['name' => 'Unkal', 'lat' => 15.3912, 'lng' => 75.1189, 'pin' => '580031'],
                     ];
                     foreach ($hubliVillages as $v) {
-                        $existing = DB::table('location_villages')->where('taluk_id', $hubliTalukId)->where('name', $v['name'])->first();
-                        if (!$existing) {
-                            $vId = DB::table('location_villages')->insertGetId([
-                                'taluk_id' => $hubliTalukId,
-                                'name' => $v['name'],
+                        DB::table('location_villages')->updateOrInsert(
+                            ['taluk_id' => $hubliTalukId, 'name' => $v['name']],
+                            [
                                 'latitude' => $v['lat'],
                                 'longitude' => $v['lng'],
                                 'is_active' => true,
-                                'created_at' => now(),
                                 'updated_at' => now(),
-                            ]);
-                        } else {
-                            $vId = $existing->id;
-                        }
+                            ]
+                        );
+                        $vId = DB::table('location_villages')
+                            ->where('taluk_id', $hubliTalukId)
+                            ->where('name', $v['name'])
+                            ->value('id');
 
-                        $existingPin = DB::table('location_pincodes')->where('village_id', $vId)->where('pincode', $v['pin'])->first();
-                        if (!$existingPin) {
-                            DB::table('location_pincodes')->insert([
-                                'pincode' => $v['pin'],
-                                'village_id' => $vId,
+                        DB::table('location_pincodes')->updateOrInsert(
+                            ['pincode' => $v['pin'], 'village_id' => $vId],
+                            [
                                 'city_id' => $dwdCityIds['Hubballi'] ?? null,
                                 'latitude' => $v['lat'],
                                 'longitude' => $v['lng'],
                                 'is_active' => true,
-                                'created_at' => now(),
                                 'updated_at' => now(),
-                            ]);
-                        }
+                            ]
+                        );
                     }
                 }
 
-                // Dharwad Villages / Localities
+                // Dharwad Villages
                 $dharwadTalukId = $dwdTalukIds['Dharwad'] ?? null;
                 if ($dharwadTalukId) {
                     $dharwadVillages = [
@@ -489,34 +440,30 @@ class LocationMasterSeeder extends Seeder
                         ['name' => 'Narendra', 'lat' => 15.5123, 'lng' => 74.9812, 'pin' => '580005'],
                     ];
                     foreach ($dharwadVillages as $v) {
-                        $existing = DB::table('location_villages')->where('taluk_id', $dharwadTalukId)->where('name', $v['name'])->first();
-                        if (!$existing) {
-                            $vId = DB::table('location_villages')->insertGetId([
-                                'taluk_id' => $dharwadTalukId,
-                                'name' => $v['name'],
+                        DB::table('location_villages')->updateOrInsert(
+                            ['taluk_id' => $dharwadTalukId, 'name' => $v['name']],
+                            [
                                 'latitude' => $v['lat'],
                                 'longitude' => $v['lng'],
                                 'is_active' => true,
-                                'created_at' => now(),
                                 'updated_at' => now(),
-                            ]);
-                        } else {
-                            $vId = $existing->id;
-                        }
+                            ]
+                        );
+                        $vId = DB::table('location_villages')
+                            ->where('taluk_id', $dharwadTalukId)
+                            ->where('name', $v['name'])
+                            ->value('id');
 
-                        $existingPin = DB::table('location_pincodes')->where('village_id', $vId)->where('pincode', $v['pin'])->first();
-                        if (!$existingPin) {
-                            DB::table('location_pincodes')->insert([
-                                'pincode' => $v['pin'],
-                                'village_id' => $vId,
+                        DB::table('location_pincodes')->updateOrInsert(
+                            ['pincode' => $v['pin'], 'village_id' => $vId],
+                            [
                                 'city_id' => $dwdCityIds['Dharwad City'] ?? null,
                                 'latitude' => $v['lat'],
                                 'longitude' => $v['lng'],
                                 'is_active' => true,
-                                'created_at' => now(),
                                 'updated_at' => now(),
-                            ]);
-                        }
+                            ]
+                        );
                     }
                 }
             }
@@ -532,56 +479,52 @@ class LocationMasterSeeder extends Seeder
 
             $districtIds = [];
             foreach ($districts as $d) {
-                $existing = DB::table('location_districts')->where('state_id', $mhId)->where('name', $d['name'])->first();
-                if (!$existing) {
-                    $id = DB::table('location_districts')->insertGetId([
-                        'state_id' => $mhId,
-                        'name' => $d['name'],
+                DB::table('location_districts')->updateOrInsert(
+                    ['state_id' => $mhId, 'name' => $d['name']],
+                    [
                         'latitude' => $d['lat'],
                         'longitude' => $d['lng'],
                         'is_active' => true,
                         'source_ref' => 'Government Census 2011',
-                        'created_at' => now(),
                         'updated_at' => now(),
-                    ]);
-                } else {
-                    $id = $existing->id;
-                }
-                $districtIds[$d['name']] = $id;
+                    ]
+                );
+                $districtIds[$d['name']] = DB::table('location_districts')
+                    ->where('state_id', $mhId)
+                    ->where('name', $d['name'])
+                    ->value('id');
             }
 
             // Mumbai Suburban
             $mumId = $districtIds['Mumbai Suburban'] ?? null;
             if ($mumId) {
-                $existingTaluk = DB::table('location_taluks')->where('district_id', $mumId)->where('name', 'Andheri')->first();
-                if (!$existingTaluk) {
-                    $andheriId = DB::table('location_taluks')->insertGetId([
-                        'district_id' => $mumId,
-                        'name' => 'Andheri',
+                DB::table('location_taluks')->updateOrInsert(
+                    ['district_id' => $mumId, 'name' => 'Andheri'],
+                    [
                         'latitude' => 19.1136,
                         'longitude' => 72.8697,
                         'is_active' => true,
-                        'created_at' => now(),
                         'updated_at' => now(),
-                    ]);
-                } else {
-                    $andheriId = $existingTaluk->id;
-                }
+                    ]
+                );
+                $andheriId = DB::table('location_taluks')
+                    ->where('district_id', $mumId)
+                    ->where('name', 'Andheri')
+                    ->value('id');
 
-                $existingCity = DB::table('location_cities')->where('district_id', $mumId)->where('name', 'Mumbai')->first();
-                if (!$existingCity) {
-                    $mumCityId = DB::table('location_cities')->insertGetId([
-                        'district_id' => $mumId,
-                        'name' => 'Mumbai',
+                DB::table('location_cities')->updateOrInsert(
+                    ['district_id' => $mumId, 'name' => 'Mumbai'],
+                    [
                         'latitude' => 19.0760,
                         'longitude' => 72.8777,
                         'is_active' => true,
-                        'created_at' => now(),
                         'updated_at' => now(),
-                    ]);
-                } else {
-                    $mumCityId = $existingCity->id;
-                }
+                    ]
+                );
+                $mumCityId = DB::table('location_cities')
+                    ->where('district_id', $mumId)
+                    ->where('name', 'Mumbai')
+                    ->value('id');
 
                 $mumVillages = [
                     ['name' => 'Bandra West', 'lat' => 19.0596, 'lng' => 72.8295, 'pin' => '400050'],
@@ -589,69 +532,63 @@ class LocationMasterSeeder extends Seeder
                     ['name' => 'Lokhandwala', 'lat' => 19.1308, 'lng' => 72.8292, 'pin' => '400053'],
                 ];
                 foreach ($mumVillages as $v) {
-                    $existing = DB::table('location_villages')->where('taluk_id', $andheriId)->where('name', $v['name'])->first();
-                    if (!$existing) {
-                        $vId = DB::table('location_villages')->insertGetId([
-                            'taluk_id' => $andheriId,
-                            'name' => $v['name'],
+                    DB::table('location_villages')->updateOrInsert(
+                        ['taluk_id' => $andheriId, 'name' => $v['name']],
+                        [
                             'latitude' => $v['lat'],
                             'longitude' => $v['lng'],
                             'is_active' => true,
-                            'created_at' => now(),
                             'updated_at' => now(),
-                        ]);
-                    } else {
-                        $vId = $existing->id;
-                    }
+                        ]
+                    );
+                    $vId = DB::table('location_villages')
+                        ->where('taluk_id', $andheriId)
+                        ->where('name', $v['name'])
+                        ->value('id');
 
-                    $existingPin = DB::table('location_pincodes')->where('village_id', $vId)->where('pincode', $v['pin'])->first();
-                    if (!$existingPin) {
-                        DB::table('location_pincodes')->insert([
-                            'pincode' => $v['pin'],
-                            'village_id' => $vId,
+                    DB::table('location_pincodes')->updateOrInsert(
+                        ['pincode' => $v['pin'], 'village_id' => $vId],
+                        [
                             'city_id' => $mumCityId,
                             'latitude' => $v['lat'],
                             'longitude' => $v['lng'],
                             'is_active' => true,
-                            'created_at' => now(),
                             'updated_at' => now(),
-                        ]);
-                    }
+                        ]
+                    );
                 }
             }
 
             // Pune Detail
             $puneId = $districtIds['Pune'] ?? null;
             if ($puneId) {
-                $existingTaluk = DB::table('location_taluks')->where('district_id', $puneId)->where('name', 'Haveli')->first();
-                if (!$existingTaluk) {
-                    $haveliId = DB::table('location_taluks')->insertGetId([
-                        'district_id' => $puneId,
-                        'name' => 'Haveli',
+                DB::table('location_taluks')->updateOrInsert(
+                    ['district_id' => $puneId, 'name' => 'Haveli'],
+                    [
                         'latitude' => 18.5204,
                         'longitude' => 73.8567,
                         'is_active' => true,
-                        'created_at' => now(),
                         'updated_at' => now(),
-                    ]);
-                } else {
-                    $haveliId = $existingTaluk->id;
-                }
+                    ]
+                );
+                $haveliId = DB::table('location_taluks')
+                    ->where('district_id', $puneId)
+                    ->where('name', 'Haveli')
+                    ->value('id');
 
-                $existingCity = DB::table('location_cities')->where('district_id', $puneId)->where('name', 'Pune')->first();
-                if (!$existingCity) {
-                    $puneCityId = DB::table('location_cities')->insertGetId([
-                        'district_id' => $puneId,
-                        'name' => 'Pune',
+                DB::table('location_cities')->updateOrInsert(
+                    ['district_id' => $puneId, 'name' => 'Pune'],
+                    [
                         'latitude' => 18.5204,
                         'longitude' => 73.8567,
                         'is_active' => true,
-                        'created_at' => now(),
                         'updated_at' => now(),
-                    ]);
-                } else {
-                    $puneCityId = $existingCity->id;
-                }
+                    ]
+                );
+                $puneCityId = DB::table('location_cities')
+                    ->where('district_id', $puneId)
+                    ->where('name', 'Pune')
+                    ->value('id');
 
                 $puneVillages = [
                     ['name' => 'Hinjawadi', 'lat' => 18.5913, 'lng' => 73.7389, 'pin' => '411057'],
@@ -659,34 +596,30 @@ class LocationMasterSeeder extends Seeder
                     ['name' => 'Hadapsar', 'lat' => 18.5089, 'lng' => 73.9259, 'pin' => '411028'],
                 ];
                 foreach ($puneVillages as $v) {
-                    $existing = DB::table('location_villages')->where('taluk_id', $haveliId)->where('name', $v['name'])->first();
-                    if (!$existing) {
-                        $vId = DB::table('location_villages')->insertGetId([
-                            'taluk_id' => $haveliId,
-                            'name' => $v['name'],
+                    DB::table('location_villages')->updateOrInsert(
+                        ['taluk_id' => $haveliId, 'name' => $v['name']],
+                        [
                             'latitude' => $v['lat'],
                             'longitude' => $v['lng'],
                             'is_active' => true,
-                            'created_at' => now(),
                             'updated_at' => now(),
-                        ]);
-                    } else {
-                        $vId = $existing->id;
-                    }
+                        ]
+                    );
+                    $vId = DB::table('location_villages')
+                        ->where('taluk_id', $haveliId)
+                        ->where('name', $v['name'])
+                        ->value('id');
 
-                    $existingPin = DB::table('location_pincodes')->where('village_id', $vId)->where('pincode', $v['pin'])->first();
-                    if (!$existingPin) {
-                        DB::table('location_pincodes')->insert([
-                            'pincode' => $v['pin'],
-                            'village_id' => $vId,
+                    DB::table('location_pincodes')->updateOrInsert(
+                        ['pincode' => $v['pin'], 'village_id' => $vId],
+                        [
                             'city_id' => $puneCityId,
                             'latitude' => $v['lat'],
                             'longitude' => $v['lng'],
                             'is_active' => true,
-                            'created_at' => now(),
                             'updated_at' => now(),
-                        ]);
-                    }
+                        ]
+                    );
                 }
             }
         }
@@ -694,51 +627,48 @@ class LocationMasterSeeder extends Seeder
         // 4. Haryana State Deep Seeding
         $hrId = $stateIds['HR'] ?? null;
         if ($hrId) {
-            $existingDist = DB::table('location_districts')->where('state_id', $hrId)->where('name', 'Gurgaon')->first();
-            if (!$existingDist) {
-                $gurgaonId = DB::table('location_districts')->insertGetId([
-                    'state_id' => $hrId,
-                    'name' => 'Gurgaon',
+            DB::table('location_districts')->updateOrInsert(
+                ['state_id' => $hrId, 'name' => 'Gurgaon'],
+                [
                     'latitude' => 28.4595,
                     'longitude' => 77.0266,
                     'is_active' => true,
                     'source_ref' => 'Government Census 2011',
-                    'created_at' => now(),
                     'updated_at' => now(),
-                ]);
-            } else {
-                $gurgaonId = $existingDist->id;
-            }
+                ]
+            );
+            $gurgaonId = DB::table('location_districts')
+                ->where('state_id', $hrId)
+                ->where('name', 'Gurgaon')
+                ->value('id');
 
-            $existingTaluk = DB::table('location_taluks')->where('district_id', $gurgaonId)->where('name', 'Gurgaon Taluk')->first();
-            if (!$existingTaluk) {
-                $gurgaonTalukId = DB::table('location_taluks')->insertGetId([
-                    'district_id' => $gurgaonId,
-                    'name' => 'Gurgaon Taluk',
+            DB::table('location_taluks')->updateOrInsert(
+                ['district_id' => $gurgaonId, 'name' => 'Gurgaon Taluk'],
+                [
                     'latitude' => 28.4595,
                     'longitude' => 77.0266,
                     'is_active' => true,
-                    'created_at' => now(),
                     'updated_at' => now(),
-                ]);
-            } else {
-                $gurgaonTalukId = $existingTaluk->id;
-            }
+                ]
+            );
+            $gurgaonTalukId = DB::table('location_taluks')
+                ->where('district_id', $gurgaonId)
+                ->where('name', 'Gurgaon Taluk')
+                ->value('id');
 
-            $existingCity = DB::table('location_cities')->where('district_id', $gurgaonId)->where('name', 'Gurugram')->first();
-            if (!$existingCity) {
-                $gurgaonCityId = DB::table('location_cities')->insertGetId([
-                    'district_id' => $gurgaonId,
-                    'name' => 'Gurugram',
+            DB::table('location_cities')->updateOrInsert(
+                ['district_id' => $gurgaonId, 'name' => 'Gurugram'],
+                [
                     'latitude' => 28.4595,
                     'longitude' => 77.0266,
                     'is_active' => true,
-                    'created_at' => now(),
                     'updated_at' => now(),
-                ]);
-            } else {
-                $gurgaonCityId = $existingCity->id;
-            }
+                ]
+            );
+            $gurgaonCityId = DB::table('location_cities')
+                ->where('district_id', $gurgaonId)
+                ->where('name', 'Gurugram')
+                ->value('id');
 
             $hrVillages = [
                 ['name' => 'Sector 15', 'lat' => 28.4682, 'lng' => 77.0366, 'pin' => '122001'],
@@ -746,34 +676,30 @@ class LocationMasterSeeder extends Seeder
                 ['name' => 'Sohna', 'lat' => 28.2492, 'lng' => 77.0682, 'pin' => '122103'],
             ];
             foreach ($hrVillages as $v) {
-                $existing = DB::table('location_villages')->where('taluk_id', $gurgaonTalukId)->where('name', $v['name'])->first();
-                if (!$existing) {
-                    $vId = DB::table('location_villages')->insertGetId([
-                        'taluk_id' => $gurgaonTalukId,
-                        'name' => $v['name'],
+                DB::table('location_villages')->updateOrInsert(
+                    ['taluk_id' => $gurgaonTalukId, 'name' => $v['name']],
+                    [
                         'latitude' => $v['lat'],
                         'longitude' => $v['lng'],
                         'is_active' => true,
-                        'created_at' => now(),
                         'updated_at' => now(),
-                    ]);
-                } else {
-                    $vId = $existing->id;
-                }
+                    ]
+                );
+                $vId = DB::table('location_villages')
+                    ->where('taluk_id', $gurgaonTalukId)
+                    ->where('name', $v['name'])
+                    ->value('id');
 
-                $existingPin = DB::table('location_pincodes')->where('village_id', $vId)->where('pincode', $v['pin'])->first();
-                if (!$existingPin) {
-                    DB::table('location_pincodes')->insert([
-                        'pincode' => $v['pin'],
-                        'village_id' => $vId,
+                DB::table('location_pincodes')->updateOrInsert(
+                    ['pincode' => $v['pin'], 'village_id' => $vId],
+                    [
                         'city_id' => $gurgaonCityId,
                         'latitude' => $v['lat'],
                         'longitude' => $v['lng'],
                         'is_active' => true,
-                        'created_at' => now(),
                         'updated_at' => now(),
-                    ]);
-                }
+                    ]
+                );
             }
         }
     }
