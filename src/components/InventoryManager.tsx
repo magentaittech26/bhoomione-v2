@@ -212,9 +212,21 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
   const [enabledFeatures, setEnabledFeatures] = useState<string[]>([]);
 
   // Permissions validation
-  const isTenantOwnerOrAdmin = user.role === "DEVELOPER_OWNER" || user.role === "DEVELOPER_ADMIN" || user.role === "PROJECT_MANAGER" || user.role === "PLATFORM_ADMIN";
+  const roleUpper = (user.role || "").toUpperCase().trim();
+  const isTenantOwnerOrAdmin = roleUpper === "DEVELOPER_OWNER" || 
+    roleUpper === "DEVELOPER_ADMIN" || 
+    roleUpper === "PROJECT_MANAGER" || 
+    roleUpper === "PLATFORM_ADMIN" || 
+    roleUpper === "TENANT_OWNER" || 
+    roleUpper === "TENANT_ADMIN" || 
+    roleUpper === "OWNER" || 
+    roleUpper === "ADMIN" || 
+    roleUpper.includes("OWNER") || 
+    roleUpper.includes("ADMIN") || 
+    roleUpper.includes("MANAGER");
+
   const hasProjView = user.permissions?.includes("projects.view") || isTenantOwnerOrAdmin || false;
-  const hasProjManage = user.permissions?.includes("projects.manage") || isTenantOwnerOrAdmin || false;
+  const hasProjManage = user.permissions?.includes("projects.manage") || user.permissions?.includes("projects.create") || isTenantOwnerOrAdmin || false;
   const hasLayView = user.permissions?.includes("layouts.view") || isTenantOwnerOrAdmin || false;
   const hasLayManage = user.permissions?.includes("layouts.manage") || isTenantOwnerOrAdmin || false;
   const hasPlotView = user.permissions?.includes("plots.view") || isTenantOwnerOrAdmin || false;
@@ -1444,11 +1456,12 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                 </div>
                 {hasProjManage && (
                   <button
+                    id="btn-new-project"
                     onClick={() => { setEditId(null); setFormProj({ name: "", code: "", developer_name: "", location: "", status: "PLANNING", rera_number: "", approval_status: "PENDING", approval_authority: "", launch_date: "", possession_target_date: "", approvals_metadata: "{}", project_type: "RESIDENTIAL", state: "", description: "", village: "", taluk: "", district: "", country: "INDIA", pincode: "", latitude: "", longitude: "" }); setCurrModal("create_project"); }}
-                    className="inline-flex items-center gap-1 bg-indigo-650 text-white font-semibold text-xs px-3 py-2 rounded-xl hover:bg-indigo-750 transition-colors"
+                    className="inline-flex items-center gap-1 bg-indigo-600 text-white font-bold text-xs px-3.5 py-2.5 rounded-xl hover:bg-indigo-700 active:scale-95 transition-all shadow-md cursor-pointer"
                   >
-                    <Plus className="w-4 h-4" />
-                    <span>Create Project</span>
+                    <Plus className="w-4 h-4 text-white stroke-[3px]" />
+                    <span>+ New Project</span>
                   </button>
                 )}
               </div>
