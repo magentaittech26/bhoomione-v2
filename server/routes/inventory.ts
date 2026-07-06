@@ -1839,4 +1839,29 @@ router.get("/location/villages", requireAuth, async (req: AuthenticatedRequest, 
   }
 });
 
+router.get("/location/pincodes", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { city_id, village_id } = req.query;
+    const db = getPool();
+    let queryStr = "SELECT * FROM location_pincodes WHERE is_active = true";
+    const params: any[] = [];
+    
+    if (city_id) {
+      params.push(city_id);
+      queryStr += ` AND city_id = $${params.length}`;
+    }
+    if (village_id) {
+      params.push(village_id);
+      queryStr += ` AND village_id = $${params.length}`;
+    }
+    
+    queryStr += " ORDER BY pincode ASC";
+    const result = await db.query(queryStr, params);
+    res.json({ data: result.rows });
+  } catch (err: any) {
+    console.error("fetchPincodes Error:", err);
+    res.status(500).json({ error: "Failed to fetch pincodes." });
+  }
+});
+
 export default router;

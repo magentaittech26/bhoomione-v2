@@ -942,6 +942,21 @@ export async function bootstrapDatabase() {
       )
     `);
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS location_pincodes (
+        id SERIAL PRIMARY KEY,
+        pincode VARCHAR(20) NOT NULL,
+        city_id INTEGER NULL REFERENCES location_cities(id) ON DELETE SET NULL,
+        village_id INTEGER NULL REFERENCES location_villages(id) ON DELETE SET NULL,
+        latitude DECIMAL(10, 7) NULL,
+        longitude DECIMAL(10, 7) NULL,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        source_ref VARCHAR(100) NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // Dynamic schema recovery: guarantee missing columns are added to existing location master tables
     await client.query("ALTER TABLE location_states ADD COLUMN IF NOT EXISTS type VARCHAR(50) NOT NULL DEFAULT 'State'");
     await client.query("ALTER TABLE location_states ADD COLUMN IF NOT EXISTS latitude DECIMAL(10, 7) NULL");
@@ -1043,6 +1058,75 @@ export async function bootstrapDatabase() {
       await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Vijayanagar')", [mysTalukId]);
       await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Chamundi Hill')", [mysTalukId]);
 
+      // Bangalore PIN Codes
+      const blrCityRes = await client.query("SELECT id FROM location_cities WHERE name = 'Bangalore City' LIMIT 1");
+      if (blrCityRes.rows.length > 0) {
+        const blrCityId = blrCityRes.rows[0].id;
+        // Hebbal
+        const hebbalRes = await client.query("SELECT id FROM location_villages WHERE name = 'Hebbal' LIMIT 1");
+        if (hebbalRes.rows.length > 0) await client.query("INSERT INTO location_pincodes (pincode, village_id, city_id) VALUES ('560024', $1, $2)", [hebbalRes.rows[0].id, blrCityId]);
+        // Whitefield
+        const wfRes = await client.query("SELECT id FROM location_villages WHERE name = 'Whitefield' LIMIT 1");
+        if (wfRes.rows.length > 0) await client.query("INSERT INTO location_pincodes (pincode, village_id, city_id) VALUES ('560066', $1, $2)", [wfRes.rows[0].id, blrCityId]);
+        // Electronic City Phase 1
+        const ecRes = await client.query("SELECT id FROM location_villages WHERE name = 'Electronic City Phase 1' LIMIT 1");
+        if (ecRes.rows.length > 0) await client.query("INSERT INTO location_pincodes (pincode, village_id, city_id) VALUES ('560100', $1, $2)", [ecRes.rows[0].id, blrCityId]);
+      }
+
+      // Mysore PIN Codes
+      const mysCityRes = await client.query("SELECT id FROM location_cities WHERE name = 'Mysuru' LIMIT 1");
+      if (mysCityRes.rows.length > 0) {
+        const mysCityId = mysCityRes.rows[0].id;
+        const gokulamRes = await client.query("SELECT id FROM location_villages WHERE name = 'Gokulam' LIMIT 1");
+        if (gokulamRes.rows.length > 0) await client.query("INSERT INTO location_pincodes (pincode, village_id, city_id) VALUES ('570002', $1, $2)", [gokulamRes.rows[0].id, mysCityId]);
+      }
+
+      // Dharwad Districts, Taluks, Cities, Villages, Pincodes
+      const dwdRes = await client.query("INSERT INTO location_districts (state_id, name) VALUES ($1, 'Dharwad') RETURNING id", [kaId]);
+      const dwdId = dwdRes.rows[0].id;
+      
+      const hubliTalukRes = await client.query("INSERT INTO location_taluks (district_id, name) VALUES ($1, 'Hubli') RETURNING id", [dwdId]);
+      const dharwadTalukRes = await client.query("INSERT INTO location_taluks (district_id, name) VALUES ($1, 'Dharwad') RETURNING id", [dwdId]);
+      const hubliTalukId = hubliTalukRes.rows[0].id;
+      const dharwadTalukId = dharwadTalukRes.rows[0].id;
+      
+      const hubliCityRes = await client.query("INSERT INTO location_cities (district_id, name) VALUES ($1, 'Hubballi') RETURNING id", [dwdId]);
+      const dharwadCityRes = await client.query("INSERT INTO location_cities (district_id, name) VALUES ($1, 'Dharwad City') RETURNING id", [dwdId]);
+      const hubliCityId = hubliCityRes.rows[0].id;
+      const dharwadCityId = dharwadCityRes.rows[0].id;
+
+      const gokulVillageRes = await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Gokul Road') RETURNING id", [hubliTalukId]);
+      await client.query("INSERT INTO location_pincodes (pincode, village_id, city_id) VALUES ('580030', $1, $2)", [gokulVillageRes.rows[0].id, hubliCityId]);
+
+      const saptapurVillageRes = await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Saptapur') RETURNING id", [dharwadTalukId]);
+      await client.query("INSERT INTO location_pincodes (pincode, village_id, city_id) VALUES ('580001', $1, $2)", [saptapurVillageRes.rows[0].id, dharwadCityId]);
+
+      // Belagavi Districts, Taluks, Cities, Villages, Pincodes
+      const belRes = await client.query("INSERT INTO location_districts (state_id, name) VALUES ($1, 'Belagavi') RETURNING id", [kaId]);
+      const belId = belRes.rows[0].id;
+
+      const belTalukRes = await client.query("INSERT INTO location_taluks (district_id, name) VALUES ($1, 'Belagavi') RETURNING id", [belId]);
+      const belTalukId = belTalukRes.rows[0].id;
+
+      const belCityRes = await client.query("INSERT INTO location_cities (district_id, name) VALUES ($1, 'Belagavi City') RETURNING id", [belId]);
+      const belCityId = belCityRes.rows[0].id;
+
+      const kanbargiVillageRes = await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Kanbargi') RETURNING id", [belTalukId]);
+      await client.query("INSERT INTO location_pincodes (pincode, village_id, city_id) VALUES ('590016', $1, $2)", [kanbargiVillageRes.rows[0].id, belCityId]);
+
+      // Dakshina Kannada Districts, Taluks, Cities, Villages, Pincodes
+      const dkRes = await client.query("INSERT INTO location_districts (state_id, name) VALUES ($1, 'Dakshina Kannada') RETURNING id", [kaId]);
+      const dkId = dkRes.rows[0].id;
+
+      const mngTalukRes = await client.query("INSERT INTO location_taluks (district_id, name) VALUES ($1, 'Mangalore') RETURNING id", [dkId]);
+      const mngTalukId = mngTalukRes.rows[0].id;
+
+      const mngCityRes = await client.query("INSERT INTO location_cities (district_id, name) VALUES ($1, 'Mangaluru') RETURNING id", [dkId]);
+      const mngCityId = mngCityRes.rows[0].id;
+
+      const kavoorVillageRes = await client.query("INSERT INTO location_villages (taluk_id, name) VALUES ($1, 'Kavoor') RETURNING id", [mngTalukId]);
+      await client.query("INSERT INTO location_pincodes (pincode, village_id, city_id) VALUES ('575015', $1, $2)", [kavoorVillageRes.rows[0].id, mngCityId]);
+
       // Maharashtra Districts
       const mumRes = await client.query("INSERT INTO location_districts (state_id, name) VALUES ($1, 'Mumbai Suburban') RETURNING id", [mhId]);
       const puneRes = await client.query("INSERT INTO location_districts (state_id, name) VALUES ($1, 'Pune') RETURNING id", [mhId]);
@@ -1084,6 +1168,9 @@ export async function bootstrapDatabase() {
     await client.query("CREATE INDEX IF NOT EXISTS idx_location_taluks_district ON location_taluks(district_id)");
     await client.query("CREATE INDEX IF NOT EXISTS idx_location_cities_district ON location_cities(district_id)");
     await client.query("CREATE INDEX IF NOT EXISTS idx_location_villages_taluk ON location_villages(taluk_id)");
+    await client.query("CREATE INDEX IF NOT EXISTS idx_location_pincodes_pincode ON location_pincodes(pincode)");
+    await client.query("CREATE INDEX IF NOT EXISTS idx_location_pincodes_city ON location_pincodes(city_id)");
+    await client.query("CREATE INDEX IF NOT EXISTS idx_location_pincodes_village ON location_pincodes(village_id)");
 
     await client.query("CREATE INDEX IF NOT EXISTS idx_tenant_domains_domain ON tenant_domains(domain_name)");
     await client.query("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)");

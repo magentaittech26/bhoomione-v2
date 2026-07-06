@@ -467,6 +467,182 @@ class LocationMasterSeeder extends Seeder
                     }
                 }
             }
+
+            // Belagavi Detail
+            $belId = $districtIds['Belagavi'] ?? null;
+            if ($belId) {
+                // Taluks
+                $belTaluks = [
+                    ['name' => 'Belagavi', 'lat' => 15.8497, 'lng' => 74.4977],
+                    ['name' => 'Gokak', 'lat' => 16.1672, 'lng' => 74.8236],
+                    ['name' => 'Athani', 'lat' => 16.7297, 'lng' => 75.0631],
+                    ['name' => 'Chikkodi', 'lat' => 16.4326, 'lng' => 74.5959],
+                    ['name' => 'Bailhongal', 'lat' => 15.8160, 'lng' => 74.8624],
+                ];
+                $belTalukIds = [];
+                foreach ($belTaluks as $t) {
+                    DB::table('location_taluks')->updateOrInsert(
+                        ['district_id' => $belId, 'name' => $t['name']],
+                        [
+                            'latitude' => $t['lat'],
+                            'longitude' => $t['lng'],
+                            'is_active' => true,
+                            'updated_at' => now(),
+                        ]
+                    );
+                    $belTalukIds[$t['name']] = DB::table('location_taluks')
+                        ->where('district_id', $belId)
+                        ->where('name', $t['name'])
+                        ->value('id');
+                }
+
+                // Cities
+                $belCities = [
+                    ['name' => 'Belagavi City', 'lat' => 15.8497, 'lng' => 74.4977],
+                    ['name' => 'Gokak Town', 'lat' => 16.1672, 'lng' => 74.8236],
+                    ['name' => 'Athani Town', 'lat' => 16.7297, 'lng' => 75.0631],
+                ];
+                $belCityIds = [];
+                foreach ($belCities as $c) {
+                    DB::table('location_cities')->updateOrInsert(
+                        ['district_id' => $belId, 'name' => $c['name']],
+                        [
+                            'latitude' => $c['lat'],
+                            'longitude' => $c['lng'],
+                            'is_active' => true,
+                            'updated_at' => now(),
+                        ]
+                    );
+                    $belCityIds[$c['name']] = DB::table('location_cities')
+                        ->where('district_id', $belId)
+                        ->where('name', $c['name'])
+                        ->value('id');
+                }
+
+                // Belagavi Villages
+                $belTalukId = $belTalukIds['Belagavi'] ?? null;
+                if ($belTalukId) {
+                    $belVillages = [
+                        ['name' => 'Kanbargi', 'lat' => 15.8752, 'lng' => 74.5312, 'pin' => '590016'],
+                        ['name' => 'Hindalga', 'lat' => 15.8821, 'lng' => 74.4561, 'pin' => '591108'],
+                        ['name' => 'Sambhaji Nagar', 'lat' => 15.8451, 'lng' => 74.5021, 'pin' => '590003'],
+                    ];
+                    foreach ($belVillages as $v) {
+                        DB::table('location_villages')->updateOrInsert(
+                            ['taluk_id' => $belTalukId, 'name' => $v['name']],
+                            [
+                                'latitude' => $v['lat'],
+                                'longitude' => $v['lng'],
+                                'is_active' => true,
+                                'updated_at' => now(),
+                            ]
+                        );
+                        $vId = DB::table('location_villages')
+                            ->where('taluk_id', $belTalukId)
+                            ->where('name', $v['name'])
+                            ->value('id');
+
+                        DB::table('location_pincodes')->updateOrInsert(
+                            ['pincode' => $v['pin'], 'village_id' => $vId],
+                            [
+                                'city_id' => $belCityIds['Belagavi City'] ?? null,
+                                'latitude' => $v['lat'],
+                                'longitude' => $v['lng'],
+                                'is_active' => true,
+                                'updated_at' => now(),
+                            ]
+                        );
+                    }
+                }
+            }
+
+            // Dakshina Kannada Detail
+            $dkId = $districtIds['Dakshina Kannada'] ?? null;
+            if ($dkId) {
+                // Taluks
+                $dkTaluks = [
+                    ['name' => 'Mangalore', 'lat' => 12.8701, 'lng' => 74.8827],
+                    ['name' => 'Bantwal', 'lat' => 12.8981, 'lng' => 75.0396],
+                    ['name' => 'Puttur', 'lat' => 12.7236, 'lng' => 75.2127],
+                    ['name' => 'Sullia', 'lat' => 12.5561, 'lng' => 75.3905],
+                    ['name' => 'Belthangady', 'lat' => 12.9961, 'lng' => 75.2986],
+                ];
+                $dkTalukIds = [];
+                foreach ($dkTaluks as $t) {
+                    DB::table('location_taluks')->updateOrInsert(
+                        ['district_id' => $dkId, 'name' => $t['name']],
+                        [
+                            'latitude' => $t['lat'],
+                            'longitude' => $t['lng'],
+                            'is_active' => true,
+                            'updated_at' => now(),
+                        ]
+                    );
+                    $dkTalukIds[$t['name']] = DB::table('location_taluks')
+                        ->where('district_id', $dkId)
+                        ->where('name', $t['name'])
+                        ->value('id');
+                }
+
+                // Cities
+                $dkCities = [
+                    ['name' => 'Mangaluru', 'lat' => 12.8701, 'lng' => 74.8827],
+                    ['name' => 'Puttur City', 'lat' => 12.7236, 'lng' => 75.2127],
+                    ['name' => 'Bantwal Town', 'lat' => 12.8981, 'lng' => 75.0396],
+                ];
+                $dkCityIds = [];
+                foreach ($dkCities as $c) {
+                    DB::table('location_cities')->updateOrInsert(
+                        ['district_id' => $dkId, 'name' => $c['name']],
+                        [
+                            'latitude' => $c['lat'],
+                            'longitude' => $c['lng'],
+                            'is_active' => true,
+                            'updated_at' => now(),
+                        ]
+                    );
+                    $dkCityIds[$c['name']] = DB::table('location_cities')
+                        ->where('district_id', $dkId)
+                        ->where('name', $c['name'])
+                        ->value('id');
+                }
+
+                // Mangalore Villages
+                $mngTalukId = $dkTalukIds['Mangalore'] ?? null;
+                if ($mngTalukId) {
+                    $mngVillages = [
+                        ['name' => 'Kavoor', 'lat' => 12.9231, 'lng' => 74.8452, 'pin' => '575015'],
+                        ['name' => 'Panambur', 'lat' => 12.9412, 'lng' => 74.8192, 'pin' => '575010'],
+                        ['name' => 'Surathkal', 'lat' => 13.0089, 'lng' => 74.7952, 'pin' => '575014'],
+                    ];
+                    foreach ($mngVillages as $v) {
+                        DB::table('location_villages')->updateOrInsert(
+                            ['taluk_id' => $mngTalukId, 'name' => $v['name']],
+                            [
+                                'latitude' => $v['lat'],
+                                'longitude' => $v['lng'],
+                                'is_active' => true,
+                                'updated_at' => now(),
+                            ]
+                        );
+                        $vId = DB::table('location_villages')
+                            ->where('taluk_id', $mngTalukId)
+                            ->where('name', $v['name'])
+                            ->value('id');
+
+                        DB::table('location_pincodes')->updateOrInsert(
+                            ['pincode' => $v['pin'], 'village_id' => $vId],
+                            [
+                                'city_id' => $dkCityIds['Mangaluru'] ?? null,
+                                'latitude' => $v['lat'],
+                                'longitude' => $v['lng'],
+                                'is_active' => true,
+                                'updated_at' => now(),
+                            ]
+                        );
+                    }
+                }
+            }
         }
 
         // 3. Maharashtra State Deep Seeding
