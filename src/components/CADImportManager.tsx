@@ -58,6 +58,7 @@ export const CADImportManager: React.FC<CADImportManagerProps> = ({
   const [currentMappings, setCurrentMappings] = useState<Record<string, string>>({});
   const [templateName, setTemplateName] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [showManualMapping, setShowManualMapping] = useState(false);
 
   const hasDxfUpload = user.permissions?.includes("dxf.upload") || false;
   const hasDxfProcess = user.permissions?.includes("dxf.process") || false;
@@ -650,145 +651,201 @@ export const CADImportManager: React.FC<CADImportManagerProps> = ({
               </div>
 
               {/* LAYER DISCOVERY AND TAXONOMY MAPPING FORM */}
-              <div className="space-y-4" id="cad-layer-mappings-stage">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <Layers className="w-3.5 h-3.5 text-indigo-650" />
-                    <span>Layer Review Screen & Classification taxonomic</span>
-                  </h4>
-                  
-                  <span className="text-[11px] text-slate-500 font-mono font-medium">
-                    {Object.keys(currentMappings).length} drawing layers found
-                  </span>
-                </div>
+              {(() => {
+                const layersList = activeJob?.extracted_metadata?.layers || [];
+                const hasLowConfidence = layersList.some((layer: any) => {
+                  const conf = typeof layer.confidence_score === "number" ? layer.confidence_score : 0;
+                  return conf < 70;
+                });
 
-                <div className="border border-slate-100 rounded-xl overflow-hidden shadow-sm max-h-[300px] overflow-y-auto">
-                  <table className="w-full text-left border-collapse text-xs">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider sticky top-0 z-10">
-                        <th className="py-2.5 px-4 w-[28%]">CAD Layer name</th>
-                        <th className="py-2.5 px-4 text-center w-[10%]">Count</th>
-                        <th className="py-2.5 px-4 w-[20%]">Suggested Type</th>
-                        <th className="py-2.5 px-4 w-[12%]">Confidence</th>
-                        <th className="py-2.5 px-4 w-[18%]">User Mapping</th>
-                        <th className="py-2.5 px-4 w-[12%]">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {(activeJob?.extracted_metadata?.layers || []).map((layer: any) => {
-                        const selectedType = currentMappings[layer.name] || "IGNORE";
-                        const suggestedType = layer.suggested_type || "UNKNOWN";
-                        const confidenceScore = typeof layer.confidence_score === "number" ? layer.confidence_score : 0;
-                        
-                        // Heuristic formatting
-                        let typeBadgeClass = "text-slate-500 bg-slate-50 border-slate-150";
-                        if (suggestedType === "PLOT") typeBadgeClass = "text-blue-700 bg-blue-50 border-blue-150";
-                        if (suggestedType === "ROAD") typeBadgeClass = "text-amber-800 bg-amber-50 border-amber-150";
-                        if (suggestedType === "AMENITY") typeBadgeClass = "text-emerald-700 bg-emerald-50 border-emerald-150";
-                        if (suggestedType === "UTILITY") typeBadgeClass = "text-cyan-700 bg-cyan-50 border-cyan-150";
-                        if (suggestedType === "BOUNDARY") typeBadgeClass = "text-purple-750 bg-purple-50 border-purple-150";
+                return (
+                  <div className="space-y-4" id="cad-layer-mappings-stage">
+                    {/* Confidence Status Banner */}
+                    {layersList.length > 0 && (
+                      hasLowConfidence ? (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-amber-850 space-y-2" id="low-confidence-banner">
+                          <div className="flex items-center gap-2 font-bold uppercase text-[10px] tracking-wider text-amber-850">
+                            <AlertCircle className="w-4 h-4 text-amber-600" />
+                            <span>Manual Layer Mapping Required</span>
+                          </div>
+                          <p className="text-[11px] text-amber-800 leading-relaxed">
+                            Some CAD layers could not be automatically classified with high confidence (<strong className="text-rose-600">under 70%</strong>). Please review the highlighted layers in the table below and select their corresponding taxonomy types manually.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-emerald-850 space-y-2" id="auto-classification-banner">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 font-bold uppercase text-[10px] tracking-wider text-emerald-850">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600 animate-pulse" />
+                              <span>Intelligent Auto-Classification Perfect Match</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setShowManualMapping(!showManualMapping)}
+                              className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold underline cursor-pointer bg-transparent border-0"
+                            >
+                              {showManualMapping ? "Collapse Layer Mappings" : "Review Layer Mappings"}
+                            </button>
+                          </div>
+                          <p className="text-[11px] text-emerald-700 leading-relaxed">
+                            Our Layer Classification Engine has automatically matched all <strong>{layersList.length}</strong> CAD layers with a confidence score of <strong>70% or higher</strong>. Manual taxonomy mapping is not required, but you can review or adjust mappings using the button above.
+                          </p>
+                        </div>
+                      )
+                    )}
 
-                        // Confidence color
-                        const barColor = confidenceScore >= 85 ? "bg-emerald-500" : (confidenceScore > 0 ? "bg-amber-450 bg-[#eab308]" : "bg-slate-200");
+                    {/* Show table only if we have a low confidence layer OR if user toggled showManualMapping */}
+                    {(hasLowConfidence || showManualMapping) ? (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                            <Layers className="w-3.5 h-3.5 text-indigo-650" />
+                            <span>Layer Review Screen & Classification taxonomic</span>
+                          </h4>
+                          
+                          <span className="text-[11px] text-slate-500 font-mono font-medium">
+                            {Object.keys(currentMappings).length} drawing layers found
+                          </span>
+                        </div>
 
-                        // Row validation
-                        let rowValidationLabel = "Valid Map";
-                        let rowValidationColor = "text-emerald-700 bg-emerald-50 border-emerald-100";
+                        <div className="border border-slate-100 rounded-xl overflow-hidden shadow-sm max-h-[300px] overflow-y-auto">
+                          <table className="w-full text-left border-collapse text-xs">
+                            <thead>
+                              <tr className="bg-slate-50 border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider sticky top-0 z-10">
+                                <th className="py-2.5 px-4 w-[28%]">CAD Layer name</th>
+                                <th className="py-2.5 px-4 text-center w-[10%]">Count</th>
+                                <th className="py-2.5 px-4 w-[20%]">Suggested Type</th>
+                                <th className="py-2.5 px-4 w-[12%]">Confidence</th>
+                                <th className="py-2.5 px-4 w-[18%]">User Mapping</th>
+                                <th className="py-2.5 px-4 w-[12%]">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {layersList.map((layer: any) => {
+                                const selectedType = currentMappings[layer.name] || "IGNORE";
+                                const suggestedType = layer.suggested_type || "UNKNOWN";
+                                const confidenceScore = typeof layer.confidence_score === "number" ? layer.confidence_score : 0;
+                                const isLowConfRow = confidenceScore < 70;
+                                
+                                // Heuristic formatting
+                                let typeBadgeClass = "text-slate-500 bg-slate-50 border-slate-150";
+                                if (suggestedType === "PLOT") typeBadgeClass = "text-blue-700 bg-blue-50 border-blue-150";
+                                if (suggestedType === "ROAD") typeBadgeClass = "text-amber-800 bg-amber-50 border-amber-150";
+                                if (suggestedType === "AMENITY") typeBadgeClass = "text-emerald-700 bg-emerald-50 border-emerald-150";
+                                if (suggestedType === "UTILITY") typeBadgeClass = "text-cyan-700 bg-cyan-50 border-cyan-150";
+                                if (suggestedType === "BOUNDARY") typeBadgeClass = "text-purple-750 bg-purple-50 border-purple-150";
 
-                        if (selectedType === "IGNORE") {
-                          if (suggestedType !== "UNKNOWN") {
-                            rowValidationLabel = "Miss Suggest";
-                            rowValidationColor = "text-amber-700 bg-amber-50 border-amber-100";
-                          } else {
-                            rowValidationLabel = "Skipped";
-                            rowValidationColor = "text-slate-400 bg-slate-50/50 border-slate-100";
-                          }
-                        } else if (selectedType === "BOUNDARY") {
-                          const boundaryMatches = Object.values(currentMappings).filter(t => t === "BOUNDARY").length;
-                          if (boundaryMatches > 1) {
-                            rowValidationLabel = "Duplicate";
-                            rowValidationColor = "text-rose-600 bg-rose-50 border-rose-100";
-                          }
-                        }
+                                // Confidence color
+                                const barColor = confidenceScore >= 85 ? "bg-emerald-500" : (confidenceScore >= 70 ? "bg-[#eab308]" : "bg-rose-500");
 
-                        return (
-                          <tr key={layer.name} className="hover:bg-slate-50/50">
-                            <td className="py-2.5 px-4 font-mono text-[11px] text-slate-800 font-medium truncate max-w-[120px]" title={layer.name}>
-                              {layer.name}
-                            </td>
-                            <td className="py-2.5 px-4 text-center text-slate-500 font-mono text-[11px]">
-                              {layer.entity_count || layer.object_count || 0}
-                            </td>
-                            <td className="py-2.5 px-4">
-                              <span className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border ${typeBadgeClass}`}>
-                                {suggestedType}
-                              </span>
-                            </td>
-                            <td className="py-2.5 px-4">
-                              <div className="flex flex-col gap-1 w-full max-w-[50px]">
-                                <span className="font-mono text-[9px] font-semibold text-slate-600">{confidenceScore}%</span>
-                                <div className="h-1 w-full bg-slate-100 rounded-full overflow-hidden">
-                                  <div className={`h-full ${barColor}`} style={{ width: `${confidenceScore}%` }}></div>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="py-2.5 px-4">
-                              <select
-                                value={selectedType}
-                                onChange={(e) => handleLayerTypeChange(layer.name, e.target.value)}
-                                className="bg-white border border-slate-200 rounded p-1 text-[11px] text-slate-705 focus:outline-none w-full"
-                              >
-                                <option value="IGNORE">IGNORE (Skip)</option>
-                                <option value="PLOT">PLOT (Zoning parcels)</option>
-                                <option value="ROAD">ROAD (Circulation network)</option>
-                                <option value="AMENITY">AMENITY (Green open zones)</option>
-                                <option value="UTILITY">UTILITY (Services grid)</option>
-                                <option value="BOUNDARY">BOUNDARY (Subdivision frame)</option>
-                              </select>
-                            </td>
-                            <td className="py-2.5 px-4">
-                              <span className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold border ${rowValidationColor}`}>
-                                {rowValidationLabel}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                                // Row validation
+                                let rowValidationLabel = "Valid Map";
+                                let rowValidationColor = "text-emerald-700 bg-emerald-50 border-emerald-100";
 
-                {/* Mapping Actions bar */}
-                <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-slate-100" id="mappings-save-preservation">
-                  
-                  {/* Template creation wrapper */}
-                  <form onSubmit={handleSaveAsTemplate} className="flex gap-2 w-full sm:w-auto">
-                    <input 
-                      type="text" 
-                      placeholder="Save mapping as Template name..." 
-                      value={templateName}
-                      onChange={(e) => setTemplateName(e.target.value)}
-                      className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 focus:outline-none w-full sm:w-56"
-                    />
-                    <button
-                      type="submit"
-                      className="bg-slate-850 hover:bg-slate-900 text-white rounded-lg p-1.5 flex items-center justify-center cursor-pointer transition-all flex-shrink-0 bg-slate-800"
-                      title="Save as re-usable CAD Template mapping"
-                    >
-                      <Save className="w-3.5 h-3.5" />
-                    </button>
-                  </form>
+                                if (isLowConfRow) {
+                                  rowValidationLabel = "Requires Review";
+                                  rowValidationColor = "text-rose-700 bg-rose-50 border-rose-150";
+                                } else if (selectedType === "IGNORE") {
+                                  if (suggestedType !== "UNKNOWN") {
+                                    rowValidationLabel = "Miss Suggest";
+                                    rowValidationColor = "text-amber-700 bg-amber-50 border-amber-100";
+                                  } else {
+                                    rowValidationLabel = "Skipped";
+                                    rowValidationColor = "text-slate-400 bg-slate-50/50 border-slate-100";
+                                  }
+                                } else if (selectedType === "BOUNDARY") {
+                                  const boundaryMatches = Object.values(currentMappings).filter(t => t === "BOUNDARY").length;
+                                  if (boundaryMatches > 1) {
+                                    rowValidationLabel = "Duplicate";
+                                    rowValidationColor = "text-rose-600 bg-rose-50 border-rose-100";
+                                  }
+                                }
 
-                  <button
-                    onClick={handleSaveLayerMappings}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs py-2 px-4 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer shadow-sm ml-auto transition-all w-full sm:w-auto"
-                  >
-                    <Bookmark className="w-3.5 h-3.5" />
-                    <span>Commit Mapped taxonomy layer settings</span>
-                  </button>
+                                return (
+                                  <tr key={layer.name} className={`hover:bg-slate-50/50 ${isLowConfRow ? "bg-rose-50/10 border-l-2 border-l-rose-500" : ""}`}>
+                                    <td className="py-2.5 px-4 font-mono text-[11px] text-slate-800 font-medium truncate max-w-[120px]" title={layer.name}>
+                                      {layer.name}
+                                    </td>
+                                    <td className="py-2.5 px-4 text-center text-slate-500 font-mono text-[11px]">
+                                      {layer.entity_count || layer.object_count || 0}
+                                    </td>
+                                    <td className="py-2.5 px-4">
+                                      <span className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border ${typeBadgeClass}`}>
+                                        {suggestedType}
+                                      </span>
+                                    </td>
+                                    <td className="py-2.5 px-4">
+                                      <div className="flex flex-col gap-1 w-full max-w-[50px]">
+                                        <span className={`font-mono text-[9px] font-semibold ${isLowConfRow ? "text-rose-600 font-bold" : "text-slate-600"}`}>{confidenceScore}%</span>
+                                        <div className="h-1 w-full bg-slate-100 rounded-full overflow-hidden">
+                                          <div className={`h-full ${barColor}`} style={{ width: `${confidenceScore}%` }}></div>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="py-2.5 px-4">
+                                      <select
+                                        value={selectedType}
+                                        onChange={(e) => handleLayerTypeChange(layer.name, e.target.value)}
+                                        className={`bg-white border rounded p-1 text-[11px] text-slate-705 focus:outline-none w-full ${isLowConfRow ? "border-rose-300 ring-1 ring-rose-250" : "border-slate-200"}`}
+                                      >
+                                        <option value="IGNORE">IGNORE (Skip)</option>
+                                        <option value="PLOT">PLOT (Zoning parcels)</option>
+                                        <option value="ROAD">ROAD (Circulation network)</option>
+                                        <option value="AMENITY">AMENITY (Green open zones)</option>
+                                        <option value="UTILITY">UTILITY (Services grid)</option>
+                                        <option value="BOUNDARY">BOUNDARY (Subdivision frame)</option>
+                                      </select>
+                                    </td>
+                                    <td className="py-2.5 px-4">
+                                      <span className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold border ${rowValidationColor}`}>
+                                        {rowValidationLabel}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
 
-                </div>
-              </div>
+                        {/* Mapping Actions bar */}
+                        <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-slate-100" id="mappings-save-preservation">
+                          
+                          {/* Template creation wrapper */}
+                          <form onSubmit={handleSaveAsTemplate} className="flex gap-2 w-full sm:w-auto">
+                            <input 
+                              type="text" 
+                              placeholder="Save mapping as Template name..." 
+                              value={templateName}
+                              onChange={(e) => setTemplateName(e.target.value)}
+                              className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 focus:outline-none w-full sm:w-56"
+                            />
+                            <button
+                              type="submit"
+                              className="bg-slate-850 hover:bg-slate-900 text-white rounded-lg p-1.5 flex items-center justify-center cursor-pointer transition-all flex-shrink-0 bg-slate-800"
+                              title="Save as re-usable CAD Template mapping"
+                            >
+                              <Save className="w-3.5 h-3.5" />
+                            </button>
+                          </form>
+
+                          <button
+                            onClick={handleSaveLayerMappings}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs py-2 px-4 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer shadow-sm ml-auto transition-all w-full sm:w-auto"
+                          >
+                            <Bookmark className="w-3.5 h-3.5" />
+                            <span>Commit Mapped taxonomy layer settings</span>
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center text-slate-500 text-xs">
+                        All layers automatically classified correctly with confidence &ge; 70%. You can proceed directly to approve this CAD Layout!
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* DETAILED DIAGNOSTIC LOG PROGRESS (Job progress logs) */}
               <div className="space-y-3 pt-2" id="cad-diagnostic-milestones">

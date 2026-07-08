@@ -12,32 +12,214 @@ function sanitizeString(val: any): string {
   return typeof val === "string" ? val.trim() : "";
 }
 
-// Heuristics for DXF Layer matching
+// Heuristics for DXF Layer matching with intelligent pattern matching
 function evaluateLayerHeuristic(name: string): { suggested_type: string; confidence_score: number } {
-  const upper = name.toUpperCase();
-  if (upper.includes("PLOT") || upper.includes("PLT") || upper.includes("PARCEL") || upper.includes("SEC_")) {
-    return { suggested_type: "PLOT", confidence_score: 90 };
-  }
-  if (upper.includes("ROAD") || upper.includes("STREET") || upper.includes("WAY") || upper.includes("CIRCULATION") || upper.includes("AVE")) {
-    return { suggested_type: "ROAD", confidence_score: 85 };
-  }
-  if (upper.includes("PARK") || upper.includes("GARDEN") || upper.includes("GREEN") || upper.includes("AMENITY") || upper.includes("CIVIC")) {
-    return { suggested_type: "AMENITY", confidence_score: 80 };
-  }
-  if (
+  const upper = name.trim().toUpperCase();
+
+  // 1. IGNORE & LABELS
+  // Ignore patterns: dimensions, construction lines, hatches, temporary layers, and text labels
+  const isIgnoreExact = [
+    "0", "DEFPOINTS", "TEMP", "TMP", "DRAFT", "SCRATCH", "HATCH", "SOLID", "FILL", "PATTERN", "PATTERNS",
+    "TXT", "TEXT", "LABEL", "LBL", "NAME", "ANNOTATION", "DESC", "DESCRIPTION", "REMARKS", "NOTES",
+    "DIM", "DIMS", "DIMENSION", "DIMENSIONS", "MEASURE", "ALIGNMENT", "CONST", "CONSTRUCTION", "XLINE", "CLINE", "CENTERLINE", "AXIS", "GRIDLINE"
+  ].includes(upper);
+
+  const isIgnorePattern = (
+    /^(TEMP|TMP|DRAFT|SCRATCH|HATCH|DIM|TEXT|LABEL|TXT|LBL|CONST|XLINE|CLINE|GRID)[-_\s]/i.test(upper) ||
+    /[-_\s](TEMP|TMP|DRAFT|SCRATCH|HATCH|DIM|TEXT|LABEL|TXT|LBL|CONST|XLINE|CLINE|GRID)$/i.test(upper) ||
+    /PLOT[-_\s](TEXT|TXT|LABEL|LBL)/i.test(upper) ||
+    /SITE[-_\s](TEXT|TXT|LABEL|LBL)/i.test(upper)
+  );
+
+  const isIgnoreFuzzy = (
+    upper.includes("DIMENSION") ||
+    upper.includes("HATCH") ||
+    upper.includes("SHADING") ||
+    upper.includes("ANNOTATION") ||
+    upper.includes("CONSTRUCTION") ||
+    upper.includes("TEMPORARY") ||
+    upper.includes("XLINE") ||
+    upper.includes("CLINE") ||
+    upper.includes("CENTERLINE") ||
+    upper.includes("DEFPOINTS")
+  );
+
+  const isLabelFuzzy = (
+    upper.includes("TEXT") ||
+    upper.includes("LABEL") ||
+    upper.includes("TXT") ||
+    upper.includes("LBL")
+  );
+
+  // 2. BOUNDARY
+  const isBoundaryExact = [
+    "BOUNDARY", "SITE_BOUNDARY", "PLOT_BOUNDARY", "LAYOUT_BOUNDARY", "OUTER_BOUNDARY", 
+    "PERIMETER", "BORDER", "OUTLINE", "OUTER_LIMIT", "LIMIT_OUTER"
+  ].includes(upper);
+
+  const isBoundaryPattern = (
+    /\b(BOUNDARY|OUTER|LIMIT|PERIMETER|BORDER|BOUND)\b/i.test(upper) ||
+    /^(BOUNDARY|SITE|PROPERTY|OUTER|LIMIT|PERIMETER|BORDER|BOUND)$/i.test(upper) ||
+    /^(SITE|PROPERTY)[-_\s]LIMIT$/i.test(upper) ||
+    /^LIMIT[-_\s](SITE|PROPERTY)$/i.test(upper) ||
+    /PROPERTY[-_\s]LINE/i.test(upper)
+  );
+
+  const isBoundaryFuzzy = (
+    upper.includes("BOUNDARY") ||
+    upper.includes("LIMIT") ||
+    upper.includes("BORDER") ||
+    upper.includes("PERIMETER") ||
+    upper.includes("BOUND")
+  );
+
+  // 3. ROAD
+  const isRoadExact = [
+    "ROAD", "ROADS", "ROAD_MAIN", "MAIN_ROAD", "ROAD_INTERNAL", "INTERNAL_ROAD", 
+    "STREET", "STREETS", "WAY", "CIRCULATION", "DRIVE", "LANE", "INTERNAL ROAD"
+  ].includes(upper);
+
+  const isRoadPattern = (
+    /ROAD[-_\s]?\d+M/i.test(upper) ||
+    /\d+M[-_\s]?ROAD/i.test(upper) ||
+    /ROAD[-_\s]?\d+/i.test(upper) ||
+    /\d+[-_\s]?ROAD/i.test(upper) ||
+    /ROAD[-_\s](MAIN|INTERNAL|SUB|BRANCH|ACCESS)/i.test(upper) ||
+    /(MAIN|INTERNAL|SUB|BRANCH|ACCESS)[-_\s]ROAD/i.test(upper) ||
+    /\b(ROAD|ROADS|STREET|STREETS|CIRCULATION|WAY|DRIVE|LANE)\b/i.test(upper)
+  );
+
+  const isRoadFuzzy = (
+    upper.includes("ROAD") ||
+    upper.includes("STREET") ||
+    upper.includes("CIRCULATION") ||
+    upper.includes("CARRIAGEWAY") ||
+    upper.includes("PAVEMENT") ||
+    upper.includes("ASPHALT")
+  );
+
+  // 4. PLOT
+  // Pattern matches plot naming patterns like PLOT101, PLOT_101, PLOT-101, P-101, SITE101, PLOT NO 101, PLOT_NO_101
+  const isPlotPattern = (
+    /^P(LOT)?[-_\s]?\d+/i.test(upper) ||
+    /^SITE[-_\s]?\d+/i.test(upper) ||
+    /PLOT[-_\s]NO[-_\s]?\d+/i.test(upper) ||
+    /PLOT[-_\s]?\d+/i.test(upper) ||
+    /\b(PLOT|PLT|PARCEL|PARCELS|ZONING|SUBDIVISION)\b/i.test(upper)
+  );
+
+  const isPlotExact = [
+    "PLOT", "PLOTS", "PARCEL", "PARCELS", "PLOT_BOUNDARIES", "ZONING", "SUBDIVISION"
+  ].includes(upper);
+
+  const isPlotFuzzy = (
+    upper.includes("PLOT") ||
+    upper.includes("PLT") ||
+    upper.includes("PARCEL") ||
+    upper.includes("ZONING") ||
+    upper.includes("SUBDIVISION")
+  );
+
+  // 5. AMENITY & PARK
+  const isParkExact = [
+    "PARK", "OPEN SPACE", "OPEN_SPACE", "OS", "GREEN", "GARDEN", "PLAYGROUND", "LANDSCAPE", "LAWN", "RECREATION", "GREEN_SPACE"
+  ].includes(upper);
+
+  const isAmenityExact = [
+    "AMENITY", "CLUB", "COMMUNITY", "CIVIC", "CLUBHOUSE", "COMMUNITY_HALL", "HEALTH_CENTRE", "POOL", "SWIMMING_POOL", "CA_SITE"
+  ].includes(upper);
+
+  const isAmenityPattern = (
+    /\b(PARK|GREEN|GARDEN|PLAYGROUND|AMENITY|CLUB|COMMUNITY|CIVIC|CLUBHOUSE|LANDSCAPE)\b/i.test(upper) ||
+    /OPEN[-_\s]SPACE/i.test(upper) ||
+    /^OS$/i.test(upper)
+  );
+
+  const isAmenityFuzzy = (
+    upper.includes("PARK") ||
+    upper.includes("GARDEN") ||
+    upper.includes("GREEN") ||
+    upper.includes("AMENITY") ||
+    upper.includes("CLUB") ||
+    upper.includes("COMMUNITY") ||
+    upper.includes("CIVIC") ||
+    upper.includes("PLAYGROUND") ||
+    upper.includes("LANDSCAPE")
+  );
+
+  // 6. UTILITY (Water, Electric, Drain, Services)
+  const isUtilityExact = [
+    "UTILITY", "SERVICES", "INFRASTRUCTURE",
+    "WATER", "STP", "TANK", "UGT", "OHT", "RESERVOIR", "AQUEDUCT", "SUMP", "WATER_LINE", "SEWAGE",
+    "POWER", "ELECTRIC", "TRANSFORMER", "EB", "ELECTRICAL", "GRID", "SUBSTATION", "CABLE", "LIGHT", "LIGHTING", "POLE",
+    "DRAIN", "STORM", "SEWER", "DRAINAGE", "SULLAGE", "CATCHPIT", "STORM_WATER"
+  ].includes(upper);
+
+  const isUtilityPattern = (
+    /\b(UTILITY|SERVICES|INFRASTRUCTURE|STP|UGT|OHT|SUMP|POWER|ELECTRIC|ELECTRICAL|EB|TRANSFORMER|GRID|DRAIN|DRAINAGE|STORM|SEWER|SEWAGE)\b/i.test(upper) ||
+    /WATER[-_\s](LINE|TANK|SUPPLY|PIPE)/i.test(upper) ||
+    /STORM[-_\s]WATER/i.test(upper)
+  );
+
+  const isUtilityFuzzy = (
     upper.includes("UTIL") ||
-    upper.includes("LIGHT") ||
     upper.includes("WATER") ||
-    upper.includes("ELECTRIC") ||
+    upper.includes("ELECTR") ||
+    upper.includes("POWER") ||
+    upper.includes("TRANSFORM") ||
     upper.includes("DRAIN") ||
-    upper.includes("SEWER")
-  ) {
-    return { suggested_type: "UTILITY", confidence_score: 85 };
+    upper.includes("SEWER") ||
+    upper.includes("STORM") ||
+    upper.includes("TANK") ||
+    upper.includes("STP") ||
+    upper.includes("UGT") ||
+    upper.includes("OHT")
+  );
+
+  // Evaluate scores for each category
+  const scores: Array<{ type: string; score: number }> = [];
+
+  // IGNORE Category
+  if (isIgnoreExact) scores.push({ type: "IGNORE", score: 99 });
+  else if (isIgnorePattern) scores.push({ type: "IGNORE", score: 95 });
+  else if (isIgnoreFuzzy) scores.push({ type: "IGNORE", score: 85 });
+  else if (isLabelFuzzy) scores.push({ type: "IGNORE", score: 75 });
+
+  // BOUNDARY Category
+  if (isBoundaryExact) scores.push({ type: "BOUNDARY", score: 99 });
+  else if (isBoundaryPattern) scores.push({ type: "BOUNDARY", score: 95 });
+  else if (isBoundaryFuzzy) scores.push({ type: "BOUNDARY", score: 80 });
+  else if (upper.includes("SITE") || upper.includes("PROPERTY")) scores.push({ type: "BOUNDARY", score: 60 });
+
+  // ROAD Category
+  if (isRoadExact) scores.push({ type: "ROAD", score: 99 });
+  else if (isRoadPattern) scores.push({ type: "ROAD", score: 95 });
+  else if (isRoadFuzzy) scores.push({ type: "ROAD", score: 85 });
+  else if (upper.includes("WAY") || upper.includes("DRIVE") || upper.includes("LANE") || upper.includes("PATH")) scores.push({ type: "ROAD", score: 65 });
+
+  // PLOT Category
+  if (isPlotExact) scores.push({ type: "PLOT", score: 99 });
+  else if (isPlotPattern) scores.push({ type: "PLOT", score: 95 });
+  else if (isPlotFuzzy) scores.push({ type: "PLOT", score: 85 });
+
+  // AMENITY Category
+  if (isParkExact || isAmenityExact) scores.push({ type: "AMENITY", score: 99 });
+  else if (isAmenityPattern) scores.push({ type: "AMENITY", score: 95 });
+  else if (isAmenityFuzzy) scores.push({ type: "AMENITY", score: 85 });
+
+  // UTILITY Category
+  if (isUtilityExact) scores.push({ type: "UTILITY", score: 99 });
+  else if (isUtilityPattern) scores.push({ type: "UTILITY", score: 95 });
+  else if (isUtilityFuzzy) scores.push({ type: "UTILITY", score: 85 });
+
+  // Pick the highest scoring category
+  if (scores.length > 0) {
+    scores.sort((a, b) => b.score - a.score);
+    return { suggested_type: scores[0].type, confidence_score: scores[0].score };
   }
-  if (upper.includes("BOUND") || upper.includes("BORDER") || upper.includes("PERIMETER") || upper.includes("LIMIT")) {
-    return { suggested_type: "BOUNDARY", confidence_score: 95 };
-  }
-  return { suggested_type: "UNKNOWN", confidence_score: 0 };
+
+  // Fallback for names that didn't match anything specific
+  return { suggested_type: "UNKNOWN", confidence_score: 20 };
 }
 
 // ==========================================
