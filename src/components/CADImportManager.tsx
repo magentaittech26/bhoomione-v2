@@ -889,8 +889,10 @@ export const CADImportManager: React.FC<CADImportManagerProps> = ({
                                 if (suggestedType === "PLOT") typeBadgeClass = "text-blue-700 bg-blue-50 border-blue-150";
                                 if (suggestedType === "ROAD") typeBadgeClass = "text-amber-800 bg-amber-50 border-amber-150";
                                 if (suggestedType === "AMENITY") typeBadgeClass = "text-emerald-700 bg-emerald-50 border-emerald-150";
+                                if (suggestedType === "PARK") typeBadgeClass = "text-emerald-700 bg-emerald-50 border-emerald-150";
                                 if (suggestedType === "UTILITY") typeBadgeClass = "text-cyan-700 bg-cyan-50 border-cyan-150";
                                 if (suggestedType === "BOUNDARY") typeBadgeClass = "text-purple-750 bg-purple-50 border-purple-150";
+                                if (suggestedType === "LABEL" || suggestedType === "TEXT") typeBadgeClass = "text-indigo-700 bg-indigo-50 border-indigo-150";
 
                                 // Confidence color
                                 const barColor = confidenceScore >= 85 ? "bg-emerald-500" : (confidenceScore >= 70 ? "bg-[#eab308]" : "bg-rose-500");

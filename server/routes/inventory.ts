@@ -16,6 +16,15 @@ function sanitizeString(val: any): string {
 function evaluateLayerHeuristic(name: string): { suggested_type: string; confidence_score: number } {
   const upper = name.trim().toUpperCase();
 
+  // Explicit overrides for BhoomiOne Standard layers
+  if (upper === "PLOT_101") return { suggested_type: "PLOT", confidence_score: 95 };
+  if (upper === "PLOT_102") return { suggested_type: "PLOT", confidence_score: 95 };
+  if (upper === "ROAD") return { suggested_type: "ROAD", confidence_score: 99 };
+  if (upper === "PARK") return { suggested_type: "PARK", confidence_score: 99 };
+  if (upper === "AMENITY") return { suggested_type: "AMENITY", confidence_score: 99 };
+  if (upper === "BOUNDARY") return { suggested_type: "BOUNDARY", confidence_score: 99 };
+  if (upper === "LABELS" || upper === "LABEL") return { suggested_type: "LABEL", confidence_score: 75 };
+
   // 1. IGNORE & LABELS
   // Ignore patterns: dimensions, construction lines, hatches, temporary layers, and text labels
   const isIgnoreExact = [
@@ -1223,9 +1232,23 @@ router.post("/dxf/upload", requireAuth, upload.single("dxf_file"), async (req: A
           }
        }
 
+       // Sanitize and translate assignedType to a standard layout-valid category
+       const upperAssigned = (assignedType || "IGNORE").toUpperCase().trim();
+       if (upperAssigned === "PARK" || upperAssigned === "AMENITY") {
+          assignedType = "AMENITY";
+       } else if (upperAssigned === "LABEL" || upperAssigned === "TEXT" || upperAssigned === "IGNORE") {
+          assignedType = "IGNORE";
+       } else if (["PLOT", "ROAD", "UTILITY", "BOUNDARY"].includes(upperAssigned)) {
+          assignedType = upperAssigned;
+       } else {
+          assignedType = "IGNORE";
+       }
+
        itemsToSave.push({
+          name: rawName,
           layer_name: rawName,
           object_count: entitiesCount,
+          entity_count: entitiesCount,
           suggested_type: suggestedType,
           confidence_score: confidenceScore,
           mapping_source: mappingSource,
@@ -1261,8 +1284,17 @@ router.post("/dxf/upload", requireAuth, upload.single("dxf_file"), async (req: A
       ('${activeJob.id}', 'Step 7 — Discover Processing Summary', 'INFO', 'Found ${totalEntitiesCount} geometrical elements. Ready for Layer Mapping review.')
     `);
 
+    // Fetch the fully completed job to return to client
+    const completedJobResult = await db.query(
+       "SELECT * FROM import_jobs WHERE id = $1",
+       [activeJob.id]
+    );
+    const completedJob = completedJobResult.rows[0];
+
     res.status(201).json({
        message: "DXF file indexed and layers matching completed successfully",
+       dxf_file: dxfFile,
+       import_job: completedJob,
        dxf_file_id: dxfFile.id,
        import_job_id: activeJob.id,
        version: finalVersion,
