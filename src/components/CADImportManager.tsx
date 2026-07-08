@@ -58,7 +58,17 @@ export const CADImportManager: React.FC<CADImportManagerProps> = ({
   const [currentMappings, setCurrentMappings] = useState<Record<string, string>>({});
   const [templateName, setTemplateName] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [editingTemplateName, setEditingTemplateName] = useState("");
   const [showManualMapping, setShowManualMapping] = useState(false);
+
+  useEffect(() => {
+    const t = templates.find((item) => item.id === selectedTemplateId);
+    if (t) {
+      setEditingTemplateName(t.name);
+    } else {
+      setEditingTemplateName("");
+    }
+  }, [selectedTemplateId, templates]);
 
   const hasDxfUpload = user.permissions?.includes("dxf.upload") || false;
   const hasDxfProcess = user.permissions?.includes("dxf.process") || false;
@@ -284,8 +294,8 @@ export const CADImportManager: React.FC<CADImportManagerProps> = ({
 
     setLoading(true);
     try {
-      await api.storeDxfTemplate(copyName.trim(), target.mappings);
-      displaySuccess(`Preset template successfully cloned under name "${copyName.trim()}"!`);
+      await api.duplicateDxfTemplate(selectedTemplateId, copyName.trim());
+      displaySuccess(`Preset template successfully duplicated under name "${copyName.trim()}"!`);
       const templatesRes = await api.fetchDxfTemplates();
       setTemplates(templatesRes);
     } catch (err: any) {
@@ -293,6 +303,78 @@ export const CADImportManager: React.FC<CADImportManagerProps> = ({
       displayError("Clonification aborted: " + err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUpdateTemplate = async () => {
+    if (!selectedTemplateId) return;
+    if (!editingTemplateName.trim()) {
+      displayError("Template name cannot be empty.");
+      return;
+    }
+    setLoading(true);
+    try {
+      await api.updateDxfTemplate(selectedTemplateId, editingTemplateName.trim(), currentMappings);
+      displaySuccess(`Template "${editingTemplateName.trim()}" updated successfully.`);
+      const templatesRes = await api.fetchDxfTemplates();
+      setTemplates(templatesRes);
+    } catch (err: any) {
+      console.error(err);
+      displayError("Failed to update template: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExportTemplate = (template: any) => {
+    if (!template) return;
+    try {
+      const exportData = {
+        name: template.name,
+        mappings: template.mappings
+      };
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${template.name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_preset.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      displaySuccess(`Exported template "${template.name}" successfully.`);
+    } catch (err: any) {
+      console.error(err);
+      displayError("Failed to export template: " + err.message);
+    }
+  };
+
+  const handleImportTemplate = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          const json = JSON.parse(event.target?.result as string);
+          if (!json.name || !json.mappings) {
+            displayError("Invalid preset file. Must contain 'name' and 'mappings' properties.");
+            return;
+          }
+          setLoading(true);
+          const imported = await api.storeDxfTemplate(json.name, json.mappings);
+          displaySuccess(`Successfully imported mapping preset template "${json.name}"!`);
+          const templatesRes = await api.fetchDxfTemplates();
+          setTemplates(templatesRes);
+          setSelectedTemplateId(imported.id);
+        } catch (err: any) {
+          console.error(err);
+          displayError("Failed to parse or import preset file: " + err.message);
+        } finally {
+          setLoading(false);
+        }
+      };
+      reader.readAsText(file);
+      e.target.value = "";
     }
   };
 
@@ -605,47 +687,122 @@ export const CADImportManager: React.FC<CADImportManagerProps> = ({
                   </div>
                 </div>
 
-                <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs flex flex-col justify-between">
+                <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-100 text-xs flex flex-col justify-between shadow-sm">
                   <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Template Management settings</span>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Template Management settings</span>
+                      
+                      <label className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold uppercase tracking-wide cursor-pointer flex items-center gap-1">
+                        <UploadCloud className="w-3 h-3" />
+                        <span>Import JSON Preset</span>
+                        <input 
+                           type="file" 
+                           accept=".json" 
+                           onChange={handleImportTemplate} 
+                           className="hidden" 
+                        />
+                      </label>
+                    </div>
+
                     <div className="flex gap-2 items-center">
                       <select 
                         onChange={handleApplyTemplate} 
                         value={selectedTemplateId}
-                        className="flex-1 bg-white border border-slate-200 rounded-lg p-1.5 text-xs text-slate-700 focus:outline-none"
+                        className="flex-1 bg-white border border-slate-200 rounded-lg p-2 text-xs text-slate-700 focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                       >
                         <option value="">-- Or Choose Presaved Survey Presets --</option>
                         {templates.map((temp) => (
-                          <option key={temp.id} value={temp.id}>{temp.name}</option>
+                          <option key={temp.id} value={temp.id}>
+                            {temp.is_global || temp.id.toString().startsWith("global-") ? "🌍 [Global] " : "🔑 [Tenant] "} {temp.name}
+                          </option>
                         ))}
                       </select>
-                      
-                      {selectedTemplateId && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={handleCloneTemplate}
-                            className="bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-700 rounded-lg p-1.5 flex items-center justify-center cursor-pointer transition-all"
-                            title="Clone selected preset"
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                          </button>
-                          
-                          <button
-                            type="button"
-                            onClick={handleDeleteTemplate}
-                            className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 rounded-lg p-1.5 flex items-center justify-center cursor-pointer transition-all"
-                            title="Delete template permanently"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </>
-                      )}
                     </div>
+
+                    {/* Preset Action Operations Sub-Panel */}
+                    {(() => {
+                      const targetTemplate = templates.find((t) => t.id === selectedTemplateId);
+                      if (!targetTemplate) return null;
+                      
+                      const isGlobal = targetTemplate.is_global || targetTemplate.id.toString().startsWith("global-");
+
+                      return (
+                        <div className="bg-white rounded-lg p-2.5 mt-2.5 border border-slate-200/60 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">Selected Preset Action Dashboard</span>
+                            {isGlobal && (
+                              <span className="bg-indigo-50 text-indigo-700 text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide">
+                                Global Read-Only
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {!isGlobal ? (
+                              <input 
+                                 type="text" 
+                                 value={editingTemplateName} 
+                                 onChange={(e) => setEditingTemplateName(e.target.value)}
+                                 className="bg-slate-50 border border-slate-200 rounded px-2.5 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 flex-1"
+                                 placeholder="Change template name..."
+                              />
+                            ) : (
+                              <span className="text-xs text-slate-700 font-semibold flex-1 italic truncate">{targetTemplate.name}</span>
+                            )}
+
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              {/* Edit & Update mappings */}
+                              {!isGlobal && (
+                                <button
+                                  type="button"
+                                  onClick={handleUpdateTemplate}
+                                  className="bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-lg p-1.5 flex items-center justify-center cursor-pointer transition-all"
+                                  title="Update Preset Name and current mappings"
+                                >
+                                  <Save className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+
+                              {/* Duplicate */}
+                              <button
+                                type="button"
+                                onClick={handleCloneTemplate}
+                                className="bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-700 rounded-lg p-1.5 flex items-center justify-center cursor-pointer transition-all"
+                                title="Duplicate Preset Mapping"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Export */}
+                              <button
+                                type="button"
+                                onClick={() => handleExportTemplate(targetTemplate)}
+                                className="bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 rounded-lg p-1.5 flex items-center justify-center cursor-pointer transition-all"
+                                title="Export Mapping Preset to JSON"
+                              >
+                                <UploadCloud className="w-3.5 h-3.5 rotate-180" />
+                              </button>
+
+                              {/* Delete */}
+                              {!isGlobal && (
+                                <button
+                                  type="button"
+                                  onClick={handleDeleteTemplate}
+                                  className="bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-lg p-1.5 flex items-center justify-center cursor-pointer transition-all"
+                                  title="Delete Preset Mapping"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
 
-                  <p className="text-[9px] text-slate-400 leading-normal mt-2 italic">
-                    Applying preset templates pre-fills matching vector layers into PLOT, ROAD, etc. configurations.
+                  <p className="text-[9px] text-slate-400 leading-normal mt-2.5 italic">
+                    Applying preset templates pre-fills matching vector layers into PLOT, ROAD, etc. configurations. Auto-learned tenant-wide maps take highest priority.
                   </p>
                 </div>
               </div>

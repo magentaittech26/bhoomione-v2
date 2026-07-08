@@ -1129,32 +1129,114 @@ router.post("/dxf/upload", requireAuth, upload.single("dxf_file"), async (req: A
       });
     }
 
+    // Fetch Auto-learned presets for the tenant
+    let autoLearnedMappings: Record<string, string> = {};
+    try {
+       const learnedResult = await db.query(
+          "SELECT mappings FROM import_templates WHERE tenant_id = $1 AND name = 'Tenant Auto-Learned Presets'",
+          [tenantId]
+       );
+       if (learnedResult.rowCount && learnedResult.rowCount > 0) {
+          const rawM = learnedResult.rows[0].mappings;
+          autoLearnedMappings = typeof rawM === "string" ? JSON.parse(rawM) : rawM;
+       }
+    } catch (err) {
+       console.error("Failed to load autoLearnedMappings:", err);
+    }
+
+    // Fetch other saved templates for this tenant
+    const otherTemplatesList: any[] = [];
+    try {
+       const templatesRes = await db.query(
+          "SELECT mappings FROM import_templates WHERE tenant_id = $1 AND name != 'Tenant Auto-Learned Presets'",
+          [tenantId]
+       );
+       for (const row of templatesRes.rows) {
+          const m = typeof row.mappings === "string" ? JSON.parse(row.mappings) : row.mappings;
+          if (m) otherTemplatesList.push(m);
+       }
+    } catch (err) {
+       console.error("Failed to load other tenant templates:", err);
+    }
+
+    // Flatten Global presets into a dictionary for exact upper-case lookup
+    const globalPresetMappings: Record<string, string> = {};
+    for (const p of GLOBAL_PRESETS) {
+       Object.entries(p.mappings).forEach(([k, v]) => {
+          globalPresetMappings[k.toUpperCase().trim()] = v;
+       });
+    }
+
     const detectedLayersList = Array.from(layersDetectedSet);
     let totalEntitiesCount = 0;
     const itemsToSave: any[] = [];
 
-    // Analyze counts and mappings heuristics
+    // Analyze counts and mappings hierarchy
     for (const rawName of detectedLayersList) {
        const isSeededType = rawName === "PLOT_NO" || rawName === "ROAD_9M" || rawName === "PARK_AMENITY" || rawName === "ELECTRIAL_GRID_UTILITY" || rawName === "BOUNDARY_LIMIT" || rawName === "IGNORE_METADATA_LABELS";
        const entitiesCount = isSeededType ? Math.floor(Math.random() * 85) + 12 : Math.floor(Math.random() * 300) + 10;
        totalEntitiesCount += entitiesCount;
 
-       const heuristic = evaluateLayerHeuristic(rawName);
+       let assignedType = "IGNORE";
+       let suggestedType = "UNKNOWN";
+       let confidenceScore = 0;
+       let mappingSource = "SYSTEM";
+
+       // 1. Check Tenant Auto-Learned Presets
+       if (autoLearnedMappings[rawName]) {
+          assignedType = autoLearnedMappings[rawName];
+          suggestedType = autoLearnedMappings[rawName];
+          confidenceScore = 98;
+          mappingSource = "LEARNED";
+       } 
+       // 2. Check other tenant templates
+       else {
+          let foundInTemplate = false;
+          for (const m of otherTemplatesList) {
+             if (m[rawName]) {
+                assignedType = m[rawName];
+                suggestedType = m[rawName];
+                confidenceScore = 95;
+                mappingSource = "TEMPLATE";
+                foundInTemplate = true;
+                break;
+             }
+          }
+
+          if (!foundInTemplate) {
+             // 3. Check Global Presets (exact match or upper-case matched keys)
+             const upperRaw = rawName.toUpperCase().trim();
+             if (globalPresetMappings[upperRaw]) {
+                assignedType = globalPresetMappings[upperRaw];
+                suggestedType = globalPresetMappings[upperRaw];
+                confidenceScore = 90;
+                mappingSource = "GLOBAL";
+             } 
+             // 4. Default to upgraded Heuristic engine
+             else {
+                const heuristic = evaluateLayerHeuristic(rawName);
+                suggestedType = heuristic.suggested_type;
+                confidenceScore = heuristic.confidence_score;
+                assignedType = heuristic.suggested_type !== "UNKNOWN" ? heuristic.suggested_type : "IGNORE";
+                mappingSource = "SYSTEM";
+             }
+          }
+       }
 
        itemsToSave.push({
           layer_name: rawName,
           object_count: entitiesCount,
-          suggested_type: heuristic.suggested_type,
-          confidence_score: heuristic.confidence_score,
-          mapping_source: "SYSTEM",
-          assigned_type: heuristic.suggested_type !== "UNKNOWN" ? heuristic.suggested_type : "IGNORE"
+          suggested_type: suggestedType,
+          confidence_score: confidenceScore,
+          mapping_source: mappingSource,
+          assigned_type: assignedType
        });
 
        // Store mapping schema target
        await db.query(
          `INSERT INTO dxf_layer_mappings (tenant_id, dxf_file_id, layer_name, layer_type, suggested_type, confidence_score, mapping_source)
           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-         [tenantId, dxfFile.id, rawName, heuristic.suggested_type !== "UNKNOWN" ? heuristic.suggested_type : "IGNORE", heuristic.suggested_type, heuristic.confidence_score, "SYSTEM"]
+         [tenantId, dxfFile.id, rawName, assignedType, suggestedType, confidenceScore, mappingSource]
        );
     }
 
@@ -1246,6 +1328,43 @@ router.post("/dxf/mappings", requireAuth, async (req: AuthenticatedRequest, res:
     }
 
     res.json({ success: true, message: "Custom user mappings updated securely" });
+
+    // Auto-learning: save manually mapped layers to "Tenant Auto-Learned Presets" template
+    try {
+       const learnedTemplateName = "Tenant Auto-Learned Presets";
+       const existingTemp = await db.query(
+          "SELECT id, mappings FROM import_templates WHERE tenant_id = $1 AND name = $2",
+          [tenantId, learnedTemplateName]
+       );
+
+       let updatedMappings: Record<string, string> = {};
+       if (existingTemp.rowCount && existingTemp.rowCount > 0) {
+          const rawMappings = existingTemp.rows[0].mappings;
+          updatedMappings = typeof rawMappings === "string" ? JSON.parse(rawMappings) : rawMappings;
+       }
+
+       // Merge new user mappings
+       for (const item of mappings) {
+          const { layer_name, layer_type } = item;
+          if (layer_type) {
+             updatedMappings[layer_name] = layer_type;
+          }
+       }
+
+       if (existingTemp.rowCount && existingTemp.rowCount > 0) {
+          await db.query(
+             "UPDATE import_templates SET mappings = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
+             [JSON.stringify(updatedMappings), existingTemp.rows[0].id]
+          );
+       } else {
+          await db.query(
+             "INSERT INTO import_templates (tenant_id, name, mappings) VALUES ($1, $2, $3)",
+             [tenantId, learnedTemplateName, JSON.stringify(updatedMappings)]
+          );
+       }
+    } catch (err) {
+       console.error("Auto-learning updates failed:", err);
+    }
 
   } catch (err: any) {
      console.error("saveDxfMappings Error:", err);
@@ -1533,6 +1652,96 @@ router.post("/dxf/process", requireAuth, async (req: AuthenticatedRequest, res: 
   }
 });
 
+// Global CAD presets supporting AutoCAD standard naming conventions
+const GLOBAL_PRESETS = [
+  {
+    id: "global-autocad",
+    tenant_id: null,
+    name: "AutoCAD Standard (Global)",
+    is_global: true,
+    mappings: {
+      "BOUNDARY": "BOUNDARY",
+      "SITE": "BOUNDARY",
+      "PROPERTY": "BOUNDARY",
+      "OUTER": "BOUNDARY",
+      "LIMIT": "BOUNDARY",
+      "ROAD": "ROAD",
+      "ROADS": "ROAD",
+      "ROAD_MAIN": "ROAD",
+      "STREET": "ROAD",
+      "PLOT": "PLOT",
+      "PARK": "AMENITY",
+      "OPEN SPACE": "AMENITY",
+      "OS": "AMENITY",
+      "GREEN": "AMENITY",
+      "GARDEN": "AMENITY",
+      "AMENITY": "AMENITY",
+      "CLUB": "AMENITY",
+      "UTILITY": "UTILITY",
+      "WATER": "UTILITY",
+      "STP": "UTILITY",
+      "TANK": "UTILITY",
+      "UGT": "UTILITY",
+      "POWER": "UTILITY",
+      "ELECTRIC": "UTILITY",
+      "TRANSFORMER": "UTILITY",
+      "EB": "UTILITY",
+      "DRAIN": "UTILITY",
+      "STORM": "UTILITY",
+      "SEWER": "UTILITY",
+      "TEXT": "IGNORE",
+      "LABEL": "IGNORE",
+      "PLOT_TEXT": "IGNORE",
+      "DIM": "IGNORE",
+      "HATCH": "IGNORE"
+    }
+  },
+  {
+    id: "global-xyz",
+    tenant_id: null,
+    name: "Developer XYZ Standard (Global)",
+    is_global: true,
+    mappings: {
+      "BOUNDARY_LIMIT": "BOUNDARY",
+      "ROAD_MAIN": "ROAD",
+      "ROAD_INTERNAL": "ROAD",
+      "PLOT101": "PLOT",
+      "PLOT_101": "PLOT",
+      "PLOT-101": "PLOT",
+      "P-101": "PLOT",
+      "SITE101": "PLOT",
+      "PLOT NO 101": "PLOT",
+      "OPEN_SPACE": "AMENITY",
+      "GARDEN": "AMENITY",
+      "CLUBHOUSE": "AMENITY",
+      "UTILITY": "UTILITY",
+      "STP": "UTILITY",
+      "UGT": "UTILITY",
+      "ELECTRICAL": "UTILITY"
+    }
+  },
+  {
+    id: "global-abc",
+    tenant_id: null,
+    name: "ABC Architects Standard (Global)",
+    is_global: true,
+    mappings: {
+      "LIMIT": "BOUNDARY",
+      "INTERNAL ROAD": "ROAD",
+      "ROAD_9M": "ROAD",
+      "ROAD_12M": "ROAD",
+      "P-101": "PLOT",
+      "SITE101": "PLOT",
+      "GARDEN": "AMENITY",
+      "GREEN": "AMENITY",
+      "UTILITY": "UTILITY",
+      "POWER": "UTILITY",
+      "TRANSFORMER": "UTILITY",
+      "SEWER": "UTILITY"
+    }
+  }
+];
+
 // GET /dxf/templates
 router.get("/dxf/templates", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -1544,7 +1753,10 @@ router.get("/dxf/templates", requireAuth, async (req: AuthenticatedRequest, res:
        "SELECT * FROM import_templates WHERE tenant_id = $1 ORDER BY name ASC",
        [tenantId]
      );
-     res.json(result.rows);
+     
+     // Merge platform presets and database tenant-specific templates
+     const merged = [...GLOBAL_PRESETS, ...result.rows];
+     res.json(merged);
   } catch (err: any) {
      console.error("fetchDxfTemplates Error:", err);
      res.status(500).json({ error: "Failed to fetch saved templates." });
@@ -1576,6 +1788,85 @@ router.post("/dxf/templates", requireAuth, async (req: AuthenticatedRequest, res
   }
 });
 
+// PUT /dxf/templates/:id
+router.put("/dxf/templates/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+     const tenantId = req.user?.tenantId;
+     if (!tenantId) return res.status(400).json({ error: "Tenant required." });
+
+     const { name, mappings } = req.body;
+     if (!name || !mappings) {
+        return res.status(400).json({ error: "Please enter template name and layers configuration schema." });
+     }
+
+     // Prevent editing global presets
+     if (req.params.id.startsWith("global-")) {
+        return res.status(403).json({ error: "Cannot modify read-only global platform presets." });
+     }
+
+     const db = getPool();
+     const result = await db.query(
+        `UPDATE import_templates
+         SET name = $1, mappings = $2, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $3 AND tenant_id = $4 RETURNING *`,
+        [sanitizeString(name), typeof mappings === "string" ? mappings : JSON.stringify(mappings), req.params.id, tenantId]
+     );
+
+     if (result.rowCount === 0) {
+        return res.status(404).json({ error: "Template not found or unauthorized edit." });
+     }
+
+     res.json(result.rows[0]);
+  } catch (err: any) {
+     console.error("Edit Template Error:", err);
+     res.status(500).json({ error: "Failed to edit mapping template." });
+  }
+});
+
+// POST /dxf/templates/:id/duplicate
+router.post("/dxf/templates/:id/duplicate", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+     const tenantId = req.user?.tenantId;
+     if (!tenantId) return res.status(400).json({ error: "Tenant context unresolved." });
+
+     const { name } = req.body;
+     const db = getPool();
+
+     let sourceMappings: any = {};
+     let sourceName = "";
+
+     // Check if source is global or tenant template
+     if (req.params.id.startsWith("global-")) {
+        const match = GLOBAL_PRESETS.find(p => p.id === req.params.id);
+        if (!match) return res.status(404).json({ error: "Global preset not found." });
+        sourceMappings = match.mappings;
+        sourceName = match.name;
+     } else {
+        const result = await db.query(
+          "SELECT * FROM import_templates WHERE id = $1 AND tenant_id = $2",
+          [req.params.id, tenantId]
+        );
+        if (result.rowCount === 0) {
+          return res.status(404).json({ error: "Source template not found." });
+        }
+        sourceMappings = result.rows[0].mappings;
+        sourceName = result.rows[0].name;
+     }
+
+     const cloneName = sanitizeString(name || `Copy of ${sourceName}`);
+     const insertResult = await db.query(
+        `INSERT INTO import_templates (tenant_id, name, mappings)
+         VALUES ($1, $2, $3) RETURNING *`,
+        [tenantId, cloneName, typeof sourceMappings === "string" ? sourceMappings : JSON.stringify(sourceMappings)]
+     );
+
+     res.status(201).json(insertResult.rows[0]);
+  } catch (err: any) {
+     console.error("Duplicate Template Error:", err);
+     res.status(500).json({ error: "Failed to duplicate mapping template." });
+  }
+});
+
 // ==========================================
 // TEMPLATE UTILITIES (CLONE & DELETE)
 // ==========================================
@@ -1585,6 +1876,11 @@ router.delete("/dxf/templates/:id", requireAuth, async (req: AuthenticatedReques
   try {
      const tenantId = req.user?.tenantId;
      if (!tenantId) return res.status(400).json({ error: "Tenant required." });
+
+     // Prevent deleting global presets
+     if (req.params.id.startsWith("global-")) {
+        return res.status(403).json({ error: "Cannot delete read-only global platform presets." });
+     }
 
      const db = getPool();
      const result = await db.query(

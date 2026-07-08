@@ -1080,6 +1080,25 @@ class ApiClient {
     });
   }
 
+  async updateDxfTemplate(id: string, name: string, mappings: Record<string, string>): Promise<any> {
+    return this.request<any>(`/dxf/templates/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        name,
+        mappings,
+      }),
+    });
+  }
+
+  async duplicateDxfTemplate(id: string, name: string): Promise<any> {
+    return this.request<any>(`/dxf/templates/${id}/duplicate`, {
+      method: "POST",
+      body: JSON.stringify({
+        name,
+      }),
+    });
+  }
+
   // ==========================================
   // SPRINT 3E & 4A SVG ENDPOINTS
   // ==========================================
