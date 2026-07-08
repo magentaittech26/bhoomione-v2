@@ -20,6 +20,7 @@ import TenantOverridesTab from "../saas/TenantOverridesTab.tsx";
 import { SaasSettingsTab } from "../saas/SaasSettingsTab.tsx";
 import AuditLogsTab from "../saas/AuditLogsTab.tsx";
 import InvoiceConsole from "../saas/InvoiceConsole.tsx";
+import { CoreMastersConsole } from "../saas/CoreMastersConsole.tsx";
 
 export default function SaaSAdminApp() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -45,6 +46,7 @@ export default function SaaSAdminApp() {
     | "promotions"
     | "audit"
     | "feature-catalog"
+    | "core-masters"
   >("mrr-dashboard");
 
   // Inner sub-views states to avoid horizontal cluttering
@@ -1110,6 +1112,7 @@ export default function SaaSAdminApp() {
             { id: "subscription-center", label: "Subscription Center", icon: CreditCard },
             { id: "module-registry", label: "Module Registry", icon: Box },
             { id: "tenant-overrides", label: "Tenant Overrides", icon: Sliders },
+            { id: "core-masters", label: "Core Masters", icon: Database },
             { id: "audit-logs", label: "Audit Logs", icon: Terminal },
             { id: "settings", label: "Settings", icon: Settings },
           ].map(t => {
@@ -1500,6 +1503,13 @@ export default function SaaSAdminApp() {
         {/* Original Ingress Trail Stream Telemetry */}
         {activeTab === "audit-logs" && (
           <AuditLogsTab onShowToast={showToast} />
+        )}
+
+        {/* Core Masters Administration Dashboard */}
+        {activeTab === "core-masters" && (
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs animate-fadeIn">
+            <CoreMastersConsole onShowToast={showToast} />
+          </div>
         )}
 
         {/* Global configuration params */}

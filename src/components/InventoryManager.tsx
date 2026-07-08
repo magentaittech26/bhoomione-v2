@@ -38,7 +38,10 @@ import {
   Percent,
   Archive,
   RotateCcw,
-  Copy
+  Copy,
+  Move,
+  Scissors,
+  CheckCircle2
 } from "lucide-react";
 
 interface InventoryManagerProps {
@@ -595,6 +598,35 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
 
   const [bulkUpdateProps, setBulkUpdateProps] = useState({
     area_value: "", facing: "", road_width: ""
+  });
+
+  // Plot Move, Split and Merge states
+  const [movePlotTarget, setMovePlotTarget] = useState({
+    plotId: "",
+    plotNumber: "",
+    layoutId: ""
+  });
+
+  const [splitPlotTarget, setSplitPlotTarget] = useState({
+    plotId: "",
+    plotNumber: "",
+    areaValue: 0,
+    unitId: "",
+    layoutId: "",
+    facing: "",
+    plotANumber: "",
+    plotAArea: 0,
+    plotBNumber: "",
+    plotBArea: 0
+  });
+
+  const [mergePlotTarget, setMergePlotTarget] = useState({
+    sourcePlotIds: [] as string[],
+    layoutId: "",
+    newPlotNumber: "",
+    newAreaValue: 0,
+    unitId: "",
+    facing: "NORTH"
   });
 
   const [enabledFeatures, setEnabledFeatures] = useState<string[]>([]);
@@ -1482,6 +1514,194 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
       await loadData();
     } catch (err: any) {
       setErrorMess(err.message || "Deletion transaction rejected.");
+    }
+  };
+
+  const handleArchivePlot = async (id: string, num: string) => {
+    if (!window.confirm(`Are you sure you want to Archive Plot ${num}?`)) return;
+    setErrorMess(null);
+    try {
+      const pl = plots.find(p => p.id === id);
+      if (!pl) return;
+      const res = await api.updatePlot(id, {
+        ...pl,
+        status: "ARCHIVED"
+      });
+      displaySuccess(`Plot [${num}] successfully archived.`);
+      dispatchAuditLog("PLOT_ARCHIVE", "plots", id, `Archived Plot No: ${num}`);
+      if (selectedPlot?.id === id) setSelectedPlot(res);
+      await loadData();
+    } catch (err: any) {
+      setErrorMess(err.message || "Failed to archive plot.");
+    }
+  };
+
+  const handleRestorePlot = async (id: string, num: string) => {
+    if (!window.confirm(`Are you sure you want to Restore Plot ${num}?`)) return;
+    setErrorMess(null);
+    try {
+      const pl = plots.find(p => p.id === id);
+      if (!pl) return;
+      const res = await api.updatePlot(id, {
+        ...pl,
+        status: "AVAILABLE"
+      });
+      displaySuccess(`Plot [${num}] successfully restored to AVAILABLE status.`);
+      dispatchAuditLog("PLOT_RESTORE", "plots", id, `Restored Plot No: ${num}`);
+      if (selectedPlot?.id === id) setSelectedPlot(res);
+      await loadData();
+    } catch (err: any) {
+      setErrorMess(err.message || "Failed to restore plot.");
+    }
+  };
+
+  const handleDuplicatePlot = async (id: string) => {
+    if (!window.confirm("Are you sure you want to Duplicate this Plot record?")) return;
+    setErrorMess(null);
+    try {
+      const pl = plots.find(p => p.id === id);
+      if (!pl) return;
+      const newNum = `${pl.plot_number}_copy`;
+      const payload = {
+        layout_id: pl.layout_id,
+        plot_number: newNum,
+        area_value: Number(pl.area_value),
+        measurement_unit_id: pl.measurement_unit_id,
+        length: pl.length ? Number(pl.length) : null,
+        width: pl.width ? Number(pl.width) : null,
+        road_width: Number(pl.road_width || 0),
+        corner_plot: pl.corner_plot,
+        facing: pl.facing,
+        dimensions: pl.dimensions,
+        dimensions_metadata: tryParseJSON(pl.dimensions_metadata, {}),
+        status: "AVAILABLE"
+      };
+      const res = await api.createPlot(payload);
+      displaySuccess(`Plot duplicated as '${newNum}' successfully!`);
+      dispatchAuditLog("PLOT_DUPLICATE", "plots", res.id, `Duplicated Plot '${pl.plot_number}' to '${newNum}'`);
+      await loadData();
+    } catch (err: any) {
+      setErrorMess(err.message || "Failed to duplicate plot.");
+    }
+  };
+
+  const handleMovePlot = async () => {
+    if (!movePlotTarget.layoutId) {
+      setErrorMess("Please select a target Layout phase.");
+      return;
+    }
+    setErrorMess(null);
+    try {
+      const orig = plots.find(p => p.id === movePlotTarget.plotId);
+      if (!orig) return;
+      const res = await api.updatePlot(movePlotTarget.plotId, {
+        ...orig,
+        layout_id: movePlotTarget.layoutId
+      });
+      const targetLayout = lookupLayouts.find(l => l.id === movePlotTarget.layoutId);
+      displaySuccess(`Plot [${orig.plot_number}] moved to Layout '${targetLayout?.name || "N/A"}' successfully!`);
+      dispatchAuditLog("PLOT_MOVE", "plots", orig.id, `Moved Plot '${orig.plot_number}' from previous layout to '${targetLayout?.name || "N/A"}'`);
+      setCurrModal(null);
+      if (selectedPlot?.id === orig.id) setSelectedPlot(res);
+      await loadData();
+    } catch (err: any) {
+      setErrorMess(err.message || "Failed to move plot.");
+    }
+  };
+
+  const handleSplitPlot = async () => {
+    const { plotId, plotANumber, plotAArea, plotBNumber, plotBArea, layoutId, unitId, facing } = splitPlotTarget;
+    if (!plotANumber || !plotBNumber || plotAArea <= 0 || plotBArea <= 0) {
+      setErrorMess("Please specify valid plot numbers and areas larger than 0.");
+      return;
+    }
+    setErrorMess(null);
+    try {
+      const orig = plots.find(p => p.id === plotId);
+      if (!orig) return;
+      
+      // 1. Update/Rename/Archive original plot
+      await api.updatePlot(plotId, {
+        ...orig,
+        plot_number: `${orig.plot_number}_split_old_${Date.now()}`,
+        status: "ARCHIVED"
+      });
+
+      // 2. Create Plot A
+      await api.createPlot({
+        layout_id: layoutId,
+        plot_number: plotANumber,
+        area_value: Number(plotAArea),
+        measurement_unit_id: unitId,
+        facing: facing,
+        status: "AVAILABLE",
+        dimensions_metadata: { split_from_plot_id: plotId }
+      });
+
+      // 3. Create Plot B
+      await api.createPlot({
+        layout_id: layoutId,
+        plot_number: plotBNumber,
+        area_value: Number(plotBArea),
+        measurement_unit_id: unitId,
+        facing: facing,
+        status: "AVAILABLE",
+        dimensions_metadata: { split_from_plot_id: plotId }
+      });
+
+      displaySuccess(`Plot [${orig.plot_number}] split into [${plotANumber}] and [${plotBNumber}] successfully!`);
+      dispatchAuditLog("PLOT_SPLIT", "plots", plotId, `Split Plot '${orig.plot_number}' into '${plotANumber}' (${plotAArea} units) and '${plotBNumber}' (${plotBArea} units)`);
+      setCurrModal(null);
+      setSelectedPlot(null);
+      await loadData();
+    } catch (err: any) {
+      setErrorMess(err.message || "Failed to split plot.");
+    }
+  };
+
+  const handleMergePlots = async () => {
+    const { sourcePlotIds, layoutId, newPlotNumber, newAreaValue, unitId, facing } = mergePlotTarget;
+    if (sourcePlotIds.length < 2) {
+      setErrorMess("Please select at least 2 plots to merge.");
+      return;
+    }
+    if (!newPlotNumber || newAreaValue <= 0) {
+      setErrorMess("Please specify a valid merged plot number and area larger than 0.");
+      return;
+    }
+    setErrorMess(null);
+    try {
+      const names: string[] = [];
+      for (const id of sourcePlotIds) {
+        const orig = plots.find(p => p.id === id);
+        if (orig) {
+          names.push(orig.plot_number);
+          await api.updatePlot(id, {
+            ...orig,
+            plot_number: `${orig.plot_number}_merged_old_${Date.now()}`,
+            status: "ARCHIVED"
+          });
+        }
+      }
+
+      const res = await api.createPlot({
+        layout_id: layoutId,
+        plot_number: newPlotNumber,
+        area_value: Number(newAreaValue),
+        measurement_unit_id: unitId,
+        facing: facing,
+        status: "AVAILABLE",
+        dimensions_metadata: { merged_from_plot_ids: sourcePlotIds }
+      });
+
+      displaySuccess(`Plots [${names.join(", ")}] merged into [${newPlotNumber}] successfully!`);
+      dispatchAuditLog("PLOT_MERGE", "plots", res.id, `Merged Plots '${names.join(", ")}' into new Plot: '${newPlotNumber}' (${newAreaValue} units)`);
+      setCurrModal(null);
+      setSelectedPlotIds([]);
+      setSelectedPlot(res);
+      await loadData();
+    } catch (err: any) {
+      setErrorMess(err.message || "Failed to merge plots.");
     }
   };
 
@@ -2409,6 +2629,29 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                     >
                       Bulk Modify Dimension
                     </button>
+                    {selectedPlotIds.length >= 2 && (
+                      <button
+                        onClick={() => {
+                          const selectedPlots = plots.filter(p => selectedPlotIds.includes(p.id));
+                          const sumArea = selectedPlots.reduce((acc, curr) => acc + Number(curr.area_value), 0);
+                          const joinedNums = selectedPlots.map(p => p.plot_number).join("+");
+                          const samplePlot = selectedPlots[0];
+                          
+                          setMergePlotTarget({
+                            sourcePlotIds: selectedPlotIds,
+                            layoutId: samplePlot.layout_id,
+                            newPlotNumber: `M_${joinedNums.slice(0, 25)}`,
+                            newAreaValue: Number(sumArea.toFixed(2)),
+                            unitId: samplePlot.measurement_unit_id,
+                            facing: samplePlot.facing || "NORTH"
+                          });
+                          setCurrModal("merge_plots");
+                        }}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+                      >
+                        Merge Selection
+                      </button>
+                    )}
                     <button
                       onClick={() => setSelectedPlotIds([])}
                       className="text-slate-500 hover:text-slate-900 font-medium text-[11px]"
@@ -3119,8 +3362,79 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
 
                 {plotMeta.remarks && (
                   <div className="border-t border-slate-100 pt-2 text-[10.5px] text-slate-500">
-                    <span className="font-bold text-[9.5px] text-slate-400 block uppercase mb-1">Remarks / Remarks:</span>
+                    <span className="font-bold text-[9.5px] text-slate-400 block uppercase mb-1">Remarks:</span>
                     <p className="italic bg-amber-50/50 p-2 rounded-lg border border-amber-100/60 leading-relaxed text-slate-600">{plotMeta.remarks}</p>
+                  </div>
+                )}
+
+                {/* Advanced Plot Actions */}
+                {hasPlotManage && (
+                  <div className="border-t border-slate-150 pt-3 space-y-2">
+                    <p className="font-bold text-[10px] text-slate-400 uppercase tracking-wider block">Advanced Lifecycle Operations</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => {
+                          setMovePlotTarget({
+                            plotId: selectedPlot.id,
+                            plotNumber: selectedPlot.plot_number,
+                            layoutId: selectedPlot.layout_id
+                          });
+                          setCurrModal("move_plot");
+                        }}
+                        className="flex items-center justify-center gap-1.5 bg-slate-50 border border-slate-200 text-slate-700 font-bold text-[10.5px] py-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                      >
+                        <Move className="w-3 h-3 text-indigo-650" />
+                        <span>Move Plot</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setSplitPlotTarget({
+                            plotId: selectedPlot.id,
+                            plotNumber: selectedPlot.plot_number,
+                            areaValue: Number(selectedPlot.area_value),
+                            unitId: selectedPlot.measurement_unit_id,
+                            layoutId: selectedPlot.layout_id,
+                            facing: selectedPlot.facing,
+                            plotANumber: `${selectedPlot.plot_number}A`,
+                            plotAArea: Number((selectedPlot.area_value / 2).toFixed(2)),
+                            plotBNumber: `${selectedPlot.plot_number}B`,
+                            plotBArea: Number((selectedPlot.area_value / 2).toFixed(2))
+                          });
+                          setCurrModal("split_plot");
+                        }}
+                        className="flex items-center justify-center gap-1.5 bg-slate-50 border border-slate-200 text-slate-700 font-bold text-[10.5px] py-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                      >
+                        <Scissors className="w-3 h-3 text-indigo-650" />
+                        <span>Split Plot</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleDuplicatePlot(selectedPlot.id)}
+                        className="flex items-center justify-center gap-1.5 bg-slate-50 border border-slate-200 text-slate-700 font-bold text-[10.5px] py-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                      >
+                        <Copy className="w-3 h-3 text-indigo-650" />
+                        <span>Duplicate</span>
+                      </button>
+
+                      {selectedPlot.status === "ARCHIVED" ? (
+                        <button
+                          onClick={() => handleRestorePlot(selectedPlot.id, selectedPlot.plot_number)}
+                          className="flex items-center justify-center gap-1.5 bg-emerald-50 border border-emerald-250 text-emerald-700 font-bold text-[10.5px] py-1.5 rounded-lg hover:bg-emerald-100 transition-colors cursor-pointer"
+                        >
+                          <CheckCircle2 className="w-3 h-3 text-emerald-650" />
+                          <span>Restore</span>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleArchivePlot(selectedPlot.id, selectedPlot.plot_number)}
+                          className="flex items-center justify-center gap-1.5 bg-amber-50 border border-amber-250 text-amber-700 font-bold text-[10.5px] py-1.5 rounded-lg hover:bg-amber-100 transition-colors cursor-pointer"
+                        >
+                          <Archive className="w-3 h-3 text-amber-650" />
+                          <span>Archive</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -4013,6 +4327,172 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
             >
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Move Plot Modal */}
+      {currModal === "move_plot" && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-xl text-left">
+            <h4 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">Move Plot to Layout Subdivision</h4>
+            <div className="space-y-3 text-xs">
+              <p className="text-xs text-slate-500">
+                You are moving Plot <strong>{movePlotTarget.plotNumber}</strong> to a different layout subdivision.
+              </p>
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Target Layout phase *</label>
+                <select
+                  value={movePlotTarget.layoutId}
+                  onChange={(e) => setMovePlotTarget({ ...movePlotTarget, layoutId: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs focus:outline-none"
+                >
+                  <option value="">-- Select Target Layout --</option>
+                  {lookupLayouts.map(l => (
+                    <option key={l.id} value={l.id}>[{l.code}] {l.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex justify-end gap-2.5 pt-3">
+                <button type="button" onClick={() => setCurrModal(null)} className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-50">Cancel</button>
+                <button type="button" onClick={handleMovePlot} className="px-4 py-2 bg-indigo-650 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold">Move Plot</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Split Plot Modal */}
+      {currModal === "split_plot" && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl text-left max-h-[85vh] overflow-y-auto">
+            <h4 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">Split Land Plot Tract</h4>
+            <div className="space-y-4 text-xs">
+              <p className="text-xs text-slate-500">
+                Split Plot <strong>{splitPlotTarget.plotNumber}</strong> (Total Area: {splitPlotTarget.areaValue} units) into two separate plots.
+              </p>
+              
+              <div className="border border-slate-100 rounded-xl p-3 bg-slate-50 space-y-3">
+                <h5 className="font-bold text-slate-700 text-xs">First Subdivision (Plot A)</h5>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Plot A Number *</label>
+                    <input
+                      required
+                      type="text"
+                      value={splitPlotTarget.plotANumber}
+                      onChange={(e) => setSplitPlotTarget({ ...splitPlotTarget, plotANumber: e.target.value })}
+                      className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Plot A Area *</label>
+                    <input
+                      required
+                      type="number"
+                      step="any"
+                      value={splitPlotTarget.plotAArea}
+                      onChange={(e) => setSplitPlotTarget({ ...splitPlotTarget, plotAArea: Number(e.target.value) })}
+                      className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="border border-slate-100 rounded-xl p-3 bg-slate-50 space-y-3">
+                <h5 className="font-bold text-slate-700 text-xs">Second Subdivision (Plot B)</h5>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Plot B Number *</label>
+                    <input
+                      required
+                      type="text"
+                      value={splitPlotTarget.plotBNumber}
+                      onChange={(e) => setSplitPlotTarget({ ...splitPlotTarget, plotBNumber: e.target.value })}
+                      className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Plot B Area *</label>
+                    <input
+                      required
+                      type="number"
+                      step="any"
+                      value={splitPlotTarget.plotBArea}
+                      onChange={(e) => setSplitPlotTarget({ ...splitPlotTarget, plotBArea: Number(e.target.value) })}
+                      className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center text-[10px] text-slate-400 bg-indigo-50/50 p-2.5 rounded-lg border border-indigo-100">
+                <span>Original Area: <strong>{splitPlotTarget.areaValue}</strong></span>
+                <span>Sum of Splits: <strong className={Number(splitPlotTarget.plotAArea) + Number(splitPlotTarget.plotBArea) !== splitPlotTarget.areaValue ? "text-amber-600" : "text-emerald-600"}>{(Number(splitPlotTarget.plotAArea) + Number(splitPlotTarget.plotBArea)).toFixed(2)}</strong></span>
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-2">
+                <button type="button" onClick={() => setCurrModal(null)} className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-50">Cancel</button>
+                <button type="button" onClick={handleSplitPlot} className="px-4 py-2 bg-indigo-650 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold">Perform Split</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Merge Plots Modal */}
+      {currModal === "merge_plots" && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl text-left">
+            <h4 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">Merge Subdivision Plots</h4>
+            <div className="space-y-3 text-xs">
+              <p className="text-xs text-slate-500">
+                You are merging <strong>{mergePlotTarget.sourcePlotIds.length}</strong> selected plots into a single new consolidated plot.
+              </p>
+              
+              <div className="bg-slate-50 rounded-xl p-3 text-[11px] text-slate-600 border border-slate-100 max-h-28 overflow-y-auto space-y-1">
+                <span className="font-bold block text-slate-400 text-[9px] uppercase tracking-wider mb-1">Plots to Merge:</span>
+                {mergePlotTarget.sourcePlotIds.map(id => {
+                  const p = plots.find(x => x.id === id);
+                  return (
+                    <div key={id} className="flex justify-between items-center">
+                      <span>Plot No: {p?.plot_number || "N/A"}</span>
+                      <span className="font-mono">{p?.area_value || 0} units</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3.5">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">New Merged Plot No. *</label>
+                  <input
+                    required
+                    type="text"
+                    value={mergePlotTarget.newPlotNumber}
+                    onChange={(e) => setMergePlotTarget({ ...mergePlotTarget, newPlotNumber: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs"
+                    placeholder="e.g. PL-merged"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">New Area Value *</label>
+                  <input
+                    required
+                    type="number"
+                    step="any"
+                    value={mergePlotTarget.newAreaValue}
+                    onChange={(e) => setMergePlotTarget({ ...mergePlotTarget, newAreaValue: Number(e.target.value) })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-3">
+                <button type="button" onClick={() => setCurrModal(null)} className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-50">Cancel</button>
+                <button type="button" onClick={handleMergePlots} className="px-4 py-2 bg-indigo-650 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold">Perform Merge</button>
+              </div>
+            </div>
           </div>
         </div>
       )}

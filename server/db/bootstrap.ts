@@ -957,6 +957,27 @@ export async function bootstrapDatabase() {
       )
     `);
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS core_masters (
+        id SERIAL PRIMARY KEY,
+        uuid UUID NOT NULL DEFAULT gen_random_uuid(),
+        master_type VARCHAR(100) NOT NULL,
+        code VARCHAR(100) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        description TEXT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_by UUID NULL,
+        updated_by UUID NULL,
+        tenant_id UUID NULL REFERENCES tenants(id) ON DELETE SET NULL,
+        is_platform_scope BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TIMESTAMP WITH TIME ZONE NULL,
+        CONSTRAINT uq_core_masters_tenant_type_code UNIQUE (tenant_id, master_type, code)
+      )
+    `);
+
     // Dynamic schema recovery: guarantee missing columns are added to existing location master tables
     await client.query("ALTER TABLE location_states ADD COLUMN IF NOT EXISTS type VARCHAR(50) NOT NULL DEFAULT 'State'");
     await client.query("ALTER TABLE location_states ADD COLUMN IF NOT EXISTS latitude DECIMAL(10, 7) NULL");
@@ -1171,6 +1192,8 @@ export async function bootstrapDatabase() {
     await client.query("CREATE INDEX IF NOT EXISTS idx_location_pincodes_pincode ON location_pincodes(pincode)");
     await client.query("CREATE INDEX IF NOT EXISTS idx_location_pincodes_city ON location_pincodes(city_id)");
     await client.query("CREATE INDEX IF NOT EXISTS idx_location_pincodes_village ON location_pincodes(village_id)");
+    await client.query("CREATE INDEX IF NOT EXISTS idx_core_masters_uuid ON core_masters(uuid)");
+    await client.query("CREATE INDEX IF NOT EXISTS idx_core_masters_type_tenant ON core_masters(master_type, tenant_id)");
 
     await client.query("CREATE INDEX IF NOT EXISTS idx_tenant_domains_domain ON tenant_domains(domain_name)");
     await client.query("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)");
@@ -1230,6 +1253,121 @@ export async function bootstrapDatabase() {
     await client.query("TRUNCATE TABLE tenants CASCADE");
     await client.query("TRUNCATE TABLE subscription_plans CASCADE");
     await client.query("TRUNCATE TABLE measurement_units CASCADE");
+    await client.query("TRUNCATE TABLE core_masters CASCADE");
+
+    // Seed Core Masters
+    await client.query(`
+      INSERT INTO core_masters (master_type, code, name, description, sort_order, is_platform_scope) VALUES
+      ('PROJECT_TYPE', 'RESIDENTIAL', 'Residential', 'Residential properties and layouts', 1, true),
+      ('PROJECT_TYPE', 'COMMERCIAL', 'Commercial', 'Commercial offices, shops, and complexes', 2, true),
+      ('PROJECT_TYPE', 'INDUSTRIAL', 'Industrial', 'Factories, manufacturing units, and industries', 3, true),
+      ('PROJECT_TYPE', 'MIXED_USE', 'Mixed Use', 'Combined residential and commercial spaces', 4, true),
+      ('PROJECT_TYPE', 'PLOTTED', 'Plotted', 'Open plots and layouts for construction', 5, true),
+      ('PROJECT_TYPE', 'VILLA', 'Villa', 'Luxury villas and individual houses', 6, true),
+      ('PROJECT_TYPE', 'APARTMENT', 'Apartment', 'Multi-storey apartment projects', 7, true),
+      ('PROJECT_TYPE', 'WAREHOUSE', 'Warehouse', 'Storage, logistics, and warehousing facilities', 8, true),
+      ('PROJECT_TYPE', 'TOWNSHIP', 'Township', 'Integrated townships and large community projects', 9, true),
+      ('PROJECT_TYPE', 'OTHER', 'Other', 'Other miscellaneous real estate projects', 10, true),
+
+      ('PROJECT_STATUS', 'PLANNING', 'Planning', 'Project is in design and planning phase', 1, true),
+      ('PROJECT_STATUS', 'APPROVAL', 'Approval', 'Awaiting legal and municipal approvals', 2, true),
+      ('PROJECT_STATUS', 'DEVELOPMENT', 'Development', 'Physical infrastructure and development underway', 3, true),
+      ('PROJECT_STATUS', 'SALES', 'Sales', 'Active sales and customer bookings open', 4, true),
+      ('PROJECT_STATUS', 'COMPLETED', 'Completed', 'Project fully completed and handed over', 5, true),
+      ('PROJECT_STATUS', 'ARCHIVED', 'Archived', 'Archived project or historical record', 6, true),
+
+      ('APPROVAL_STATUS', 'PENDING', 'Pending', 'Approval request is pending initial review', 1, true),
+      ('APPROVAL_STATUS', 'SUBMITTED', 'Submitted', 'Application formally submitted to the authority', 2, true),
+      ('APPROVAL_STATUS', 'APPROVED', 'Approved', 'Application officially approved with clearance certificate', 3, true),
+      ('APPROVAL_STATUS', 'REJECTED', 'Rejected', 'Application rejected by the approving authority', 4, true),
+      ('APPROVAL_STATUS', 'EXPIRED', 'Expired', 'Approval certificate validity has expired', 5, true),
+
+      ('LAND_USE', 'RESIDENTIAL', 'Residential', 'Zoned for residential living spaces', 1, true),
+      ('LAND_USE', 'COMMERCIAL', 'Commercial', 'Zoned for commercial business operations', 2, true),
+      ('LAND_USE', 'INDUSTRIAL', 'Industrial', 'Zoned for factories and heavy industries', 3, true),
+      ('LAND_USE', 'AGRICULTURAL', 'Agricultural', 'Zoned for farming and agricultural activities', 4, true),
+      ('LAND_USE', 'MIXED', 'Mixed', 'Zoned for mixed-use development', 5, true),
+      ('LAND_USE', 'INSTITUTIONAL', 'Institutional', 'Zoned for schools, hospitals, and public institutions', 6, true),
+
+      ('FACING', 'NORTH', 'North', 'Facing towards the North direction', 1, true),
+      ('FACING', 'SOUTH', 'South', 'Facing towards the South direction', 2, true),
+      ('FACING', 'EAST', 'East', 'Facing towards the East direction', 3, true),
+      ('FACING', 'WEST', 'West', 'Facing towards the West direction', 4, true),
+      ('FACING', 'NE', 'NE', 'Facing towards the North-East direction', 5, true),
+      ('FACING', 'NW', 'NW', 'Facing towards the North-West direction', 6, true),
+      ('FACING', 'SE', 'SE', 'Facing towards the South-East direction', 7, true),
+      ('FACING', 'SW', 'SW', 'Facing towards the South-West direction', 8, true),
+
+      ('ROAD_WIDTH_PRESET', '20', '20 Feet', 'Standard 20 feet wide road', 1, true),
+      ('ROAD_WIDTH_PRESET', '30', '30 Feet', 'Standard 30 feet wide road', 2, true),
+      ('ROAD_WIDTH_PRESET', '40', '40 Feet', 'Main 40 feet wide road', 3, true),
+      ('ROAD_WIDTH_PRESET', '60', '60 Feet', '60 feet wide arterial road', 4, true),
+      ('ROAD_WIDTH_PRESET', '80', '80 Feet', '80 feet wide double-lane road', 5, true),
+      ('ROAD_WIDTH_PRESET', '100', '100 Feet', '100 feet wide express road', 6, true),
+      ('ROAD_WIDTH_PRESET', '120', '120 Feet', '120 feet wide major highway connection', 7, true),
+
+      ('AREA_UNIT', 'SQFT', 'Sq Ft', 'Square Feet standard measurement', 1, true),
+      ('AREA_UNIT', 'SQM', 'Sq M', 'Square Meters standard measurement', 2, true),
+      ('AREA_UNIT', 'ACRE', 'Acre', 'Acre measurement (43,560 sq ft)', 3, true),
+      ('AREA_UNIT', 'GUNTHA', 'Guntha', 'Guntha measurement (1,089 sq ft)', 4, true),
+      ('AREA_UNIT', 'CENT', 'Cent', 'Cent measurement (435.6 sq ft)', 5, true),
+      ('AREA_UNIT', 'HECTARE', 'Hectare', 'Hectare measurement (107,639 sq ft)', 6, true),
+
+      ('APPROVAL_AUTHORITY', 'RERA', 'RERA', 'Real Estate Regulatory Authority', 1, true),
+      ('APPROVAL_AUTHORITY', 'DTCP', 'DTCP', 'Directorate of Town and Country Planning', 2, true),
+      ('APPROVAL_AUTHORITY', 'BDA', 'BDA', 'Bangalore Development Authority', 3, true),
+      ('APPROVAL_AUTHORITY', 'MUDA', 'MUDA', 'Mysore Development Authority', 4, true),
+      ('APPROVAL_AUTHORITY', 'HDUDA', 'HDUDA', 'Hubli-Dharwad Urban Development Authority', 5, true),
+      ('APPROVAL_AUTHORITY', 'HUDA', 'HUDA', 'Haryana Urban Development Authority', 6, true),
+      ('APPROVAL_AUTHORITY', 'LOCAL_AUTHORITY', 'Local Authority', 'Zonal planning or development body', 7, true),
+      ('APPROVAL_AUTHORITY', 'MUNICIPALITY', 'Municipality', 'City corporation or municipal council', 8, true),
+      ('APPROVAL_AUTHORITY', 'GRAM_PANCHAYAT', 'Gram Panchayat', 'Village administration authority', 9, true),
+
+      ('LEAD_SOURCE', 'WEBSITE', 'Website', 'Inbound lead from the developer website', 1, true),
+      ('LEAD_SOURCE', 'WALK_IN', 'Walk-in', 'Direct customer walk-in to site or office', 2, true),
+      ('LEAD_SOURCE', 'REFERENCE', 'Reference', 'Customer or employee referral reference', 3, true),
+      ('LEAD_SOURCE', 'FACEBOOK', 'Facebook', 'Lead from Facebook social marketing ads', 4, true),
+      ('LEAD_SOURCE', 'GOOGLE', 'Google', 'Lead from Google Search/Maps or SEO', 5, true),
+      ('LEAD_SOURCE', 'BROKER', 'Broker', 'Lead introduced via registered broker/agent', 6, true),
+      ('LEAD_SOURCE', 'CAMPAIGN', 'Campaign', 'Lead from marketing events or offline campaigns', 7, true),
+
+      ('CUSTOMER_STATUS', 'LEAD', 'Lead', 'Initial contact or fresh marketing lead', 1, true),
+      ('CUSTOMER_STATUS', 'QUALIFIED', 'Qualified', 'Lead qualified by sales with verified budget', 2, true),
+      ('CUSTOMER_STATUS', 'INTERESTED', 'Interested', 'Customer showed strong interest after site tour', 3, true),
+      ('CUSTOMER_STATUS', 'BOOKED', 'Booked', 'Initial unit booking amount received', 4, true),
+      ('CUSTOMER_STATUS', 'CUSTOMER', 'Customer', 'Sale agreement executed and active purchaser', 5, true),
+      ('CUSTOMER_STATUS', 'CANCELLED', 'Cancelled', 'Booking or lead cancelled', 6, true),
+
+      ('GST_TYPE', 'CGST_SGST', 'CGST+SGST', 'Intrastate split GST (Central + State)', 1, true),
+      ('GST_TYPE', 'IGST', 'IGST', 'Interstate Integrated GST', 2, true),
+      ('GST_TYPE', 'EXEMPT', 'Exempt', 'Tax-exempt real estate transaction', 3, true),
+
+      ('PAYMENT_METHOD', 'CASH', 'Cash', 'Direct physical currency cash transaction', 1, true),
+      ('PAYMENT_METHOD', 'UPI', 'UPI', 'Unified Payments Interface mobile payment', 2, true),
+      ('PAYMENT_METHOD', 'BANK_TRANSFER', 'Bank Transfer', 'Direct NEFT/RTGS/IMPS bank transfer', 3, true),
+      ('PAYMENT_METHOD', 'CHEQUE', 'Cheque', 'Physical bank cheque payment', 4, true),
+      ('PAYMENT_METHOD', 'ONLINE_GATEWAY', 'Online Gateway', 'Payment gateway (Razorpay/Stripe/etc)', 5, true),
+
+      ('CORNER_PLOT', 'YES', 'Yes', 'Plot is a premium corner plot with double road access', 1, true),
+      ('CORNER_PLOT', 'NO', 'No', 'Standard plot with single road access', 2, true),
+
+      ('PLC_TYPE', 'ROAD_FACING', 'Road Facing', 'Road facing plot preference charge', 1, true),
+      ('PLC_TYPE', 'PARK_FACING', 'Park Facing', 'Park/Greenery facing plot preference charge', 2, true),
+      ('PLC_TYPE', 'CORNER', 'Corner', 'Double-side road corner plot charge', 3, true),
+      ('PLC_TYPE', 'LAKE', 'Lake', 'Scenic lake view/adjacent plot charge', 4, true),
+      ('PLC_TYPE', 'PREMIUM', 'Premium', 'Premium block elevation/location charge', 5, true),
+
+      ('DOCUMENT_TYPE', 'SALE_AGREEMENT', 'Sale Agreement', 'Executed bilateral agreement to sell', 1, true),
+      ('DOCUMENT_TYPE', 'KHATA', 'Khata', 'Property assessment registry certificate', 2, true),
+      ('DOCUMENT_TYPE', 'RTC', 'RTC', 'Record of Rights, Tenancy and Crops', 3, true),
+      ('DOCUMENT_TYPE', 'MUTATION', 'Mutation', 'Property title transfer register extract', 4, true),
+      ('DOCUMENT_TYPE', 'RERA', 'RERA', 'RERA registration approval document', 5, true),
+      ('DOCUMENT_TYPE', 'TAX_RECEIPT', 'Tax Receipt', 'Latest municipal property tax payment receipt', 6, true),
+      ('DOCUMENT_TYPE', 'AADHAAR', 'Aadhaar', 'Aadhaar identity card proof', 7, true),
+      ('DOCUMENT_TYPE', 'PAN', 'PAN', 'PAN income tax card proof', 8, true),
+      ('DOCUMENT_TYPE', 'OTHER', 'Other', 'Other legal title or secondary document', 9, true)
+    `);
+    console.log("Seeded default Core Masters values.");
 
     // Seed geographic measurement units
     await client.query(`

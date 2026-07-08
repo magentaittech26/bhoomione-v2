@@ -1291,6 +1291,75 @@ class ApiClient {
   async verifyTenantDns(tenantCode: string): Promise<any> {
     return this.request<any>(`/admin/lifecycle/${tenantCode}/dns-verify`, { method: "POST" });
   }
+
+  // ==========================================
+  // CORE MASTERS OPERATIONS
+  // ==========================================
+  async fetchCoreGeographyStates(): Promise<any> {
+    return this.request<any>("/core-masters/geography/states", { method: "GET" });
+  }
+
+  async fetchCoreGeographyDistricts(stateId: string | number): Promise<any> {
+    return this.request<any>(`/core-masters/geography/districts?state_id=${stateId}`, { method: "GET" });
+  }
+
+  async fetchCoreGeographyTaluks(districtId: string | number): Promise<any> {
+    return this.request<any>(`/core-masters/geography/taluks?district_id=${districtId}`, { method: "GET" });
+  }
+
+  async fetchCoreGeographyCities(districtId: string | number): Promise<any> {
+    return this.request<any>(`/core-masters/geography/cities?district_id=${districtId}`, { method: "GET" });
+  }
+
+  async fetchCoreGeographyVillages(talukId: string | number): Promise<any> {
+    return this.request<any>(`/core-masters/geography/villages?taluk_id=${talukId}`, { method: "GET" });
+  }
+
+  async fetchCoreGeographyPincodes(cityId?: string | number, villageId?: string | number): Promise<any> {
+    let qs = '';
+    if (cityId) qs += `city_id=${cityId}`;
+    if (villageId) qs += (qs ? '&' : '') + `village_id=${villageId}`;
+    return this.request<any>(`/core-masters/geography/pincodes` + (qs ? `?${qs}` : ''), { method: "GET" });
+  }
+
+  async fetchCoreMasterTypes(): Promise<any> {
+    return this.request<any>("/core-masters/types", { method: "GET" });
+  }
+
+  async fetchCoreMasters(params?: { type?: string; status?: string; include_inactive?: boolean }): Promise<any> {
+    let endpoint = "/core-masters";
+    if (params) {
+      const query = new URLSearchParams();
+      if (params.type) query.append("type", params.type);
+      if (params.status) query.append("status", params.status);
+      if (params.include_inactive) query.append("include_inactive", "true");
+      const qStr = query.toString();
+      if (qStr) endpoint += `?${qStr}`;
+    }
+    return this.request<any>(endpoint, { method: "GET" });
+  }
+
+  async getCoreMaster(uuid: string): Promise<any> {
+    return this.request<any>(`/core-masters/${uuid}`, { method: "GET" });
+  }
+
+  async createCoreMaster(payload: any): Promise<any> {
+    return this.request<any>("/core-masters", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async updateCoreMaster(uuid: string, payload: any): Promise<any> {
+    return this.request<any>(`/core-masters/${uuid}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async deleteCoreMaster(uuid: string): Promise<any> {
+    return this.request<any>(`/core-masters/${uuid}`, { method: "DELETE" });
+  }
 }
 
 export const api = new ApiClient();

@@ -613,6 +613,7 @@ router.put("/plots/:id", requireAuth, async (req: AuthenticatedRequest, res: Res
     if (!tenantId) return res.status(400).json({ error: "Tenant context required." });
 
     const {
+      layout_id,
       plot_number,
       area_value,
       measurement_unit_id,
@@ -636,12 +637,27 @@ router.put("/plots/:id", requireAuth, async (req: AuthenticatedRequest, res: Res
     if (existing.rowCount === 0) {
       return res.status(404).json({ error: "Plot not found." });
     }
-    const layout_id = existing.rows[0].layout_id;
+    const current_layout_id = existing.rows[0].layout_id;
+    let target_layout_id = current_layout_id;
+
+    if (layout_id && layout_id !== current_layout_id) {
+      // Check if target layout exists and belongs to tenant
+      const layCheck = await db.query(
+        `SELECT l.id FROM layouts l
+         JOIN projects prj ON l.project_id = prj.id
+         WHERE l.id = $1 AND prj.tenant_id = $2`,
+        [layout_id, tenantId]
+      );
+      if (layCheck.rowCount === 0) {
+        return res.status(403).json({ error: "Unauthorized target layout plot assignment." });
+      }
+      target_layout_id = layout_id;
+    }
 
     // Validation: Unique Plot Number inside Layout
     const collision = await db.query(
       `SELECT id FROM plots WHERE layout_id = $1 AND LOWER(TRIM(plot_number)) = LOWER(TRIM($2)) AND id <> $3`,
-      [layout_id, plot_number, req.params.id]
+      [target_layout_id, plot_number, req.params.id]
     );
     if (collision.rowCount > 0) {
       return res.status(400).json({ error: `Validation Error: A plot with number '${plot_number}' already exists in this layout.` });
@@ -663,23 +679,25 @@ router.put("/plots/:id", requireAuth, async (req: AuthenticatedRequest, res: Res
 
     const result = await db.query(
       `UPDATE plots SET
-        plot_number = $1,
-        area_value = $2,
-        measurement_unit_id = $3,
-        length = $4,
-        width = $5,
-        road_width = $6,
-        corner_plot = $7,
-        facing = $8,
-        dimensions = $9,
-        dimensions_metadata = $10,
-        status = $11,
+        layout_id = $1,
+        plot_number = $2,
+        area_value = $3,
+        measurement_unit_id = $4,
+        length = $5,
+        width = $6,
+        road_width = $7,
+        corner_plot = $8,
+        facing = $9,
+        dimensions = $10,
+        dimensions_metadata = $11,
+        status = $12,
         updated_at = CURRENT_TIMESTAMP
-       WHERE id = $12 AND layout_id IN (
-         SELECT l.id FROM layouts l JOIN projects p ON l.project_id = p.id WHERE p.tenant_id = $13
+       WHERE id = $13 AND layout_id IN (
+         SELECT l.id FROM layouts l JOIN projects p ON l.project_id = p.id WHERE p.tenant_id = $14
        )
        RETURNING *`,
       [
+        target_layout_id,
         sanitizeString(plot_number),
         areaVal,
         measurement_unit_id || null,
