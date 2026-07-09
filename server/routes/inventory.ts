@@ -1064,7 +1064,10 @@ router.post("/dxf/upload", requireAuth, upload.single("dxf_file"), async (req: A
       return res.status(400).json({ error: "DXF file requires project layout assignment." });
     }
 
-    const fileContent = file.buffer.toString("utf-8");
+    let fileContent = file.buffer.toString("utf-8");
+    if (fileContent.startsWith("\ufeff")) {
+      fileContent = fileContent.substring(1);
+    }
     const sha256_hash = crypto.createHash("sha256").update(file.buffer).digest("hex");
 
     const db = getPool();
@@ -1121,31 +1124,32 @@ router.post("/dxf/upload", requireAuth, upload.single("dxf_file"), async (req: A
       ('${activeJob.id}', 'Step 3 — Create Import Trace', 'INFO', 'Asynchronous job instance triggered successfully')
     `);
 
-    // Parse layers of ASCII DXF using a robust, desync-proof alternating parser
-    const rawLines = fileContent.split(/\r?\n/);
+    // Parse layers of ASCII DXF using a robust, desync-proof alternating parser with self-correcting state machine
+    const rawLines = fileContent.split(/\r?\n/).map(l => l.trim()).filter(l => l !== "");
     
-    // Convert to tokens of (code, value)
+    // Convert to tokens of (code, value) using a strict self-correcting state machine
     const tokens: { code: number; value: string; lineNo: number }[] = [];
-    let lineIdx = 0;
-    while (lineIdx < rawLines.length) {
-       const codeLine = rawLines[lineIdx].trim();
-       if (codeLine === "") {
-          lineIdx++;
-          continue;
+    let expectingCode = true;
+    let currentCode = -1;
+    let currentCodeLineNo = -1;
+
+    for (let i = 0; i < rawLines.length; i++) {
+       const line = rawLines[i];
+       if (expectingCode) {
+          const code = parseInt(line, 10);
+          if (!isNaN(code) && code >= 0 && code <= 1071) {
+             currentCode = code;
+             currentCodeLineNo = i + 1;
+             expectingCode = false;
+          } else {
+             // Skip invalid/non-numeric group codes to keep alignment sync
+             console.warn(`[DXF Parser Warning] Line ${i+1} is not a valid group code: "${line}". Ignoring line.`);
+          }
+       } else {
+          // This line is the value for currentCode
+          tokens.push({ code: currentCode, value: line, lineNo: currentCodeLineNo });
+          expectingCode = true;
        }
-       const code = parseInt(codeLine, 10);
-       if (isNaN(code) || code < 0 || code > 1071) {
-          // Skip if the group code is not a valid integer from 0 to 1071
-          lineIdx++;
-          continue;
-       }
-       lineIdx++;
-       if (lineIdx >= rawLines.length) {
-          break;
-       }
-       const valueLine = rawLines[lineIdx].trim();
-       tokens.push({ code, value: valueLine, lineNo: lineIdx + 1 });
-       lineIdx++;
     }
 
     // 2. Entity and layer parser
