@@ -1,4 +1,5 @@
 import { GeometryLayer, GeometryObject } from "../Contracts/models.ts";
+import { calculatePlotMetrics } from "../../lib/plotEngine.ts";
 
 /**
  * Viewport State representing the active camera metrics on the infinite canvas.
@@ -513,21 +514,121 @@ export class CanvasViewportEngine {
         this.renderLabelOverlay(ctx, obj, isSelected);
       }
     } else if (obj.object_type === "POLYLINE") {
-      ctx.beginPath();
       const pts = coords as Array<[number, number]>;
-      if (pts.length > 0) {
+      if (layer.layer_name === "ROADS" && pts.length > 0) {
+        const roadWidth = (obj.properties as any)?.road_width || 12;
         const start = this.worldToScreen(pts[0][0], pts[0][1]);
+
+        // A. Base casing (Dark outer border)
+        ctx.save();
+        ctx.beginPath();
         ctx.moveTo(start.x, start.y);
         for (let i = 1; i < pts.length; i++) {
           const pt = this.worldToScreen(pts[i][0], pts[i][1]);
           ctx.lineTo(pt.x, pt.y);
         }
-      }
-      ctx.stroke();
+        ctx.strokeStyle = isSelected ? "#6366F1" : "#334155";
+        ctx.lineWidth = roadWidth * this.state.zoom;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.stroke();
+        ctx.restore();
 
-      if (layer.layer_name === "ROADS") {
+        // B. Asphalt layer (Core fill)
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(start.x, start.y);
+        for (let i = 1; i < pts.length; i++) {
+          const pt = this.worldToScreen(pts[i][0], pts[i][1]);
+          ctx.lineTo(pt.x, pt.y);
+        }
+        ctx.strokeStyle = "#64748B";
+        ctx.lineWidth = Math.max(1.5, (roadWidth - 2) * this.state.zoom);
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.stroke();
+        ctx.restore();
+
+        // C. Yellow centerline divider
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(start.x, start.y);
+        for (let i = 1; i < pts.length; i++) {
+          const pt = this.worldToScreen(pts[i][0], pts[i][1]);
+          ctx.lineTo(pt.x, pt.y);
+        }
+        ctx.strokeStyle = "#F59E0B";
+        ctx.lineWidth = Math.max(0.75, 1 * this.state.zoom);
+        ctx.setLineDash([8 * this.state.zoom, 8 * this.state.zoom]);
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.stroke();
+        ctx.restore();
+
+        // D. Direction arrows
+        ctx.save();
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.75)";
+        ctx.lineWidth = Math.max(1, 1.5 * this.state.zoom);
+        const arrowSize = 6 * this.state.zoom;
+        for (let i = 0; i < pts.length - 1; i++) {
+          const p1 = this.worldToScreen(pts[i][0], pts[i][1]);
+          const p2 = this.worldToScreen(pts[i + 1][0], pts[i + 1][1]);
+          
+          const midX = (p1.x + p2.x) / 2;
+          const midY = (p1.y + p2.y) / 2;
+          const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+          
+          ctx.beginPath();
+          ctx.moveTo(midX - arrowSize * Math.cos(angle - Math.PI / 6), midY - arrowSize * Math.sin(angle - Math.PI / 6));
+          ctx.lineTo(midX, midY);
+          ctx.lineTo(midX - arrowSize * Math.cos(angle + Math.PI / 6), midY - arrowSize * Math.sin(angle + Math.PI / 6));
+          ctx.stroke();
+        }
+        ctx.restore();
+
         this.renderLabelOverlay(ctx, obj, isSelected);
+      } else {
+        // Standard Polyline rendering for utilities etc.
+        ctx.beginPath();
+        if (pts.length > 0) {
+          const start = this.worldToScreen(pts[0][0], pts[0][1]);
+          ctx.moveTo(start.x, start.y);
+          for (let i = 1; i < pts.length; i++) {
+            const pt = this.worldToScreen(pts[i][0], pts[i][1]);
+            ctx.lineTo(pt.x, pt.y);
+          }
+        }
+        ctx.stroke();
       }
+    } else if (obj.object_type === "POINT") {
+      const pt = coords as [number, number];
+      const screenPt = this.worldToScreen(pt[0], pt[1]);
+      
+      ctx.save();
+      ctx.font = "bold 9px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      
+      // Draw subtle dot
+      ctx.fillStyle = isSelected ? "#4F46E5" : "#334155";
+      ctx.beginPath();
+      ctx.arc(screenPt.x, screenPt.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Draw clean pill container
+      const text = (obj as any).name || obj.label_text || "Label";
+      const textWidth = ctx.measureText(text).width;
+      ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
+      ctx.strokeStyle = isSelected ? "#4F46E5" : "rgba(100, 116, 139, 0.4)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(screenPt.x - textWidth/2 - 6, screenPt.y - 18, textWidth + 12, 16, 4);
+      ctx.fill();
+      ctx.stroke();
+      
+      ctx.fillStyle = "#1F2937";
+      ctx.fillText(text, screenPt.x, screenPt.y - 10);
+      ctx.restore();
     }
 
     ctx.restore();
@@ -537,6 +638,9 @@ export class CanvasViewportEngine {
    * Centered text overlay label inside elements
    */
   private renderLabelOverlay(ctx: CanvasRenderingContext2D, obj: GeometryObject, isSelected: boolean): void {
+    // Hide labels automatically when zoomed out (less than 50% / 0.5 zoom), unless selected!
+    if (this.state.zoom < 0.5 && !isSelected) return;
+
     const bounds = this.computeObjectBounds(obj);
     if (!bounds) return;
 
@@ -547,37 +651,70 @@ export class CanvasViewportEngine {
 
     ctx.save();
     ctx.setLineDash([]); // clear dash arrays
-    ctx.fillStyle = isSelected ? "#312E81" : "#1E293B";
-    ctx.font = `bold ${Math.max(8, Math.min(11, 8 * this.state.zoom))}px monospace`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
 
-    const labelText = obj.properties?.plot_number 
-      ? `Plot ${obj.properties.plot_number}` 
-      : obj.label_text || obj.properties?.amenity_type || obj.properties?.road_width ? `${obj.properties.road_width}m Road` : "";
+    const lines: string[] = [];
+    const isPlot = (obj as any).layerName === "PLOTS" || obj.properties?.plot_number !== undefined;
 
-    if (labelText) {
-      // Draw background shield tag for maximum contrast eligibility
-      const textWidth = ctx.measureText(labelText).width;
+    if (isPlot) {
+      if (obj.properties?.plot_number) {
+        lines.push(`Plot ${obj.properties.plot_number}`);
+      } else {
+        lines.push(`Plot -`);
+      }
+
+      const coords = obj.geometry_data.coordinates as Array<[number, number]>;
+      if (coords && coords.length >= 3) {
+        const metrics = calculatePlotMetrics(coords);
+        lines.push(`${metrics.sqft.toLocaleString()} sq.ft`);
+        lines.push(`${metrics.sqm} m²`);
+      } else if (obj.properties?.area_value) {
+        lines.push(`${obj.properties.area_value} sq.ft`);
+      }
+
+      if (obj.properties?.facing) {
+        lines.push(`${obj.properties.facing} Facing`);
+      }
+    } else {
+      const labelText = obj.label_text || obj.properties?.amenity_type || (obj.properties?.road_width ? `${obj.properties.road_width}m Road` : "");
+      if (labelText) {
+        lines.push(labelText);
+      }
+    }
+
+    if (lines.length > 0) {
+      ctx.font = `bold ${Math.max(7, Math.min(10, 8 * this.state.zoom))}px monospace`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+
+      const textWidths = lines.map(line => ctx.measureText(line).width);
+      const maxWidth = Math.max(...textWidths);
+      const lineHeight = 11 * Math.max(0.8, Math.min(1.1, this.state.zoom));
+      const totalHeight = lineHeight * lines.length;
+
       const padX = 6;
       const padY = 4;
-      ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+
+      ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
       ctx.beginPath();
       ctx.roundRect(
-        screenCenter.x - textWidth / 2 - padX,
-        screenCenter.y - 7 - padY,
-        textWidth + padX * 2,
-        14 + padY * 2,
+        screenCenter.x - maxWidth / 2 - padX,
+        screenCenter.y - totalHeight / 2 - padY,
+        maxWidth + padX * 2,
+        totalHeight + padY * 2,
         4
       );
       ctx.fill();
-      ctx.strokeStyle = isSelected ? "#6366F1" : "#E2E8F0";
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = isSelected ? "#4F46E5" : "rgba(100, 116, 139, 0.35)";
+      ctx.lineWidth = isSelected ? 1.5 : 1;
       ctx.stroke();
 
-      ctx.fillStyle = isSelected ? "#4F46E5" : "#334155";
-      ctx.fillText(labelText, screenCenter.x, screenCenter.y);
+      ctx.fillStyle = isSelected ? "#312E81" : "#1E293B";
+      lines.forEach((line, index) => {
+        const lineY = screenCenter.y - totalHeight / 2 + lineHeight * index + lineHeight / 2;
+        ctx.fillText(line, screenCenter.x, lineY);
+      });
     }
+
     ctx.restore();
   }
 

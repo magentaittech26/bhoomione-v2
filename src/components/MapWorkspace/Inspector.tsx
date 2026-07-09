@@ -4,33 +4,65 @@ import {
   Tag, 
   Trash2, 
   Plus, 
-  Maximize, 
   Paintbrush, 
-  Layers, 
   ChevronLeft, 
   Compass,
   AlertCircle,
-  Hash
+  Hash,
+  Copy,
+  RotateCw,
+  RefreshCw,
+  Maximize,
+  CheckCircle,
+  HelpCircle,
+  TrendingUp,
+  Activity
 } from "lucide-react";
 import { MockGeometry } from "./types.ts";
 import EmptyState from "./EmptyState.tsx";
+import { 
+  calculatePlotMetrics, 
+  getPolygonCentroid, 
+  rotatePoints, 
+  scalePoints, 
+  detectPlotFacing,
+  detectPlotCornerType,
+  runValidationSuite 
+} from "../../lib/plotEngine.ts";
+import { 
+  ModifyGeometryCommand, 
+  CreateGeometryCommand, 
+  BulkUpdateCommand 
+} from "../../MapEngine/Drawing/DrawingToolManager.ts";
 
 interface InspectorProps {
   selectedObject: MockGeometry | null;
   onUpdateObject: (updated: MockGeometry) => void;
   isCollapsed: boolean;
   setIsCollapsed: (collapsed: boolean) => void;
+  objects?: MockGeometry[];
+  onUpdateObjects?: (updated: MockGeometry[]) => void;
+  drawingManager?: any;
 }
 
 export default function Inspector({
   selectedObject,
   onUpdateObject,
   isCollapsed,
-  setIsCollapsed
+  setIsCollapsed,
+  objects = [],
+  onUpdateObjects,
+  drawingManager
 }: InspectorProps) {
   const [newAttrKey, setNewAttrKey] = useState("");
   const [newAttrValue, setNewAttrValue] = useState("");
   const [showAddAttr, setShowAddAttr] = useState(false);
+
+  // Bulk Numbering form state
+  const [bulkStartNum, setBulkStartNum] = useState(101);
+  const [bulkPrefix, setBulkPrefix] = useState("");
+  const [bulkIncrement, setBulkIncrement] = useState(1);
+  const [bulkAlgo, setBulkAlgo] = useState<"sequential" | "clockwise" | "counter-clockwise">("sequential");
 
   // Update simple direct properties
   const handlePropertyChange = (key: string, value: any) => {
@@ -92,21 +124,182 @@ export default function Inspector({
     const coords = selectedObject.geometry_data.coordinates;
     if (Array.isArray(coords)) {
       if (Array.isArray(coords[0])) {
-        // Multi-coordinate line or polygon
         return `${coords.length} Vertices (Closed Polygon)`;
       } else {
-        // Point
         return `X: ${coords[0]}, Y: ${coords[1]}`;
       }
     }
     return "N/A";
   };
 
-  // Exclude standard properties from custom attributes listing
-  const standardPropertyKeys = ["plot_id", "plot_number", "area_value", "road_width", "amenity_type", "facing", "zoning", "owner"];
+  // Rotate selected geometry
+  const handleRotate = (angle: number) => {
+    if (!selectedObject || !onUpdateObjects || !drawingManager) return;
+    const coords = selectedObject.geometry_data.coordinates as Array<[number, number]>;
+    if (!coords || coords.length === 0) return;
+
+    const centroid = getPolygonCentroid(coords);
+    const rotated = rotatePoints(coords, angle, centroid);
+
+    const cmd = new ModifyGeometryCommand(
+      selectedObject.id,
+      coords,
+      rotated,
+      selectedObject.style_config,
+      selectedObject.style_config,
+      objects,
+      (updated) => onUpdateObjects(updated),
+      (id) => {}
+    );
+    drawingManager.executeCommand(cmd);
+  };
+
+  // Scale selected geometry
+  const handleScale = (factor: number) => {
+    if (!selectedObject || !onUpdateObjects || !drawingManager) return;
+    const coords = selectedObject.geometry_data.coordinates as Array<[number, number]>;
+    if (!coords || coords.length === 0) return;
+
+    const centroid = getPolygonCentroid(coords);
+    const scaled = scalePoints(coords, factor, centroid);
+
+    const cmd = new ModifyGeometryCommand(
+      selectedObject.id,
+      coords,
+      scaled,
+      selectedObject.style_config,
+      selectedObject.style_config,
+      objects,
+      (updated) => onUpdateObjects(updated),
+      (id) => {}
+    );
+    drawingManager.executeCommand(cmd);
+  };
+
+  // Copy/Duplicate selected object (shifted slightly)
+  const handleDuplicate = () => {
+    if (!selectedObject || !onUpdateObjects || !drawingManager) return;
+    const coords = selectedObject.geometry_data.coordinates as Array<[number, number]>;
+    if (!coords || coords.length === 0) return;
+
+    const shifted = coords.map(pt => [pt[0] + 30, pt[1] + 30] as [number, number]);
+    const isPlot = selectedObject.layerName === "PLOTS";
+
+    let newProps = { ...selectedObject.properties };
+    if (isPlot) {
+      const plots = objects.filter(o => o.layerName === "PLOTS");
+      const plotNumbers = plots.map(o => parseInt(o.properties?.plot_number || "")).filter(n => !isNaN(n));
+      const nextNum = plotNumbers.length > 0 ? Math.max(...plotNumbers) + 1 : 101;
+      newProps = {
+        ...newProps,
+        plot_number: String(nextNum)
+      };
+    }
+
+    const newObj: MockGeometry = {
+      ...selectedObject,
+      id: `obj-dup-${Date.now()}`,
+      name: isPlot ? `Subdivided Plot ${newProps.plot_number}` : `${selectedObject.name} (Copy)`,
+      geometry_data: {
+        coordinates: shifted
+      },
+      properties: newProps,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const cmd = new CreateGeometryCommand(
+      newObj,
+      objects,
+      (updated) => onUpdateObjects(updated),
+      (id) => {}
+    );
+    drawingManager.executeCommand(cmd);
+  };
+
+  // Bulk numbering & sorting execution
+  const handleBulkRenumber = () => {
+    if (objects.length === 0 || !onUpdateObjects || !drawingManager) return;
+
+    const plots = objects.filter(o => o.layerName === "PLOTS");
+    if (plots.length === 0) return;
+
+    // Calculate collective centroid to sort from center out
+    let totalX = 0, totalY = 0, totalCount = 0;
+    const plotCentroids = plots.map(plot => {
+      const coords = plot.geometry_data.coordinates as Array<[number, number]>;
+      const centroid = getPolygonCentroid(coords);
+      totalX += centroid[0];
+      totalY += centroid[1];
+      totalCount++;
+      return { plot, centroid };
+    });
+
+    const collectiveCentroid: [number, number] = [totalX / (totalCount || 1), totalY / (totalCount || 1)];
+
+    // Sort according to selection
+    if (bulkAlgo === "clockwise") {
+      plotCentroids.sort((a, b) => {
+        const angleA = Math.atan2(a.centroid[1] - collectiveCentroid[1], a.centroid[0] - collectiveCentroid[0]);
+        const angleB = Math.atan2(b.centroid[1] - collectiveCentroid[1], b.centroid[0] - collectiveCentroid[0]);
+        return angleA - angleB;
+      });
+    } else if (bulkAlgo === "counter-clockwise") {
+      plotCentroids.sort((a, b) => {
+        const angleA = Math.atan2(a.centroid[1] - collectiveCentroid[1], a.centroid[0] - collectiveCentroid[0]);
+        const angleB = Math.atan2(b.centroid[1] - collectiveCentroid[1], b.centroid[0] - collectiveCentroid[0]);
+        return angleB - angleA;
+      });
+    } else {
+      // Sequential: Left to Right
+      plotCentroids.sort((a, b) => {
+        if (Math.abs(a.centroid[0] - b.centroid[0]) > 30) {
+          return a.centroid[0] - b.centroid[0];
+        }
+        return a.centroid[1] - b.centroid[1];
+      });
+    }
+
+    // Apply sequential plot numbers
+    const updatedObjs = objects.map(o => {
+      if (o.layerName === "PLOTS") {
+        const sortedIdx = plotCentroids.findIndex(pc => pc.plot.id === o.id);
+        if (sortedIdx !== -1) {
+          const plotNum = `${bulkPrefix}${bulkStartNum + sortedIdx * bulkIncrement}`;
+          return {
+            ...o,
+            name: `Subdivided Plot ${plotNum}`,
+            properties: {
+              ...o.properties,
+              plot_number: plotNum
+            }
+          };
+        }
+      }
+      return o;
+    });
+
+    // Commit BulkUpdateCommand to standard history stack
+    const cmd = new BulkUpdateCommand(
+      objects,
+      updatedObjs,
+      (updated) => onUpdateObjects(updated),
+      `Bulk Renumber plots (${bulkAlgo} sorting)`
+    );
+    drawingManager.executeCommand(cmd);
+  };
+
+  const standardPropertyKeys = ["plot_id", "plot_number", "area_value", "road_width", "amenity_type", "facing", "zoning", "owner", "corner_type"];
   const customAttributes = selectedObject
     ? Object.entries(selectedObject.properties).filter(([k]) => !standardPropertyKeys.includes(k))
     : [];
+
+  const validationWarnings = runValidationSuite(objects);
+
+  // Compute live plot area metrics
+  const plotCoords = selectedObject?.geometry_data?.coordinates as Array<[number, number]>;
+  const isPlot = selectedObject?.layerName === "PLOTS" || selectedObject?.properties?.plot_number !== undefined;
+  const metrics = (isPlot && plotCoords && plotCoords.length >= 3) ? calculatePlotMetrics(plotCoords) : null;
 
   return (
     <div 
@@ -137,15 +330,15 @@ export default function Inspector({
 
       {/* B. Content Inspector Panel */}
       {!isCollapsed && (
-        <div className="flex-1 flex flex-col min-w-0 animate-fadeIn" id="inspector-main-panel">
+        <div className="flex-1 flex flex-col min-w-0 animate-fadeIn h-full" id="inspector-main-panel">
           {/* Header */}
           <div className="px-4 py-3.5 border-b border-slate-100 flex items-center justify-between">
             <h3 className="text-xs font-bold text-slate-800 tracking-tight flex items-center gap-2">
-              <Sliders className="w-4 h-4 text-indigo-600" />
-              <span>Properties Inspector</span>
+              <Sliders className="w-4 h-4 text-emerald-600" />
+              <span>Plot & Layer Inspector</span>
             </h3>
-            <span className="text-[9px] font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-mono uppercase">
-              active
+            <span className="text-[9px] font-bold bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full font-mono uppercase border border-emerald-100">
+              CAD Core
             </span>
           </div>
 
@@ -185,7 +378,89 @@ export default function Inspector({
                   </div>
                 </div>
 
-                {/* Section 2: Direct Attributes Editors */}
+                {/* Section 2: Real-time Area Metrics */}
+                {metrics && (
+                  <div className="space-y-2.5 bg-emerald-50/50 border border-emerald-100 rounded-xl p-3" id="inspector-area-metrics">
+                    <div className="flex justify-between items-center text-[9px] font-bold text-emerald-700 uppercase tracking-wider border-b border-emerald-100/60 pb-1">
+                      <span>Dynamic Area Calculations</span>
+                      <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-2 font-mono text-[10px] text-slate-600">
+                      <div className="flex flex-col">
+                        <span className="text-[8px] uppercase text-slate-400 font-bold">Square Feet</span>
+                        <span className="text-emerald-800 font-extrabold">{metrics.sqft.toLocaleString()} sq.ft</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[8px] uppercase text-slate-400 font-bold">Square Meters</span>
+                        <span className="text-slate-800 font-bold">{metrics.sqm.toLocaleString()} m²</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[8px] uppercase text-slate-400 font-bold">Acres</span>
+                        <span className="text-slate-800 font-medium">{metrics.acres.toFixed(4)} Ac</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[8px] uppercase text-slate-400 font-bold">Guntas (Kar.)</span>
+                        <span className="text-slate-800 font-medium">{metrics.gunta.toFixed(2)} gt</span>
+                      </div>
+                      <div className="flex flex-col col-span-2 border-t border-emerald-100/50 pt-1.5 mt-0.5">
+                        <span className="text-[8px] uppercase text-slate-400 font-bold">Cent Decimal</span>
+                        <span className="text-slate-800 font-semibold">{metrics.cent.toFixed(2)} cents</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Section 3: Geometry Manipulations */}
+                <div className="space-y-3" id="inspector-geometric-operations">
+                  <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1">
+                    <span>CAD Transform Tools</span>
+                    <RotateCw className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => handleRotate(15)}
+                      className="flex items-center justify-center gap-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 p-2 rounded-lg cursor-pointer text-[10px] font-semibold text-slate-700 active:scale-95 transition-all"
+                      title="Rotate 15 deg Clockwise"
+                    >
+                      <RotateCw className="w-3 h-3 text-slate-500" />
+                      <span>Rotate +15°</span>
+                    </button>
+                    <button
+                      onClick={() => handleRotate(-15)}
+                      className="flex items-center justify-center gap-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 p-2 rounded-lg cursor-pointer text-[10px] font-semibold text-slate-700 active:scale-95 transition-all"
+                      title="Rotate 15 deg Counter-Clockwise"
+                    >
+                      <RotateCw className="w-3 h-3 text-slate-500 rotate-180" />
+                      <span>Rotate -15°</span>
+                    </button>
+                    <button
+                      onClick={() => handleScale(1.05)}
+                      className="flex items-center justify-center gap-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 p-2 rounded-lg cursor-pointer text-[10px] font-semibold text-slate-700 active:scale-95 transition-all"
+                      title="Scale up by 1.05x"
+                    >
+                      <Plus className="w-3 h-3 text-slate-500" />
+                      <span>Scale +5%</span>
+                    </button>
+                    <button
+                      onClick={() => handleScale(0.95)}
+                      className="flex items-center justify-center gap-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 p-2 rounded-lg cursor-pointer text-[10px] font-semibold text-slate-700 active:scale-95 transition-all"
+                      title="Scale down by 0.95x"
+                    >
+                      <Sliders className="w-3 h-3 text-slate-500" />
+                      <span>Scale -5%</span>
+                    </button>
+                    <button
+                      onClick={handleDuplicate}
+                      className="col-span-2 flex items-center justify-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 p-2 rounded-lg cursor-pointer text-[10px] font-bold text-indigo-700 active:scale-95 transition-all"
+                      title="Duplicate selected geometry"
+                    >
+                      <Copy className="w-3.5 h-3.5 text-indigo-650" />
+                      <span>Copy & Duplicate Shape</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Section 4: Direct Attributes Editors */}
                 <div className="space-y-3.5" id="inspector-section-attributes">
                   <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1">
                     <span>Attributes Ledger</span>
@@ -194,50 +469,72 @@ export default function Inspector({
 
                   <div className="space-y-3">
                     {/* Plot specific controls */}
-                    {selectedObject.layerName === "PLOTS" && (
+                    {isPlot && (
                       <>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Plot Number</label>
+                          <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Plot Number</label>
                           <input
                             type="text"
                             value={selectedObject.properties.plot_number || ""}
-                            onChange={(e) => handlePropertyChange("plot_number", e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500"
+                            onChange={(e) => {
+                              handlePropertyChange("plot_number", e.target.value);
+                              // Update name sequentially as well
+                              onUpdateObject({
+                                ...selectedObject,
+                                name: `Subdivided Plot ${e.target.value}`,
+                                properties: {
+                                  ...selectedObject.properties,
+                                  plot_number: e.target.value
+                                }
+                              });
+                            }}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500 font-mono font-bold"
                             id="attr-plot-number"
                           />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Registered Area (SQFT)</label>
+                          <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Manual Registered Area (SQFT)</label>
                           <input
                             type="number"
                             value={selectedObject.properties.area_value || ""}
                             onChange={(e) => handlePropertyChange("area_value", Number(e.target.value))}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500"
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500 font-mono"
                             id="attr-area-value"
                           />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Facing Direction</label>
+                          <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Facing Direction</label>
                           <select
                             value={selectedObject.properties.facing || "EAST"}
                             onChange={(e) => handlePropertyChange("facing", e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500 cursor-pointer"
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500 cursor-pointer font-semibold"
                             id="attr-facing-select"
                           >
                             <option value="EAST">EAST Facing</option>
                             <option value="WEST">WEST Facing</option>
                             <option value="NORTH">NORTH Facing</option>
                             <option value="SOUTH">SOUTH Facing</option>
-                            <option value="CORNER">EAST-NORTH CORNER</option>
+                            <option value="NORTH-EAST">NORTH-EAST Facing</option>
+                            <option value="NORTH-WEST">NORTH-WEST Facing</option>
+                            <option value="SOUTH-EAST">SOUTH-EAST Facing</option>
+                            <option value="SOUTH-WEST">SOUTH-WEST Facing</option>
                           </select>
                         </div>
+                        {selectedObject.properties.corner_type && (
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Autodetected Layout Class</label>
+                            <span className="block w-full bg-indigo-50/50 text-indigo-700 border border-indigo-100 rounded-lg px-2.5 py-1.5 font-bold text-[10px]">
+                              {selectedObject.properties.corner_type}
+                            </span>
+                          </div>
+                        )}
                       </>
                     )}
 
                     {/* Roads specific controls */}
                     {selectedObject.layerName === "ROADS" && (
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Road Width (Meters)</label>
+                        <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Road Width (Meters)</label>
                         <input
                           type="number"
                           value={selectedObject.properties.road_width || ""}
@@ -250,7 +547,7 @@ export default function Inspector({
 
                     {/* Standard details for others */}
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Designated Owner / Entity</label>
+                      <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Designated Owner / Entity</label>
                       <input
                         type="text"
                         placeholder="e.g. Municipal Board"
@@ -263,7 +560,7 @@ export default function Inspector({
                   </div>
                 </div>
 
-                {/* Section 3: Extensible attributes metadata */}
+                {/* Section 5: Extensible attributes metadata */}
                 <div className="space-y-3" id="inspector-section-custom">
                   <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1">
                     <span>Custom Metadata</span>
@@ -273,7 +570,7 @@ export default function Inspector({
                       onClick={() => setShowAddAttr(!showAddAttr)}
                       title="Add Custom Attribute"
                     >
-                      <Plus className="w-3.5 h-3.5 text-indigo-600 cursor-pointer" />
+                      <Plus className="w-3.5 h-3.5 text-indigo-650 cursor-pointer" />
                     </button>
                   </div>
 
@@ -350,7 +647,7 @@ export default function Inspector({
                   </div>
                 </div>
 
-                {/* Section 4: Live Style Overrides */}
+                {/* Section 6: Live Style Overrides */}
                 <div className="space-y-3.5" id="inspector-section-style">
                   <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1">
                     <span>Rendering Style Overrides</span>
@@ -361,7 +658,7 @@ export default function Inspector({
                     {/* Stroke Color */}
                     <div className="space-y-1">
                       <div className="flex justify-between items-baseline">
-                        <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Stroke Color</label>
+                        <label className="text-[10px] font-bold text-slate-455 uppercase tracking-wider block">Stroke Color</label>
                         <span className="font-mono text-[10px] text-slate-800">{selectedObject.style_config?.strokeColor || "#000000"}</span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -384,7 +681,7 @@ export default function Inspector({
                     {/* Fill Color */}
                     <div className="space-y-1">
                       <div className="flex justify-between items-baseline">
-                        <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Fill Color</label>
+                        <label className="text-[10px] font-bold text-slate-455 uppercase tracking-wider block">Fill Color</label>
                         <span className="font-mono text-[10px] text-slate-800">{selectedObject.style_config?.fillColor || "#000000"}</span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -444,11 +741,156 @@ export default function Inspector({
 
               </div>
             ) : (
-              <EmptyState 
-                title="No Object Selected" 
-                description="Click any visual shape, plot border, road line, or marker in the canvas center to inspect and modify attributes."
-                icon={<AlertCircle className="w-5 h-5 text-slate-400" />}
-              />
+              /* Global Layout Automation Panel (When no individual object selected) */
+              <div className="space-y-5 animate-fadeIn" id="inspector-global-panel">
+                
+                {/* 1. Automated Sequential Plot Numbering Panel */}
+                <div className="space-y-3 bg-slate-50 border border-slate-200/80 rounded-2xl p-4.5" id="global-bulk-numbering">
+                  <div className="flex justify-between items-center text-[10px] font-bold text-indigo-700 uppercase tracking-wider border-b border-indigo-100 pb-1.5">
+                    <span>Automated Plot Numbering</span>
+                    <Hash className="w-4 h-4 text-indigo-600" />
+                  </div>
+                  
+                  <div className="space-y-3 pt-1">
+                    <p className="text-[10px] text-slate-500 leading-normal">
+                      Automatically sort and renumber all subdivisions using clockwise, counter-clockwise, or linear grid layouts.
+                    </p>
+
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-slate-450 uppercase block">Starting Value</label>
+                      <input
+                        type="number"
+                        value={bulkStartNum}
+                        onChange={(e) => setBulkStartNum(Math.max(1, Number(e.target.value)))}
+                        className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 outline-none font-mono font-semibold"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-slate-450 uppercase block">Prefix</label>
+                        <input
+                          type="text"
+                          placeholder="P-"
+                          value={bulkPrefix}
+                          onChange={(e) => setBulkPrefix(e.target.value)}
+                          className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 outline-none font-mono"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-slate-450 uppercase block">Increment</label>
+                        <input
+                          type="number"
+                          value={bulkIncrement}
+                          onChange={(e) => setBulkIncrement(Math.max(1, Number(e.target.value)))}
+                          className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 outline-none font-mono font-semibold"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-bold text-slate-450 uppercase block">Renumbering Path Algorithm</label>
+                      <div className="flex flex-col gap-1.5">
+                        <label className="flex items-center gap-2 p-1.5 bg-white border border-slate-150 rounded-lg cursor-pointer hover:border-indigo-300">
+                          <input
+                            type="radio"
+                            name="bulk_algo"
+                            checked={bulkAlgo === "sequential"}
+                            onChange={() => setBulkAlgo("sequential")}
+                            className="accent-indigo-600"
+                          />
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-slate-800 text-[10px]">Sequential (Left-to-Right)</span>
+                            <span className="text-[8px] text-slate-450">Order sequentially by coordinate offset</span>
+                          </div>
+                        </label>
+
+                        <label className="flex items-center gap-2 p-1.5 bg-white border border-slate-150 rounded-lg cursor-pointer hover:border-indigo-300">
+                          <input
+                            type="radio"
+                            name="bulk_algo"
+                            checked={bulkAlgo === "clockwise"}
+                            onChange={() => setBulkAlgo("clockwise")}
+                            className="accent-indigo-600"
+                          />
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-slate-800 text-[10px]">Clockwise Spiral</span>
+                            <span className="text-[8px] text-slate-450">Order radially around plot center</span>
+                          </div>
+                        </label>
+
+                        <label className="flex items-center gap-2 p-1.5 bg-white border border-slate-150 rounded-lg cursor-pointer hover:border-indigo-300">
+                          <input
+                            type="radio"
+                            name="bulk_algo"
+                            checked={bulkAlgo === "counter-clockwise"}
+                            onChange={() => setBulkAlgo("counter-clockwise")}
+                            className="accent-indigo-600"
+                          />
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-slate-800 text-[10px]">Counter-Clockwise Spiral</span>
+                            <span className="text-[8px] text-slate-450">Radial order in reverse direction</span>
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={handleBulkRenumber}
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-xl text-[10px] shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer mt-2"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin-slow" />
+                      <span>Renumber All Subdivision Plots</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. Live Layout Validation Warning Panel */}
+                <div className="space-y-3 bg-rose-50/50 border border-rose-200/60 rounded-2xl p-4.5" id="global-validation-ledger">
+                  <div className="flex justify-between items-center text-[10px] font-bold text-rose-800 uppercase tracking-wider border-b border-rose-100 pb-1.5">
+                    <span>Geometric Validity Log</span>
+                    <AlertCircle className="w-4 h-4 text-rose-600 animate-pulse" />
+                  </div>
+                  
+                  <div className="space-y-2 pt-1">
+                    {validationWarnings.length > 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-[10px] text-slate-500 leading-normal">
+                          The following spatial anomalies are live in your draft. Address these to comply with municipal plotting standards:
+                        </p>
+                        <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                          {validationWarnings.map((warn, i) => (
+                            <div 
+                              key={i} 
+                              className="bg-white border border-rose-150 p-2 rounded-lg text-[9px] font-mono text-rose-800 flex gap-1.5 items-start"
+                            >
+                              <span className="text-rose-500 font-extrabold flex-shrink-0">&bull;</span>
+                              <span>{warn}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-4 text-center space-y-1.5">
+                        <CheckCircle className="w-8 h-8 text-emerald-500" />
+                        <span className="font-bold text-slate-800 text-[11px]">Draft is Geometrically Clean</span>
+                        <span className="text-[9px] text-slate-450 leading-normal max-w-[180px]">
+                          All active plot polygons conform to intersection and minimum footprint metrics!
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <EmptyState 
+                    title="No Object Selected" 
+                    description="Click any visual shape, plot border, road line, or marker in the canvas center to inspect and modify attributes."
+                    icon={<HelpCircle className="w-5 h-5 text-slate-400" />}
+                  />
+                </div>
+
+              </div>
             )}
           </div>
         </div>

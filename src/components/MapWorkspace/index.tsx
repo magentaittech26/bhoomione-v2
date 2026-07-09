@@ -16,6 +16,7 @@ import {
   Map
 } from "lucide-react";
 import api from "../../lib/api.ts";
+import { runValidationSuite } from "../../lib/plotEngine.ts";
 import { WorkspaceState, MockGeometry, WorkspaceTool } from "./types.ts";
 import { GeometryLayer, LayoutAsset, LayoutVersion } from "../../MapEngine/Contracts/models.ts";
 import { DrawingToolManager, DeleteObjectCommand, AppTool } from "../../MapEngine/Drawing/DrawingToolManager.ts";
@@ -338,13 +339,16 @@ export default function MapWorkspaceIndex() {
     setTimeout(() => {
       setIsValidating(false);
       setShowValidationToast(true);
-      // Simulate real rule checks outcomes
-      setValidationErrors([
-        "Road Link disconnect: East Boulevard lane 2 terminates inside Sector Park boundary",
-        "Utility overlap: Sewage layout waterline intersects Plot 104 footprint limit by 0.45m"
-      ]);
-      setStatusLog("Validation finished. 0 critical errors, 2 warning items identified.");
-    }, 1800);
+      
+      const errors = runValidationSuite(objects);
+      if (errors.length === 0) {
+        setValidationErrors(["All plot validations passed successfully! 0 overlap or self-intersection issues detected."]);
+        setStatusLog("Validation finished. Clean layout state.");
+      } else {
+        setValidationErrors(errors);
+        setStatusLog(`Validation finished. Identified ${errors.length} layout warnings/checks.`);
+      }
+    }, 800);
   };
 
   // Sync objects update loop
@@ -761,6 +765,7 @@ export default function MapWorkspaceIndex() {
               setPan={setPan}
               statusLog={statusLog}
               setStatusLog={setStatusLog}
+              drawingManager={drawingManagerRef.current}
             />
 
             {/* Right Collapsible inspector */}
@@ -769,6 +774,9 @@ export default function MapWorkspaceIndex() {
               onUpdateObject={handleUpdateObject}
               isCollapsed={isRightCollapsed}
               setIsCollapsed={setIsRightCollapsed}
+              objects={objects}
+              onUpdateObjects={setObjects}
+              drawingManager={drawingManagerRef.current}
             />
           </div>
 

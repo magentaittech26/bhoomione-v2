@@ -1,5 +1,6 @@
 import { MockGeometry, WorkspaceTool } from "../../components/MapWorkspace/types.ts";
 import { GeometryLayer, GeometryObject } from "../Contracts/models.ts";
+import { calculatePlotMetrics, detectPlotFacing, detectPlotCornerType } from "../../lib/plotEngine.ts";
 
 /**
  * Define the comprehensive workspace tool list requested.
@@ -419,5 +420,167 @@ export class UpdatePropertiesCommand implements Command {
       return obj;
     });
     this.setObjectsList(updated);
+  }
+}
+
+/**
+ * Concrete command pattern for adding a newly created geometry object.
+ */
+export class CreateGeometryCommand implements Command {
+  public id: string;
+  public timestamp: Date;
+
+  constructor(
+    private newObject: MockGeometry,
+    private objectsList: MockGeometry[],
+    private setObjectsList: (objs: MockGeometry[]) => void,
+    private onSelectedObjectReset: (id: string | null) => void
+  ) {
+    this.id = `cmd-create-${newObject.id}-${Date.now()}`;
+    this.timestamp = new Date();
+  }
+
+  public get name(): string {
+    return `Create [${this.newObject.layerName}] ${this.newObject.name}`;
+  }
+
+  public execute(): void {
+    const updated = [...this.objectsList, this.newObject];
+    this.setObjectsList(updated);
+    this.onSelectedObjectReset(this.newObject.id);
+  }
+
+  public undo(): void {
+    const updated = this.objectsList.filter((obj) => obj.id !== this.newObject.id);
+    this.setObjectsList(updated);
+    this.onSelectedObjectReset(null);
+  }
+}
+
+/**
+ * Concrete command pattern for modifying geometry coordinates or styles.
+ */
+export class ModifyGeometryCommand implements Command {
+  public id: string;
+  public timestamp: Date;
+
+  constructor(
+    private targetId: string,
+    private oldCoords: any,
+    private newCoords: any,
+    private oldStyles: any,
+    private newStyles: any,
+    private objectsList: MockGeometry[],
+    private setObjectsList: (objs: MockGeometry[]) => void,
+    private onSelectedObjectReset: (id: string | null) => void
+  ) {
+    this.id = `cmd-modify-${targetId}-${Date.now()}`;
+    this.timestamp = new Date();
+  }
+
+  public get name(): string {
+    return `Modify geometry coordinates/styles for element: ${this.targetId}`;
+  }
+
+  public execute(): void {
+    const updated = this.objectsList.map((obj) => {
+      if (obj.id === this.targetId) {
+        let updatedProperties = { ...obj.properties };
+        if (obj.layerName === "PLOTS") {
+          const metrics = calculatePlotMetrics(this.newCoords);
+          const roadObjs = this.objectsList.filter(o => o.layerName === "ROADS");
+          const facing = detectPlotFacing(this.newCoords, roadObjs);
+          const cornerType = detectPlotCornerType(this.newCoords, roadObjs);
+          
+          updatedProperties = {
+            ...updatedProperties,
+            area_value: Math.round(metrics.sqft),
+            facing,
+            corner_type: cornerType
+          };
+        }
+        return {
+          ...obj,
+          geometry_data: {
+            ...obj.geometry_data,
+            coordinates: this.newCoords
+          },
+          style_config: {
+            ...obj.style_config,
+            ...this.newStyles
+          },
+          properties: updatedProperties
+        };
+      }
+      return obj;
+    });
+    this.setObjectsList(updated);
+    this.onSelectedObjectReset(this.targetId);
+  }
+
+  public undo(): void {
+    const updated = this.objectsList.map((obj) => {
+      if (obj.id === this.targetId) {
+        let updatedProperties = { ...obj.properties };
+        if (obj.layerName === "PLOTS") {
+          const metrics = calculatePlotMetrics(this.oldCoords);
+          const roadObjs = this.objectsList.filter(o => o.layerName === "ROADS");
+          const facing = detectPlotFacing(this.oldCoords, roadObjs);
+          const cornerType = detectPlotCornerType(this.oldCoords, roadObjs);
+          
+          updatedProperties = {
+            ...updatedProperties,
+            area_value: Math.round(metrics.sqft),
+            facing,
+            corner_type: cornerType
+          };
+        }
+        return {
+          ...obj,
+          geometry_data: {
+            ...obj.geometry_data,
+            coordinates: this.oldCoords
+          },
+          style_config: {
+            ...obj.style_config,
+            ...this.oldStyles
+          },
+          properties: updatedProperties
+        };
+      }
+      return obj;
+    });
+    this.setObjectsList(updated);
+    this.onSelectedObjectReset(this.targetId);
+  }
+}
+
+/**
+ * Concrete command pattern for bulk updates (renumbering, bulk operations).
+ */
+export class BulkUpdateCommand implements Command {
+  public id: string;
+  public timestamp: Date;
+
+  constructor(
+    private oldObjects: MockGeometry[],
+    private newObjects: MockGeometry[],
+    private setObjectsList: (objs: MockGeometry[]) => void,
+    private operationName: string = "Bulk Plot Layout Operation"
+  ) {
+    this.id = `cmd-bulk-${Date.now()}`;
+    this.timestamp = new Date();
+  }
+
+  public get name(): string {
+    return this.operationName;
+  }
+
+  public execute(): void {
+    this.setObjectsList(this.newObjects);
+  }
+
+  public undo(): void {
+    this.setObjectsList(this.oldObjects);
   }
 }

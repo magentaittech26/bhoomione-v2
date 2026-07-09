@@ -3,6 +3,14 @@ import { Move, Maximize2, ZoomIn, ZoomOut, Compass, HelpCircle } from "lucide-re
 import { WorkspaceTool, MockGeometry } from "./types.ts";
 import { GeometryLayer, GeometryObject } from "../../MapEngine/Contracts/models.ts";
 import { CanvasViewportEngine } from "../../MapEngine/Rendering/CanvasViewportEngine.ts";
+import { CreateGeometryCommand, ModifyGeometryCommand } from "../../MapEngine/Drawing/DrawingToolManager.ts";
+import { 
+  calculatePlotMetrics, 
+  detectPlotFacing, 
+  detectPlotCornerType, 
+  rotatePoints, 
+  scalePoints 
+} from "../../lib/plotEngine.ts";
 
 interface CanvasProps {
   layers: GeometryLayer[];
@@ -22,6 +30,7 @@ interface CanvasProps {
   statusLog: string;
   setStatusLog: (log: string) => void;
   isSpacePanActive?: boolean;
+  drawingManager: any; // Direct access to trigger commands
 }
 
 /**
@@ -54,6 +63,84 @@ function distanceToSegment(p: [number, number], v: [number, number], w: [number,
   );
 }
 
+/**
+ * Standard line segment intersection formula
+ */
+function lineSegmentsIntersect(
+  p1: [number, number],
+  q1: [number, number],
+  p2: [number, number],
+  q2: [number, number]
+): boolean {
+  const orientation = (p: [number, number], q: [number, number], r: [number, number]): number => {
+    const val = (q[1] - p[1]) * (r[0] - q[0]) - (q[0] - p[0]) * (r[1] - q[1]);
+    if (Math.abs(val) < 1e-9) return 0; // Collinear
+    return (val > 0) ? 1 : 2; // Clockwise or Counterclockwise
+  };
+
+  const onSegment = (p: [number, number], q: [number, number], r: [number, number]): boolean => {
+    return q[0] <= Math.max(p[0], r[0]) && q[0] >= Math.min(p[0], r[0]) &&
+           q[1] <= Math.max(p[1], r[1]) && q[1] >= Math.min(p[1], r[1]);
+  };
+
+  const o1 = orientation(p1, q1, p2);
+  const o2 = orientation(p1, q1, q2);
+  const o3 = orientation(p2, q2, p1);
+  const o4 = orientation(p2, q2, q1);
+
+  if (o1 !== o2 && o3 !== o4) return true;
+
+  if (o1 === 0 && onSegment(p1, p2, q1)) return true;
+  if (o2 === 0 && onSegment(p1, q2, q1)) return true;
+  if (o3 === 0 && onSegment(p2, p1, q2)) return true;
+  if (o4 === 0 && onSegment(p2, q1, q2)) return true;
+
+  return false;
+}
+
+/**
+ * Checks if a polygon has any self-intersecting segments
+ */
+function isPolygonSelfIntersecting(pts: Array<[number, number]>): boolean {
+  const n = pts.length;
+  if (n < 4) return false;
+
+  for (let i = 0; i < n; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % n];
+
+    for (let j = i + 2; j < n; j++) {
+      if ((j + 1) % n === i) continue; // Skip adjacent segments
+      const c = pts[j];
+      const d = pts[(j + 1) % n];
+
+      if (lineSegmentsIntersect(a, b, c, d)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Sanitizes consecutive duplicate vertices
+ */
+function sanitizePoints(pts: Array<[number, number]>): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  for (const pt of pts) {
+    if (out.length === 0) {
+      out.push(pt);
+    } else {
+      const prev = out[out.length - 1];
+      const dist = Math.sqrt(Math.pow(pt[0] - prev[0], 2) + Math.pow(pt[1] - prev[1], 2));
+      if (dist > 0.05) {
+        out.push(pt);
+      }
+    }
+  }
+  return out;
+}
+
 export default function Canvas({
   layers,
   selectedTool,
@@ -71,7 +158,8 @@ export default function Canvas({
   setPan,
   statusLog,
   setStatusLog,
-  isSpacePanActive = false
+  isSpacePanActive = false,
+  drawingManager
 }: CanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -88,6 +176,27 @@ export default function Canvas({
   const [savedMeasurements, setSavedMeasurements] = useState<
     { p1: { x: number; y: number }; p2: { x: number; y: number }; distance: number }[]
   >([]);
+
+  // Active Drawing session points
+  const [drawingPoints, setDrawingPoints] = useState<Array<[number, number]>>([]);
+  const [drawingCurrentMouse, setDrawingCurrentMouse] = useState<[number, number] | null>(null);
+
+  // Vertex / Geometry dragging states
+  const [draggedVertexIndex, setDraggedVertexIndex] = useState<number | null>(null);
+  const [draggedVertexObjectId, setDraggedVertexObjectId] = useState<string | null>(null);
+  const [draggedVertexStartCoords, setDraggedVertexStartCoords] = useState<Array<[number, number]>>([]);
+
+  const [isMovingGeometry, setIsMovingGeometry] = useState(false);
+  const [movingGeometryObjectId, setMovingGeometryObjectId] = useState<string | null>(null);
+  const [movingGeometryStartCoords, setMovingGeometryStartCoords] = useState<Array<[number, number]>>([]);
+  const [movingGeometryStartMouseWorld, setMovingGeometryStartMouseWorld] = useState<{ x: number; y: number } | null>(null);
+
+  // Interactive mouseover hover indicators for nodes
+  const [hoveredVertexIndex, setHoveredVertexIndex] = useState<number | null>(null);
+  const [hoveredMidpointIndex, setHoveredMidpointIndex] = useState<number | null>(null);
+
+  // Custom double-click robust timer detector
+  const lastClickRef = useRef<{ time: number; x: number; y: number }>({ time: 0, x: 0, y: 0 });
 
   // 1. Initialize Viewport Engine once element is fully mounted
   useEffect(() => {
@@ -136,6 +245,31 @@ export default function Canvas({
     });
   }, [zoomLevel, pan.x, pan.y]);
 
+  // Keyboard actions for drawing sessions (Cancel on Escape, pop last point on Backspace)
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || e.key === "Esc") {
+        if (drawingPoints.length > 0) {
+          e.preventDefault();
+          setDrawingPoints([]);
+          setDrawingCurrentMouse(null);
+          setStatusLog("Drawing session cleared.");
+        }
+      }
+      if (e.key === "Backspace" || e.key === "Delete") {
+        if (drawingPoints.length > 0) {
+          e.preventDefault();
+          const updated = [...drawingPoints];
+          updated.pop();
+          setDrawingPoints(updated);
+          setStatusLog(`Removed last plotted point. Vertices count: ${updated.length}`);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, [drawingPoints]);
+
   // Synchronize Render Callbacks each time render-impacting elements update
   useEffect(() => {
     if (!engineRef.current) return;
@@ -150,25 +284,177 @@ export default function Canvas({
     engineRef.current.setAfterRender((ctx) => {
       if (!engineRef.current) return;
 
+      const engine = engineRef.current;
+
       // Typecast objects as compatible GeometryObject for engine render compatibility
       const castedObjects = objects as unknown as GeometryObject[];
-      engineRef.current.drawGeometries(castedObjects, layers, selectedObjectId, searchQuery);
+      engine.drawGeometries(castedObjects, layers, selectedObjectId, searchQuery);
+
+      // A. Render Active Drawing Session Preview
+      if (drawingPoints.length > 0) {
+        ctx.save();
+        ctx.strokeStyle = "#4F46E5";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        const startPt = engine.worldToScreen(drawingPoints[0][0], drawingPoints[0][1]);
+        ctx.moveTo(startPt.x, startPt.y);
+
+        for (let i = 1; i < drawingPoints.length; i++) {
+          const pt = engine.worldToScreen(drawingPoints[i][0], drawingPoints[i][1]);
+          ctx.lineTo(pt.x, pt.y);
+        }
+
+        if (drawingCurrentMouse) {
+          const curPt = engine.worldToScreen(drawingCurrentMouse[0], drawingCurrentMouse[1]);
+          ctx.lineTo(curPt.x, curPt.y);
+          if (selectedTool !== "road") {
+            ctx.closePath();
+          }
+        }
+        ctx.stroke();
+
+        if (selectedTool !== "road") {
+          ctx.fillStyle = "rgba(79, 70, 229, 0.12)";
+          ctx.fill();
+        }
+        ctx.restore();
+
+        // Plotted vertices circular nodes
+        ctx.save();
+        drawingPoints.forEach((pt, idx) => {
+          const screenPt = engine.worldToScreen(pt[0], pt[1]);
+          ctx.fillStyle = idx === 0 ? "#10B981" : "#3B82F6"; // Green origin, blue elsewhere
+          ctx.strokeStyle = "#FFFFFF";
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(screenPt.x, screenPt.y, 5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        });
+        ctx.restore();
+
+        // Render active segment length labels
+        ctx.save();
+        for (let i = 0; i < drawingPoints.length - 1; i++) {
+          const p1 = drawingPoints[i];
+          const p2 = drawingPoints[i + 1];
+          const dx = p2[0] - p1[0];
+          const dy = p2[1] - p1[1];
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          const s1 = engine.worldToScreen(p1[0], p1[1]);
+          const s2 = engine.worldToScreen(p2[0], p2[1]);
+          const midX = (s1.x + s2.x) / 2;
+          const midY = (s1.y + s2.y) / 2;
+
+          ctx.font = "bold 9px monospace";
+          const label = `${dist.toFixed(1)}m`;
+          const textW = ctx.measureText(label).width;
+
+          ctx.fillStyle = "rgba(15, 23, 42, 0.8)";
+          ctx.beginPath();
+          ctx.roundRect(midX - textW / 2 - 4, midY - 7, textW + 8, 14, 3);
+          ctx.fill();
+
+          ctx.fillStyle = "#FFFFFF";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(label, midX, midY);
+        }
+
+        // Render segment length label to mouse position
+        if (drawingCurrentMouse) {
+          const p1 = drawingPoints[drawingPoints.length - 1];
+          const p2 = drawingCurrentMouse;
+          const dx = p2[0] - p1[0];
+          const dy = p2[1] - p1[1];
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          const s1 = engine.worldToScreen(p1[0], p1[1]);
+          const s2 = engine.worldToScreen(p2[0], p2[1]);
+          const midX = (s1.x + s2.x) / 2;
+          const midY = (s1.y + s2.y) / 2;
+
+          ctx.font = "bold 9px monospace";
+          const label = `${dist.toFixed(1)}m`;
+          const textW = ctx.measureText(label).width;
+
+          ctx.fillStyle = "rgba(79, 70, 229, 0.9)";
+          ctx.beginPath();
+          ctx.roundRect(midX - textW / 2 - 4, midY - 7, textW + 8, 14, 3);
+          ctx.fill();
+
+          ctx.fillStyle = "#FFFFFF";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(label, midX, midY);
+        }
+        ctx.restore();
+      }
+
+      // B. Render Selected Object Coordinate Handles & Midpoints
+      if (selectedTool === "select" && selectedObjectId) {
+        const activeObj = objects.find(o => o.id === selectedObjectId);
+        if (activeObj && (activeObj.object_type === "POLYGON" || activeObj.object_type === "POLYLINE" || activeObj.object_type === "BOUNDARY")) {
+          const coords = activeObj.geometry_data.coordinates as Array<[number, number]>;
+          
+          if (coords && coords.length > 0) {
+            // Vertex nodes
+            ctx.save();
+            coords.forEach((pt, idx) => {
+              const screenPt = engine.worldToScreen(pt[0], pt[1]);
+              const isHovered = hoveredVertexIndex === idx;
+
+              ctx.fillStyle = isHovered ? "#F59E0B" : "#FFFFFF"; // Amber if hovered, otherwise white
+              ctx.strokeStyle = "#4F46E5";
+              ctx.lineWidth = isHovered ? 2.5 : 1.5;
+              ctx.beginPath();
+              ctx.arc(screenPt.x, screenPt.y, isHovered ? 6 : 4, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.stroke();
+            });
+            ctx.restore();
+
+            // Midpoint split triggers
+            ctx.save();
+            const len = coords.length;
+            const limit = activeObj.object_type === "POLYLINE" ? len - 1 : len;
+            
+            for (let i = 0; i < limit; i++) {
+              const p1 = coords[i];
+              const p2 = coords[(i + 1) % len];
+              const midWorld: [number, number] = [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2];
+              const midScreen = engine.worldToScreen(midWorld[0], midWorld[1]);
+
+              const isHovered = hoveredMidpointIndex === i;
+              ctx.fillStyle = isHovered ? "#10B981" : "rgba(79, 70, 229, 0.5)"; // Green on hover, soft indigo
+              ctx.strokeStyle = "#FFFFFF";
+              ctx.lineWidth = 1.25;
+              ctx.beginPath();
+              ctx.arc(midScreen.x, midScreen.y, isHovered ? 5.5 : 3.5, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.stroke();
+            }
+            ctx.restore();
+          }
+        }
+      }
 
       // Render measurements
-      drawMeasurementsOnContext(ctx, engineRef.current);
+      drawMeasurementsOnContext(ctx, engine);
 
       // Draw rulers overlay
-      engineRef.current.drawRulers();
+      engine.drawRulers();
     });
 
     engineRef.current.invalidate();
-  }, [layers, objects, selectedObjectId, searchQuery, isGridVisible, measureStart, measureCurrent, savedMeasurements, selectedTool]);
+  }, [layers, objects, selectedObjectId, searchQuery, isGridVisible, measureStart, measureCurrent, savedMeasurements, selectedTool, drawingPoints, drawingCurrentMouse, hoveredVertexIndex, hoveredMidpointIndex]);
 
   /**
    * Dedicated overlay drawing module for CAD scale measurements
    */
   const drawMeasurementsOnContext = (ctx: CanvasRenderingContext2D, engine: CanvasViewportEngine) => {
-    // 1. Render Saved Measurements
     savedMeasurements.forEach((m) => {
       const p1 = engine.worldToScreen(m.p1.x, m.p1.y);
       const p2 = engine.worldToScreen(m.p2.x, m.p2.y);
@@ -189,7 +475,6 @@ export default function Canvas({
       ctx.arc(p2.x, p2.y, 4, 0, Math.PI * 2);
       ctx.fill();
 
-      // Render distance pill label
       const midX = (p1.x + p2.x) / 2;
       const midY = (p1.y + p2.y) / 2;
       const label = `${m.distance.toFixed(1)}m`;
@@ -212,7 +497,6 @@ export default function Canvas({
       ctx.restore();
     });
 
-    // 2. Render Active Measurement (being drawn live)
     if (selectedTool === "measure" && measureStart && measureCurrent) {
       const p1 = engine.worldToScreen(measureStart.x, measureStart.y);
       const p2 = engine.worldToScreen(measureCurrent.x, measureCurrent.y);
@@ -237,7 +521,7 @@ export default function Canvas({
       const midY = (p1.y + p2.y) / 2;
       const dx = measureCurrent.x - measureStart.x;
       const dy = measureCurrent.y - measureStart.y;
-      const distance = Math.sqrt(dx * dx + dy * dy) * 0.5; // conversion scale
+      const distance = Math.sqrt(dx * dx + dy * dy) * 0.5;
       const label = `${distance.toFixed(1)}m`;
 
       ctx.font = "bold 9px monospace";
@@ -260,6 +544,116 @@ export default function Canvas({
   };
 
   /**
+   * Finalizes an active drawing session, validates boundaries, and pushes CreateGeometryCommand to history stack
+   */
+  const handleFinishDrawing = () => {
+    if (drawingPoints.length < 2) {
+      setStatusLog("Drawing aborted. Plotted line requires at least 2 vertices.");
+      setDrawingPoints([]);
+      setDrawingCurrentMouse(null);
+      return;
+    }
+
+    const isPolygon = selectedTool !== "road";
+    const sanitized = sanitizePoints(drawingPoints);
+
+    if (isPolygon) {
+      if (sanitized.length < 3) {
+        setStatusLog("Closed polygon requires at least 3 unique vertices.");
+        setDrawingPoints([]);
+        setDrawingCurrentMouse(null);
+        return;
+      }
+
+      // Check self intersection validation
+      if (isPolygonSelfIntersecting(sanitized)) {
+        setStatusLog("[Validation Warning] Polygon footprint intersects itself! Discarded.");
+        setDrawingPoints([]);
+        setDrawingCurrentMouse(null);
+        return;
+      }
+    }
+
+    const toolToLayerName: Record<string, string> = {
+      boundary: "BOUNDARY",
+      plot: "PLOTS",
+      road: "ROADS",
+      park: "PARK",
+      amenity: "AMENITIES",
+      utility: "UTILITIES",
+      label: "LABELS"
+    };
+    const layerName = toolToLayerName[selectedTool] || selectedTool.toUpperCase();
+    const matchedLayer = layers.find(l => l.layer_name === layerName);
+    const layerId = matchedLayer ? matchedLayer.id : `l-${selectedTool}`;
+    const styleConfig = matchedLayer?.style_config || {
+      strokeColor: "#10B981",
+      strokeWidth: 2,
+      fillColor: "#10B981",
+      opacity: 0.15
+    };
+
+    let initialProperties: any = { owner: "" };
+
+    if (selectedTool === "plot") {
+      const plots = objects.filter(o => o.layerName === "PLOTS");
+      const plotNumbers = plots.map(o => parseInt(o.properties?.plot_number || "")).filter(n => !isNaN(n));
+      const nextNum = plotNumbers.length > 0 ? Math.max(...plotNumbers) + 1 : 101;
+
+      const metrics = calculatePlotMetrics(sanitized);
+      const roadObjs = objects.filter(o => o.layerName === "ROADS");
+      const facing = detectPlotFacing(sanitized, roadObjs);
+      const cornerType = detectPlotCornerType(sanitized, roadObjs);
+
+      initialProperties = {
+        plot_number: String(nextNum),
+        area_value: Math.round(metrics.sqft),
+        facing: facing,
+        corner_type: cornerType,
+        zoning: "Residential",
+        owner: ""
+      };
+    } else if (selectedTool === "road") {
+      initialProperties = { road_width: 12, owner: "" };
+    }
+
+    const newObj: MockGeometry = {
+      id: `obj-${selectedTool}-${Date.now()}`,
+      layer_id: layerId,
+      layout_id: "lay-1",
+      layerName: layerName as any,
+      name: selectedTool === "plot" ? `Subdivided Plot ${initialProperties.plot_number}` : `New ${selectedTool.charAt(0).toUpperCase() + selectedTool.slice(1)} ${objects.length + 1}`,
+      object_type: isPolygon ? "POLYGON" : "POLYLINE",
+      geometry_data: {
+        coordinates: sanitized
+      },
+      style_config: { ...styleConfig },
+      properties: initialProperties,
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const cmd = new CreateGeometryCommand(
+      newObj,
+      objects,
+      (updated) => onUpdateObjects(updated),
+      (id) => {
+        if (id) {
+          onSelectObject(newObj);
+        } else {
+          onSelectObject(null);
+        }
+      }
+    );
+    drawingManager.executeCommand(cmd);
+
+    setDrawingPoints([]);
+    setDrawingCurrentMouse(null);
+    setStatusLog(`Added ${newObj.name}. Undo/redo cached in Platform Command stack.`);
+  };
+
+  /**
    * Screen coordinates capture on moving cursor
    */
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -269,7 +663,6 @@ export default function Canvas({
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    const scale = zoomLevel / 100;
     const worldPos = engineRef.current.screenToWorld(mouseX, mouseY);
 
     // Grid snapping logic if enabled
@@ -280,6 +673,94 @@ export default function Canvas({
 
     if (selectedTool === "measure" && measureStart) {
       setMeasureCurrent({ x: finalX, y: finalY });
+    }
+
+    // Active Drawing rubber-band update
+    if (drawingPoints.length > 0) {
+      setDrawingCurrentMouse([finalX, finalY]);
+    }
+
+    // Vertex drag session update
+    if (draggedVertexIndex !== null && draggedVertexObjectId !== null) {
+      const updated = objects.map(o => {
+        if (o.id === draggedVertexObjectId) {
+          const coords = [...(o.geometry_data.coordinates as Array<[number, number]>)];
+          coords[draggedVertexIndex] = [finalX, finalY];
+          return {
+            ...o,
+            geometry_data: { ...o.geometry_data, coordinates: coords }
+          };
+        }
+        return o;
+      });
+      onUpdateObjects(updated);
+      setStatusLog(`Dragging vertex node #${draggedVertexIndex} to (${finalX.toFixed(1)}m, ${finalY.toFixed(1)}m)`);
+      return;
+    }
+
+    // Geometry whole body drag session update
+    if (isMovingGeometry && movingGeometryObjectId !== null && movingGeometryStartMouseWorld !== null) {
+      const dx = finalX - movingGeometryStartMouseWorld.x;
+      const dy = finalY - movingGeometryStartMouseWorld.y;
+
+      const updated = objects.map(o => {
+        if (o.id === movingGeometryObjectId) {
+          const shifted = movingGeometryStartCoords.map(pt => [pt[0] + dx, pt[1] + dy] as [number, number]);
+          return {
+            ...o,
+            geometry_data: { ...o.geometry_data, coordinates: shifted }
+          };
+        }
+        return o;
+      });
+      onUpdateObjects(updated);
+      return;
+    }
+
+    // Highlight hovering states on vertex / midpoints (Select tool only)
+    if (selectedTool === "select" && selectedObjectId) {
+      const activeObj = objects.find(o => o.id === selectedObjectId);
+      if (activeObj && (activeObj.object_type === "POLYGON" || activeObj.object_type === "POLYLINE" || activeObj.object_type === "BOUNDARY")) {
+        const coords = activeObj.geometry_data.coordinates as Array<[number, number]>;
+        
+        let foundVertex: number | null = null;
+        let foundMidpoint: number | null = null;
+
+        if (coords) {
+          // Check vertex hover
+          for (let i = 0; i < coords.length; i++) {
+            const screenPt = engineRef.current.worldToScreen(coords[i][0], coords[i][1]);
+            const dist = Math.sqrt(Math.pow(mouseX - screenPt.x, 2) + Math.pow(mouseY - screenPt.y, 2));
+            if (dist < 10) {
+              foundVertex = i;
+              break;
+            }
+          }
+
+          // Check midpoint hover if no vertex hovered
+          if (foundVertex === null) {
+            const len = coords.length;
+            const limit = activeObj.object_type === "POLYLINE" ? len - 1 : len;
+            for (let i = 0; i < limit; i++) {
+              const p1 = coords[i];
+              const p2 = coords[(i + 1) % len];
+              const midWorld: [number, number] = [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2];
+              const midScreen = engineRef.current.worldToScreen(midWorld[0], midWorld[1]);
+              const dist = Math.sqrt(Math.pow(mouseX - midScreen.x, 2) + Math.pow(mouseY - midScreen.y, 2));
+              if (dist < 10) {
+                foundMidpoint = i;
+                break;
+              }
+            }
+          }
+        }
+
+        setHoveredVertexIndex(foundVertex);
+        setHoveredMidpointIndex(foundMidpoint);
+      }
+    } else {
+      setHoveredVertexIndex(null);
+      setHoveredMidpointIndex(null);
     }
 
     // Process drag panning
@@ -299,16 +780,9 @@ export default function Canvas({
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!canvasRef.current || !engineRef.current) return;
 
-        // Right/Middle-click triggers instant Drag Pan overrides regardless of active tools
+    // Right/Middle-click triggers instant Drag Pan overrides regardless of active tools
     const isMiddleClick = e.button === 1;
     const isPanMode = selectedTool === "pan" || isSpacePanActive || isMiddleClick || (selectedTool === "select" && !selectedObjectId);
-
-    if (isPanMode) {
-      setIsDragging(true);
-      setDragStart({ x: e.clientX, y: e.clientY });
-      setPanAtStart({ x: pan.x, y: pan.y });
-      return;
-    }
 
     // Get exact canvas coordinates
     const rect = canvasRef.current.getBoundingClientRect();
@@ -319,16 +793,78 @@ export default function Canvas({
     const finalX = isSnapToGrid ? Math.round(worldPos.x / 20) * 20 : worldPos.x;
     const finalY = isSnapToGrid ? Math.round(worldPos.y / 20) * 20 : worldPos.y;
 
+    // Double-click detection for drawing tools
+    const now = Date.now();
+    const timeDiff = now - lastClickRef.current.time;
+    const clickDistance = Math.sqrt(Math.pow(finalX - lastClickRef.current.x, 2) + Math.pow(finalY - lastClickRef.current.y, 2));
+    
+    lastClickRef.current = { time: now, x: finalX, y: finalY };
+
+    if (["boundary", "road", "plot", "park", "amenity", "utility"].includes(selectedTool)) {
+      if (timeDiff < 300 && clickDistance < 15 && drawingPoints.length > 1) {
+        // Intercept as completion double click!
+        e.preventDefault();
+        handleFinishDrawing();
+        return;
+      }
+    }
+
+    if (isPanMode) {
+      setIsDragging(true);
+      setDragStart({ x: e.clientX, y: e.clientY });
+      setPanAtStart({ x: pan.x, y: pan.y });
+      return;
+    }
+
+    // Label Placer Tool Handler
+    if (selectedTool === "label") {
+      const text = prompt("Enter custom label annotation text:") || "New Map Label";
+      if (text.trim()) {
+        const newObj: MockGeometry = {
+          id: `obj-label-${Date.now()}`,
+          layer_id: "l-labels",
+          layout_id: "lay-1",
+          layerName: "LABELS",
+          name: text,
+          object_type: "POINT",
+          geometry_data: {
+            coordinates: [finalX, finalY]
+          },
+          style_config: { strokeColor: "#334155", strokeWidth: 1.25, fillColor: "#F8FAFC", opacity: 0.95 },
+          properties: { owner: "" },
+          is_active: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+
+        const cmd = new CreateGeometryCommand(
+          newObj,
+          objects,
+          (updated) => onUpdateObjects(updated),
+          (id) => onSelectObject(newObj)
+        );
+        drawingManager.executeCommand(cmd);
+        setStatusLog(`Placed text label annotation: "${text}"`);
+      }
+      return;
+    }
+
+    if (["boundary", "road", "plot", "park", "amenity", "utility"].includes(selectedTool)) {
+      setDrawingPoints(prev => [...prev, [finalX, finalY]]);
+      setDrawingCurrentMouse([finalX, finalY]);
+      setStatusLog(`Vertex plotted at (${finalX.toFixed(1)}m, ${finalY.toFixed(1)}m). Double-click edge node to finish.`);
+      return;
+    }
+
     if (selectedTool === "measure") {
       if (!measureStart) {
         setMeasureStart({ x: finalX, y: finalY });
         setMeasureCurrent({ x: finalX, y: finalY });
         setStatusLog(`Measuring started at (${finalX.toFixed(1)}m, ${finalY.toFixed(1)}m). Move cursor.`);
       } else {
-        // Finalize measurement segment
         const dx = finalX - measureStart.x;
         const dy = finalY - measureStart.y;
-        const dist = Math.sqrt(dx * dx + dy * dy) * 0.5; // scale distance logic
+        const dist = Math.sqrt(dx * dx + dy * dy) * 0.5;
 
         setSavedMeasurements(prev => [
           ...prev,
@@ -340,18 +876,66 @@ export default function Canvas({
         ]);
         setMeasureStart(null);
         setMeasureCurrent(null);
-        setStatusLog(`Measured path segment length: ${dist.toFixed(2)} meters.`);
+        setStatusLog(`Measured segment length: ${dist.toFixed(2)} meters.`);
       }
       return;
     }
 
     if (selectedTool === "select") {
-      // Loop through elements in reverse order of drawing (top-most elements first)
+      // 1. Check if dragging an existing vertex handle of the selected object
+      if (selectedObjectId && hoveredVertexIndex !== null) {
+        const activeObj = objects.find(o => o.id === selectedObjectId);
+        if (activeObj) {
+          const coords = activeObj.geometry_data.coordinates as Array<[number, number]>;
+          setDraggedVertexObjectId(selectedObjectId);
+          setDraggedVertexIndex(hoveredVertexIndex);
+          setDraggedVertexStartCoords(JSON.parse(JSON.stringify(coords)));
+          setStatusLog(`Started vertex node #${hoveredVertexIndex} reshape drag.`);
+          return;
+        }
+      }
+
+      // 2. Check if dragging a midpoint split handle of the selected object (to insert a new vertex)
+      if (selectedObjectId && hoveredMidpointIndex !== null) {
+        const activeObj = objects.find(o => o.id === selectedObjectId);
+        if (activeObj) {
+          const coords = activeObj.geometry_data.coordinates as Array<[number, number]>;
+          const len = coords.length;
+          const p1 = coords[hoveredMidpointIndex];
+          const p2 = coords[(hoveredMidpointIndex + 1) % len];
+          const splitPt: [number, number] = [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2];
+
+          const updatedCoords = [...coords];
+          updatedCoords.splice(hoveredMidpointIndex + 1, 0, splitPt);
+
+          // Update instantly
+          const updatedObjs = objects.map(o => {
+            if (o.id === selectedObjectId) {
+              return {
+                ...o,
+                geometry_data: { ...o.geometry_data, coordinates: updatedCoords }
+              };
+            }
+            return o;
+          });
+          onUpdateObjects(updatedObjs);
+
+          // Anchor vertex drag on this newly inserted vertex!
+          setDraggedVertexObjectId(selectedObjectId);
+          setDraggedVertexIndex(hoveredMidpointIndex + 1);
+          setDraggedVertexStartCoords(JSON.parse(JSON.stringify(coords))); // Start coords are the pre-split list!
+          setHoveredVertexIndex(hoveredMidpointIndex + 1);
+          setHoveredMidpointIndex(null);
+          setStatusLog(`Inserted vertex node at midpoint. Dynamic drag initiated.`);
+          return;
+        }
+      }
+
+      // 3. Fallback to selecting or moving whole geometries
       const reverseObjects = [...objects].reverse();
       let hitElement: MockGeometry | null = null;
 
       for (const obj of reverseObjects) {
-        // Validate layer is visible and unlocked
         const layer = layers.find(l => l.layer_name === obj.layerName);
         if (!layer || !layer.is_visible || layer.is_locked) continue;
 
@@ -364,28 +948,141 @@ export default function Canvas({
         } else if (obj.object_type === "POLYLINE") {
           const pts = obj.geometry_data.coordinates as Array<[number, number]>;
           if (pts.length >= 2) {
-            // Find distance to segment
-            const dist = distanceToSegment([finalX, finalY], pts[0], pts[1]);
-            // Click threshold tolerance (12 world meters)
-            if (dist < 12) {
-              hitElement = obj;
-              break;
+            for (let i = 0; i < pts.length - 1; i++) {
+              const dist = distanceToSegment([finalX, finalY], pts[i], pts[i + 1]);
+              if (dist < 12) {
+                hitElement = obj;
+                break;
+              }
             }
+            if (hitElement) break;
+          }
+        } else if (obj.object_type === "POINT") {
+          const pt = obj.geometry_data.coordinates as [number, number];
+          const dist = Math.sqrt(Math.pow(finalX - pt[0], 2) + Math.pow(finalY - pt[1], 2));
+          if (dist < 12) {
+            hitElement = obj;
+            break;
           }
         }
       }
 
       if (hitElement) {
         onSelectObject(hitElement);
-        setStatusLog(`Selected: [${hitElement.layerName}] ${hitElement.name}. Attributes inspected.`);
+        setStatusLog(`Selected: [${hitElement.layerName}] ${hitElement.name}.`);
+
+        // If clicking on already selected element, initiate drag moving of entire shape
+        if (hitElement.id === selectedObjectId) {
+          const coords = hitElement.geometry_data.coordinates as Array<[number, number]>;
+          setIsMovingGeometry(true);
+          setMovingGeometryObjectId(hitElement.id);
+          setMovingGeometryStartCoords(JSON.parse(JSON.stringify(coords)));
+          setMovingGeometryStartMouseWorld({ x: finalX, y: finalY });
+          setStatusLog(`Initiated geometric shift for ${hitElement.name}. Drag to move.`);
+        }
       } else {
         onSelectObject(null);
+        // Start empty space box panning
+        setIsDragging(true);
+        setDragStart({ x: e.clientX, y: e.clientY });
+        setPanAtStart({ x: pan.x, y: pan.y });
       }
     }
   };
 
+  /**
+   * Finalizes dragging nodes or shifting layout geometries, executing the ModifyGeometryCommand for undo stack
+   */
   const handleMouseUp = () => {
     setIsDragging(false);
+
+    // Commit vertex reshape to command pattern
+    if (draggedVertexIndex !== null && draggedVertexObjectId !== null) {
+      const obj = objects.find(o => o.id === draggedVertexObjectId);
+      if (obj) {
+        const cmd = new ModifyGeometryCommand(
+          draggedVertexObjectId,
+          draggedVertexStartCoords,
+          obj.geometry_data.coordinates,
+          obj.style_config,
+          obj.style_config,
+          objects,
+          (updated) => onUpdateObjects(updated),
+          (id) => {
+            const reSelected = objects.find(o => o.id === id);
+            if (reSelected) onSelectObject(reSelected);
+          }
+        );
+        drawingManager.executeCommand(cmd);
+        setStatusLog(`Committed vertex reshape modifications.`);
+      }
+      setDraggedVertexIndex(null);
+      setDraggedVertexObjectId(null);
+    }
+
+    // Commit geometry shift to command pattern
+    if (isMovingGeometry && movingGeometryObjectId !== null) {
+      const obj = objects.find(o => o.id === movingGeometryObjectId);
+      if (obj) {
+        const cmd = new ModifyGeometryCommand(
+          movingGeometryObjectId,
+          movingGeometryStartCoords,
+          obj.geometry_data.coordinates,
+          obj.style_config,
+          obj.style_config,
+          objects,
+          (updated) => onUpdateObjects(updated),
+          (id) => {
+            const reSelected = objects.find(o => o.id === id);
+            if (reSelected) onSelectObject(reSelected);
+          }
+        );
+        drawingManager.executeCommand(cmd);
+        setStatusLog(`Committed geometric location shift.`);
+      }
+      setIsMovingGeometry(false);
+      setMovingGeometryObjectId(null);
+      setMovingGeometryStartMouseWorld(null);
+    }
+  };
+
+  /**
+   * Double click handles vertex node deletion
+   */
+  const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    if (selectedTool === "select" && selectedObjectId && hoveredVertexIndex !== null) {
+      const activeObj = objects.find(o => o.id === selectedObjectId);
+      if (activeObj) {
+        const coords = [...(activeObj.geometry_data.coordinates as Array<[number, number]>)];
+        const isPolygon = activeObj.object_type !== "POLYLINE";
+        const minVertices = isPolygon ? 3 : 2;
+
+        if (coords.length > minVertices) {
+          const oldCoords = JSON.parse(JSON.stringify(coords));
+          coords.splice(hoveredVertexIndex, 1);
+
+          const cmd = new ModifyGeometryCommand(
+            selectedObjectId,
+            oldCoords,
+            coords,
+            activeObj.style_config,
+            activeObj.style_config,
+            objects,
+            (updated) => onUpdateObjects(updated),
+            (id) => {
+              const reSelected = objects.find(o => o.id === id);
+              if (reSelected) onSelectObject(reSelected);
+            }
+          );
+          drawingManager.executeCommand(cmd);
+          setHoveredVertexIndex(null);
+          setStatusLog(`Deleted vertex node #${hoveredVertexIndex}. Object simplified.`);
+        } else {
+          setStatusLog(`Cannot delete vertex. Minimum required nodes for ${activeObj.object_type} is ${minVertices}.`);
+        }
+      }
+    }
   };
 
   /**
@@ -431,7 +1128,8 @@ export default function Canvas({
       case "pan":
         return isDragging ? "grabbing" : "grab";
       case "select":
-        return "default";
+        if (hoveredVertexIndex !== null || hoveredMidpointIndex !== null) return "pointer";
+        return isMovingGeometry ? "move" : "default";
       case "measure":
         return "cell";
       case "label":
@@ -461,6 +1159,7 @@ export default function Canvas({
           onMouseMove={handleMouseMove}
           onMouseDown={handleMouseDown}
           onMouseUp={handleMouseUp}
+          onDoubleClick={handleDoubleClick}
           onMouseLeave={() => onUpdateMouseCoords(null)}
           onWheel={handleWheel}
           className="w-full h-full block bg-slate-100"
