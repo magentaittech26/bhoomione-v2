@@ -4,7 +4,8 @@ import { UserProfile } from "../../types/auth.ts";
 import TenantLogin from "../TenantLogin.tsx";
 import PasswordReset from "../PasswordReset.tsx";
 import Dashboard from "../Dashboard.tsx";
-import { ShieldCheck, ArrowRight, Building2, HelpCircle, ServerOff } from "lucide-react";
+import MapWorkspaceIndex from "../MapWorkspace/index.tsx";
+import { ShieldCheck, ArrowRight, Building2, HelpCircle, ServerOff, Compass, Layout } from "lucide-react";
 
 interface TenantWorkspaceAppProps {
   tenantCode: string | null;
@@ -47,6 +48,7 @@ const TENANT_REGISTRY: Record<string, TenantDetails> = {
 export default function TenantWorkspaceApp({ tenantCode }: TenantWorkspaceAppProps) {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [view, setView] = useState<"login" | "reset">("login");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "map">("dashboard");
 
   // Lookup tenant details dynamically
   const code = tenantCode || "bhoomi-alpha";
@@ -101,17 +103,49 @@ export default function TenantWorkspaceApp({ tenantCode }: TenantWorkspaceAppPro
           // Authenticated Protected Tenant Dashboard Layout
           // We wrap the Dashboard in a tenant layout with explicit brand title injection
           <div className="space-y-4 w-full">
-            <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 rounded-xl flex items-center justify-between text-xs font-semibold mb-2">
-              <span className="flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-600 animate-pulse" />
-                Auth Route Guard active: Valid Session Token on {resolvedTenant.name}
-              </span>
-              <span className="font-mono text-[10px] bg-emerald-100 py-0.5 px-2 rounded">
-                ROLE: {currentUser.role}
-              </span>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white border border-slate-200 rounded-xl p-4 shadow-sm mb-2">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-800">
+                <ShieldCheck className="w-4.5 h-4.5 text-emerald-600 animate-pulse" />
+                <span>Session Active on {resolvedTenant.name}</span>
+                <span className="font-mono text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-100 py-0.5 px-2 rounded ml-2">
+                  {currentUser.role}
+                </span>
+              </div>
+
+              {/* Navigation Tabs Switcher */}
+              <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/40">
+                <button
+                  onClick={() => setActiveTab("dashboard")}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                    activeTab === "dashboard"
+                      ? "bg-white text-slate-900 shadow-sm font-extrabold"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                  id="tab-erp-dashboard"
+                >
+                  <Layout className="w-3.5 h-3.5" />
+                  <span>ERP Dashboard</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab("map")}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                    activeTab === "map"
+                      ? "bg-indigo-600 text-white shadow-sm font-extrabold"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                  id="tab-map-workspace"
+                >
+                  <Compass className="w-3.5 h-3.5" />
+                  <span>Map Workspace Studio</span>
+                </button>
+              </div>
             </div>
             
-            <Dashboard user={currentUser} onLogout={handleLogout} />
+            {activeTab === "dashboard" ? (
+              <Dashboard user={currentUser} onLogout={handleLogout} />
+            ) : (
+              <MapWorkspaceIndex />
+            )}
           </div>
         ) : (
           // Guest Tenant Workspace Authorization Layout
