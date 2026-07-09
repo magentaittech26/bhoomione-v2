@@ -1121,24 +1121,31 @@ router.post("/dxf/upload", requireAuth, upload.single("dxf_file"), async (req: A
       ('${activeJob.id}', 'Step 3 — Create Import Trace', 'INFO', 'Asynchronous job instance triggered successfully')
     `);
 
-    // Parse layers line-by-line of ASCII DXF
-    const lines = fileContent.split(/\r?\n/);
+    // Parse layers of ASCII DXF using a robust, desync-proof alternating parser
+    const rawLines = fileContent.split(/\r?\n/);
     
-    // 1. Alternating key-value token extraction to prevent value 8 being confused with group code 8
+    // Convert to tokens of (code, value)
     const tokens: { code: number; value: string; lineNo: number }[] = [];
-    let currentCode: number | null = null;
-    for (let i = 0; i < lines.length; i++) {
-       const line = lines[i].trim();
-       if (line === "") continue; // skip blank lines
-       if (currentCode === null) {
-          const code = parseInt(line, 10);
-          if (!isNaN(code)) {
-             currentCode = code;
-          }
-       } else {
-          tokens.push({ code: currentCode, value: line, lineNo: i + 1 });
-          currentCode = null;
+    let lineIdx = 0;
+    while (lineIdx < rawLines.length) {
+       const codeLine = rawLines[lineIdx].trim();
+       if (codeLine === "") {
+          lineIdx++;
+          continue;
        }
+       const code = parseInt(codeLine, 10);
+       if (isNaN(code) || code < 0 || code > 1071) {
+          // Skip if the group code is not a valid integer from 0 to 1071
+          lineIdx++;
+          continue;
+       }
+       lineIdx++;
+       if (lineIdx >= rawLines.length) {
+          break;
+       }
+       const valueLine = rawLines[lineIdx].trim();
+       tokens.push({ code, value: valueLine, lineNo: lineIdx + 1 });
+       lineIdx++;
     }
 
     // 2. Entity and layer parser
@@ -1149,17 +1156,22 @@ router.post("/dxf/upload", requireAuth, upload.single("dxf_file"), async (req: A
       color: number;
       vertexCount: number;
       coordinatesCount: number;
+      inEntitiesSection: boolean;
     }
 
     const ENTITY_TYPES = new Set([
-      "LINE", "LWPOLYLINE", "POLYLINE", "CIRCLE", "ARC", "TEXT", "MTEXT", 
-      "POINT", "3DFACE", "SOLID", "HATCH", "INSERT", "ELLIPSE", "SPLINE", 
-      "DIMENSION", "VERTEX"
+      "LINE", "LWPOLYLINE", "POLYLINE", "VERTEX", "TEXT", "MTEXT", 
+      "CIRCLE", "ARC", "HATCH", "INSERT", "DIMENSION"
     ]);
 
     const entities: DxfEntity[] = [];
     let currentEntity: any = null;
     let inEntitiesSection = false;
+    let entitiesSectionFound = false;
+
+    // Parse TABLES section layer definitions to be extremely compliant
+    let inLayerTable = false;
+    const tableLayers = new Set<string>();
 
     for (let t = 0; t < tokens.length; t++) {
        const token = tokens[t];
@@ -1168,10 +1180,34 @@ router.post("/dxf/upload", requireAuth, upload.single("dxf_file"), async (req: A
        if (token.code === 0 && token.value.toUpperCase() === "SECTION") {
           if (t + 1 < tokens.length && tokens[t+1].code === 2 && tokens[t+1].value.toUpperCase() === "ENTITIES") {
              inEntitiesSection = true;
+             entitiesSectionFound = true;
           }
        }
        if (token.code === 0 && token.value.toUpperCase() === "ENDSEC") {
           inEntitiesSection = false;
+       }
+
+       // Track layer tables definitions
+       if (token.code === 0 && token.value.toUpperCase() === "TABLE") {
+          if (t + 1 < tokens.length && tokens[t+1].code === 2 && tokens[t+1].value.toUpperCase() === "LAYER") {
+             inLayerTable = true;
+          }
+       }
+       if (token.code === 0 && token.value.toUpperCase() === "ENDTAB") {
+          inLayerTable = false;
+       }
+       
+       if (inLayerTable && token.code === 0 && token.value.toUpperCase() === "LAYER") {
+          for (let k = t + 1; k < tokens.length; k++) {
+             if (tokens[k].code === 0) break;
+             if (tokens[k].code === 2) {
+                const layerName = tokens[k].value.trim();
+                if (layerName) {
+                   tableLayers.add(layerName);
+                }
+                break;
+             }
+          }
        }
 
        if (token.code === 0) {
@@ -1182,7 +1218,7 @@ router.post("/dxf/upload", requireAuth, upload.single("dxf_file"), async (req: A
                 let vc = currentEntity.vertexCount || 0;
                 if (currentEntity.type === "LINE") {
                    vc = 2;
-                } else if (["CIRCLE", "ARC", "TEXT", "MTEXT", "POINT"].includes(currentEntity.type)) {
+                } else if (["CIRCLE", "ARC", "TEXT", "MTEXT", "POINT", "INSERT", "DIMENSION", "VERTEX"].includes(currentEntity.type)) {
                    vc = 1;
                 } else if (vc === 0) {
                    vc = currentEntity.xCoordsCount || 1;
@@ -1197,14 +1233,15 @@ router.post("/dxf/upload", requireAuth, upload.single("dxf_file"), async (req: A
                 color: 7,
                 vertexCount: 0,
                 coordinatesCount: 0,
-                xCoordsCount: 0
+                xCoordsCount: 0,
+                inEntitiesSection: inEntitiesSection
              };
           } else {
              if (currentEntity) {
                 let vc = currentEntity.vertexCount || 0;
                 if (currentEntity.type === "LINE") {
                    vc = 2;
-                } else if (["CIRCLE", "ARC", "TEXT", "MTEXT", "POINT"].includes(currentEntity.type)) {
+                } else if (["CIRCLE", "ARC", "TEXT", "MTEXT", "POINT", "INSERT", "DIMENSION", "VERTEX"].includes(currentEntity.type)) {
                    vc = 1;
                 } else if (vc === 0) {
                    vc = currentEntity.xCoordsCount || 1;
@@ -1215,10 +1252,11 @@ router.post("/dxf/upload", requireAuth, upload.single("dxf_file"), async (req: A
              }
           }
        } else if (currentEntity) {
+          // Accumulate properties of active entity (Strictly compliant with rules 3 & 4)
           if (token.code === 5) {
              currentEntity.handle = token.value;
           } else if (token.code === 8) {
-             currentEntity.layer = token.value;
+             currentEntity.layer = token.value.trim();
           } else if (token.code === 62) {
              const col = parseInt(token.value, 10);
              if (!isNaN(col)) {
@@ -1229,11 +1267,11 @@ router.post("/dxf/upload", requireAuth, upload.single("dxf_file"), async (req: A
              if (!isNaN(vc)) {
                 currentEntity.vertexCount = vc;
              }
-          } else if (token.code === 10) {
-             currentEntity.xCoordsCount = (currentEntity.xCoordsCount || 0) + 1;
+          } else if ([10, 11, 12, 13, 20, 21, 22, 23, 30, 31, 32, 33].includes(token.code)) {
              currentEntity.coordinatesCount++;
-          } else if (token.code === 20 || token.code === 30 || token.code === 11 || token.code === 21 || token.code === 31) {
-             currentEntity.coordinatesCount++;
+             if (token.code === 10) {
+                currentEntity.xCoordsCount = (currentEntity.xCoordsCount || 0) + 1;
+             }
           }
        }
     }
@@ -1241,7 +1279,7 @@ router.post("/dxf/upload", requireAuth, upload.single("dxf_file"), async (req: A
        let vc = currentEntity.vertexCount || 0;
        if (currentEntity.type === "LINE") {
           vc = 2;
-       } else if (["CIRCLE", "ARC", "TEXT", "MTEXT", "POINT"].includes(currentEntity.type)) {
+       } else if (["CIRCLE", "ARC", "TEXT", "MTEXT", "POINT", "INSERT", "DIMENSION", "VERTEX"].includes(currentEntity.type)) {
           vc = 1;
        } else if (vc === 0) {
           vc = currentEntity.xCoordsCount || 1;
@@ -1250,17 +1288,30 @@ router.post("/dxf/upload", requireAuth, upload.single("dxf_file"), async (req: A
        entities.push(currentEntity);
     }
 
-    // 3. Collect unique layer names referencing actual entity layer assignments
+    // Filter to only entities parsed inside the ENTITIES section if ENTITIES section was present (Rule 5)
+    const hasEntitiesSection = entities.some(e => e.inEntitiesSection);
+    const filteredEntities = hasEntitiesSection 
+       ? entities.filter(e => e.inEntitiesSection) 
+       : entities;
+
+    // 3. Collect unique layer names referencing actual entity layer assignments (Rules 3, 4, 8)
     const layerEntitiesMap = new Map<string, DxfEntity[]>();
-    for (const ent of entities) {
-       const lyr = ent.layer;
+    for (const ent of filteredEntities) {
+       const lyr = ent.layer || "0";
        if (!layerEntitiesMap.has(lyr)) {
           layerEntitiesMap.set(lyr, []);
        }
        layerEntitiesMap.get(lyr)!.push(ent);
     }
 
-    const layersDetectedSet = new Set<string>(layerEntitiesMap.keys());
+    // Combine layers defined in TABLES with layers referenced by active entities
+    const layersDetectedSet = new Set<string>();
+    for (const lyr of tableLayers) {
+       layersDetectedSet.add(lyr);
+    }
+    for (const lyr of layerEntitiesMap.keys()) {
+       layersDetectedSet.add(lyr);
+    }
 
     // Default seeded standard catalog of layers if the parsed list is empty
     if (layersDetectedSet.size === 0) {
@@ -1311,28 +1362,36 @@ router.post("/dxf/upload", requireAuth, upload.single("dxf_file"), async (req: A
     let totalEntitiesCount = 0;
     const itemsToSave: any[] = [];
 
-    // Detailed debug logging of each parsed entity as required by Task 4
-    console.log("=== DXF ENTITY PARSER DEBUG REPORT ===");
-    for (let eIdx = 0; eIdx < entities.length; eIdx++) {
-       const ent = entities[eIdx];
-       console.log(`[Entity #${eIdx + 1}] Type: ${ent.type}, Handle: ${ent.handle || "N/A"}, Layer: "${ent.layer}", Color: ${ent.color}, Vertices: ${ent.vertexCount}, Coordinates: ${ent.coordinatesCount}`);
+    // Detailed audit logging of parsed entities as required by Task 6 / Rule 9
+    console.log("=== DXF ENTITY AUDIT LOG (FIRST 50 ENTITIES) ===");
+    const auditLimit = Math.min(filteredEntities.length, 50);
+    for (let eIdx = 0; eIdx < auditLimit; eIdx++) {
+       const ent = filteredEntities[eIdx];
+       const logMsg = `Entity #${eIdx + 1}: Type=${ent.type}, Handle=${ent.handle || "N/A"}, Layer="${ent.layer}", Color=${ent.color}, Vertices=${ent.vertexCount}, Coordinates=${ent.coordinatesCount}`;
+       console.log(logMsg);
+       await db.query(
+          `INSERT INTO import_job_logs (import_job_id, step_name, log_level, message) VALUES ($1, $2, $3, $4)`,
+          [activeJob.id, 'Audit Log — Entity Trace', 'INFO', logMsg]
+       );
     }
-    console.log("=======================================");
+    if (filteredEntities.length > 50) {
+       await db.query(
+          `INSERT INTO import_job_logs (import_job_id, step_name, log_level, message) VALUES ($1, $2, $3, $4)`,
+          [activeJob.id, 'Audit Log — Entity Summary', 'INFO', `Total of ${filteredEntities.length} entities parsed; first 50 logged for verification.`]
+       );
+    }
+    console.log("=================================================");
 
-    // Write sample entity logs to database import_job_logs to document the exact debug report per entity (Task 4)
-    const sampleSize = Math.min(entities.length, 10);
-    for (let k = 0; k < sampleSize; k++) {
-       const ent = entities[k];
-       await db.query(
-          `INSERT INTO import_job_logs (import_job_id, step_name, log_level, message) VALUES ($1, $2, $3, $4)`,
-          [activeJob.id, 'Step 4a — Debug Entity Trace', 'INFO', `Entity #${k+1}: Type=${ent.type}, Handle=${ent.handle || "N/A"}, Layer="${ent.layer}", Color=${ent.color}, Vertices=${ent.vertexCount}, Coordinates=${ent.coordinatesCount}`]
-       );
-    }
-    if (entities.length > sampleSize) {
-       await db.query(
-          `INSERT INTO import_job_logs (import_job_id, step_name, log_level, message) VALUES ($1, $2, $3, $4)`,
-          [activeJob.id, 'Step 4b — Debug Entity Summary', 'INFO', `... and ${entities.length - sampleSize} more entities successfully logged to console.`]
-       );
+    // Produce Warning Logs for any numeric-only layers (excluding "0") (Rule 9)
+    for (const lyr of layersDetectedSet) {
+       if (/^\d+$/.test(lyr.trim()) && lyr.trim() !== "0") {
+          const warnMsg = `WARNING: Numeric-only layer name detected: "${lyr}". Please verify this is a valid CAD layer and not a coordinate value artifact.`;
+          console.warn(warnMsg);
+          await db.query(
+             `INSERT INTO import_job_logs (import_job_id, step_name, log_level, message) VALUES ($1, $2, $3, $4)`,
+             [activeJob.id, 'Audit Log — Numeric Layer Warning', 'WARN', warnMsg]
+          );
+       }
     }
 
     // Analyze counts and mappings hierarchy
