@@ -13,38 +13,33 @@ function sanitizeString(val: any): string {
 }
 
 // Heuristics for DXF Layer matching with intelligent pattern matching
-function evaluateLayerHeuristic(name: string): { suggested_type: string; confidence_score: number } {
+function evaluateLayerHeuristic(name: string): { suggested_type: string; confidence_score: number; reason: string } {
   const upper = name.trim().toUpperCase();
 
   // Explicit overrides for BhoomiOne Standard layers
-  if (upper === "PLOT_101") return { suggested_type: "PLOT", confidence_score: 95 };
-  if (upper === "PLOT_102") return { suggested_type: "PLOT", confidence_score: 95 };
-  if (upper === "ROAD") return { suggested_type: "ROAD", confidence_score: 99 };
-  if (upper === "PARK") return { suggested_type: "PARK", confidence_score: 99 };
-  if (upper === "AMENITY") return { suggested_type: "AMENITY", confidence_score: 99 };
-  if (upper === "BOUNDARY") return { suggested_type: "BOUNDARY", confidence_score: 99 };
-  if (upper === "LABELS" || upper === "LABEL") return { suggested_type: "LABEL", confidence_score: 75 };
+  if (upper === "PLOT_101") return { suggested_type: "PLOT", confidence_score: 95, reason: "Explicit standard layer override" };
+  if (upper === "PLOT_102") return { suggested_type: "PLOT", confidence_score: 95, reason: "Explicit standard layer override" };
+  if (upper === "ROAD") return { suggested_type: "ROAD", confidence_score: 99, reason: "Explicit standard layer override" };
+  if (upper === "PARK") return { suggested_type: "PARK", confidence_score: 99, reason: "Explicit standard layer override" };
+  if (upper === "AMENITY") return { suggested_type: "AMENITY", confidence_score: 99, reason: "Explicit standard layer override" };
+  if (upper === "BOUNDARY") return { suggested_type: "BOUNDARY", confidence_score: 99, reason: "Explicit standard layer override" };
+  if (upper === "LABELS" || upper === "LABEL") return { suggested_type: "LABEL", confidence_score: 75, reason: "Explicit standard layer override" };
 
   // 1. IGNORE & LABELS
-  // Ignore patterns: dimensions, construction lines, hatches, temporary layers, and text labels
   const isIgnoreExact = [
     "0", "DEFPOINTS", "TEMP", "TMP", "DRAFT", "SCRATCH", "HATCH", "SOLID", "FILL", "PATTERN", "PATTERNS",
-    "TXT", "TEXT", "LABEL", "LBL", "NAME", "ANNOTATION", "DESC", "DESCRIPTION", "REMARKS", "NOTES",
-    "DIM", "DIMS", "DIMENSION", "DIMENSIONS", "MEASURE", "ALIGNMENT", "CONST", "CONSTRUCTION", "XLINE", "CLINE", "CENTERLINE", "AXIS", "GRIDLINE"
+    "REMARKS", "NOTES", "DIM", "DIMS", "DIMENSION", "DIMENSIONS", "MEASURE", "ALIGNMENT", "CONST", "CONSTRUCTION", "XLINE", "CLINE", "CENTERLINE", "AXIS", "GRIDLINE"
   ].includes(upper);
 
   const isIgnorePattern = (
-    /^(TEMP|TMP|DRAFT|SCRATCH|HATCH|DIM|TEXT|LABEL|TXT|LBL|CONST|XLINE|CLINE|GRID)[-_\s]/i.test(upper) ||
-    /[-_\s](TEMP|TMP|DRAFT|SCRATCH|HATCH|DIM|TEXT|LABEL|TXT|LBL|CONST|XLINE|CLINE|GRID)$/i.test(upper) ||
-    /PLOT[-_\s](TEXT|TXT|LABEL|LBL)/i.test(upper) ||
-    /SITE[-_\s](TEXT|TXT|LABEL|LBL)/i.test(upper)
+    /^(TEMP|TMP|DRAFT|SCRATCH|HATCH|DIM|CONST|XLINE|CLINE|GRID)[-_\s]/i.test(upper) ||
+    /[-_\s](TEMP|TMP|DRAFT|SCRATCH|HATCH|DIM|CONST|XLINE|CLINE|GRID)$/i.test(upper)
   );
 
   const isIgnoreFuzzy = (
     upper.includes("DIMENSION") ||
     upper.includes("HATCH") ||
     upper.includes("SHADING") ||
-    upper.includes("ANNOTATION") ||
     upper.includes("CONSTRUCTION") ||
     upper.includes("TEMPORARY") ||
     upper.includes("XLINE") ||
@@ -54,10 +49,15 @@ function evaluateLayerHeuristic(name: string): { suggested_type: string; confide
   );
 
   const isLabelFuzzy = (
+    upper === "TXT" || upper === "TEXT" || upper === "LABEL" || upper === "LBL" || upper === "LABELS" ||
     upper.includes("TEXT") ||
     upper.includes("LABEL") ||
     upper.includes("TXT") ||
-    upper.includes("LBL")
+    upper.includes("LBL") ||
+    upper.includes("NAME") ||
+    upper.includes("ANNOTATION") ||
+    upper.includes("DESC") ||
+    upper.includes("DESCRIPTION")
   );
 
   // 2. BOUNDARY
@@ -108,7 +108,10 @@ function evaluateLayerHeuristic(name: string): { suggested_type: string; confide
   );
 
   // 4. PLOT
-  // Pattern matches plot naming patterns like PLOT101, PLOT_101, PLOT-101, P-101, SITE101, PLOT NO 101, PLOT_NO_101
+  const isPlotExact = [
+    "PLOT", "PLOTS", "PARCEL", "PARCELS", "PLOT_BOUNDARIES", "ZONING", "SUBDIVISION"
+  ].includes(upper);
+
   const isPlotPattern = (
     /^P(LOT)?[-_\s]?\d+/i.test(upper) ||
     /^SITE[-_\s]?\d+/i.test(upper) ||
@@ -116,10 +119,6 @@ function evaluateLayerHeuristic(name: string): { suggested_type: string; confide
     /PLOT[-_\s]?\d+/i.test(upper) ||
     /\b(PLOT|PLT|PARCEL|PARCELS|ZONING|SUBDIVISION)\b/i.test(upper)
   );
-
-  const isPlotExact = [
-    "PLOT", "PLOTS", "PARCEL", "PARCELS", "PLOT_BOUNDARIES", "ZONING", "SUBDIVISION"
-  ].includes(upper);
 
   const isPlotFuzzy = (
     upper.includes("PLOT") ||
@@ -129,34 +128,43 @@ function evaluateLayerHeuristic(name: string): { suggested_type: string; confide
     upper.includes("SUBDIVISION")
   );
 
-  // 5. AMENITY & PARK
+  // 5. PARK
   const isParkExact = [
     "PARK", "OPEN SPACE", "OPEN_SPACE", "OS", "GREEN", "GARDEN", "PLAYGROUND", "LANDSCAPE", "LAWN", "RECREATION", "GREEN_SPACE"
   ].includes(upper);
 
+  const isParkPattern = (
+    /\b(PARK|GREEN|GARDEN|PLAYGROUND|LANDSCAPE|LAWN|RECREATION)\b/i.test(upper) ||
+    /OPEN[-_\s]SPACE/i.test(upper) ||
+    /^OS$/i.test(upper)
+  );
+
+  const isParkFuzzy = (
+    upper.includes("PARK") ||
+    upper.includes("GARDEN") ||
+    upper.includes("GREEN") ||
+    upper.includes("PLAYGROUND") ||
+    upper.includes("LANDSCAPE") ||
+    upper.includes("LAWN")
+  );
+
+  // 6. AMENITY
   const isAmenityExact = [
     "AMENITY", "CLUB", "COMMUNITY", "CIVIC", "CLUBHOUSE", "COMMUNITY_HALL", "HEALTH_CENTRE", "POOL", "SWIMMING_POOL", "CA_SITE"
   ].includes(upper);
 
   const isAmenityPattern = (
-    /\b(PARK|GREEN|GARDEN|PLAYGROUND|AMENITY|CLUB|COMMUNITY|CIVIC|CLUBHOUSE|LANDSCAPE)\b/i.test(upper) ||
-    /OPEN[-_\s]SPACE/i.test(upper) ||
-    /^OS$/i.test(upper)
+    /\b(AMENITY|CLUB|COMMUNITY|CIVIC|CLUBHOUSE)\b/i.test(upper)
   );
 
   const isAmenityFuzzy = (
-    upper.includes("PARK") ||
-    upper.includes("GARDEN") ||
-    upper.includes("GREEN") ||
     upper.includes("AMENITY") ||
     upper.includes("CLUB") ||
     upper.includes("COMMUNITY") ||
-    upper.includes("CIVIC") ||
-    upper.includes("PLAYGROUND") ||
-    upper.includes("LANDSCAPE")
+    upper.includes("CIVIC")
   );
 
-  // 6. UTILITY (Water, Electric, Drain, Services)
+  // 7. UTILITY
   const isUtilityExact = [
     "UTILITY", "SERVICES", "INFRASTRUCTURE",
     "WATER", "STP", "TANK", "UGT", "OHT", "RESERVOIR", "AQUEDUCT", "SUMP", "WATER_LINE", "SEWAGE",
@@ -185,50 +193,46 @@ function evaluateLayerHeuristic(name: string): { suggested_type: string; confide
     upper.includes("OHT")
   );
 
-  // Evaluate scores for each category
-  const scores: Array<{ type: string; score: number }> = [];
+  const scores: Array<{ type: string; score: number; reason: string }> = [];
 
-  // IGNORE Category
-  if (isIgnoreExact) scores.push({ type: "IGNORE", score: 99 });
-  else if (isIgnorePattern) scores.push({ type: "IGNORE", score: 95 });
-  else if (isIgnoreFuzzy) scores.push({ type: "IGNORE", score: 85 });
-  else if (isLabelFuzzy) scores.push({ type: "IGNORE", score: 75 });
+  if (isIgnoreExact) scores.push({ type: "IGNORE", score: 99, reason: "Exact match for IGNORE category" });
+  else if (isIgnorePattern) scores.push({ type: "IGNORE", score: 95, reason: "Pattern match for IGNORE category" });
+  else if (isIgnoreFuzzy) scores.push({ type: "IGNORE", score: 85, reason: "Fuzzy match for IGNORE category" });
 
-  // BOUNDARY Category
-  if (isBoundaryExact) scores.push({ type: "BOUNDARY", score: 99 });
-  else if (isBoundaryPattern) scores.push({ type: "BOUNDARY", score: 95 });
-  else if (isBoundaryFuzzy) scores.push({ type: "BOUNDARY", score: 80 });
-  else if (upper.includes("SITE") || upper.includes("PROPERTY")) scores.push({ type: "BOUNDARY", score: 60 });
+  if (isLabelFuzzy) scores.push({ type: "LABEL", score: 90, reason: "Matches label/text patterns" });
 
-  // ROAD Category
-  if (isRoadExact) scores.push({ type: "ROAD", score: 99 });
-  else if (isRoadPattern) scores.push({ type: "ROAD", score: 95 });
-  else if (isRoadFuzzy) scores.push({ type: "ROAD", score: 85 });
-  else if (upper.includes("WAY") || upper.includes("DRIVE") || upper.includes("LANE") || upper.includes("PATH")) scores.push({ type: "ROAD", score: 65 });
+  if (isBoundaryExact) scores.push({ type: "BOUNDARY", score: 99, reason: "Exact match for BOUNDARY category" });
+  else if (isBoundaryPattern) scores.push({ type: "BOUNDARY", score: 95, reason: "Pattern match for BOUNDARY category" });
+  else if (isBoundaryFuzzy) scores.push({ type: "BOUNDARY", score: 80, reason: "Fuzzy match for BOUNDARY category" });
+  else if (upper.includes("SITE") || upper.includes("PROPERTY")) scores.push({ type: "BOUNDARY", score: 60, reason: "Implicit boundary container" });
 
-  // PLOT Category
-  if (isPlotExact) scores.push({ type: "PLOT", score: 99 });
-  else if (isPlotPattern) scores.push({ type: "PLOT", score: 95 });
-  else if (isPlotFuzzy) scores.push({ type: "PLOT", score: 85 });
+  if (isRoadExact) scores.push({ type: "ROAD", score: 99, reason: "Exact match for ROAD category" });
+  else if (isRoadPattern) scores.push({ type: "ROAD", score: 95, reason: "Pattern match for ROAD category" });
+  else if (isRoadFuzzy) scores.push({ type: "ROAD", score: 85, reason: "Fuzzy match for ROAD category" });
+  else if (upper.includes("WAY") || upper.includes("DRIVE") || upper.includes("LANE") || upper.includes("PATH")) scores.push({ type: "ROAD", score: 65, reason: "Street subclass matches" });
 
-  // AMENITY Category
-  if (isParkExact || isAmenityExact) scores.push({ type: "AMENITY", score: 99 });
-  else if (isAmenityPattern) scores.push({ type: "AMENITY", score: 95 });
-  else if (isAmenityFuzzy) scores.push({ type: "AMENITY", score: 85 });
+  if (isPlotExact) scores.push({ type: "PLOT", score: 99, reason: "Exact match for PLOT category" });
+  else if (isPlotPattern) scores.push({ type: "PLOT", score: 95, reason: "Pattern match for PLOT category" });
+  else if (isPlotFuzzy) scores.push({ type: "PLOT", score: 85, reason: "Fuzzy match for PLOT category" });
 
-  // UTILITY Category
-  if (isUtilityExact) scores.push({ type: "UTILITY", score: 99 });
-  else if (isUtilityPattern) scores.push({ type: "UTILITY", score: 95 });
-  else if (isUtilityFuzzy) scores.push({ type: "UTILITY", score: 85 });
+  if (isParkExact) scores.push({ type: "PARK", score: 99, reason: "Exact match for PARK category" });
+  else if (isParkPattern) scores.push({ type: "PARK", score: 95, reason: "Pattern match for PARK category" });
+  else if (isParkFuzzy) scores.push({ type: "PARK", score: 85, reason: "Fuzzy match for PARK category" });
 
-  // Pick the highest scoring category
+  if (isAmenityExact) scores.push({ type: "AMENITY", score: 99, reason: "Exact match for AMENITY category" });
+  else if (isAmenityPattern) scores.push({ type: "AMENITY", score: 95, reason: "Pattern match for AMENITY category" });
+  else if (isAmenityFuzzy) scores.push({ type: "AMENITY", score: 85, reason: "Fuzzy match for AMENITY category" });
+
+  if (isUtilityExact) scores.push({ type: "UTILITY", score: 99, reason: "Exact match for UTILITY category" });
+  else if (isUtilityPattern) scores.push({ type: "UTILITY", score: 95, reason: "Pattern match for UTILITY category" });
+  else if (isUtilityFuzzy) scores.push({ type: "UTILITY", score: 85, reason: "Fuzzy match for UTILITY category" });
+
   if (scores.length > 0) {
     scores.sort((a, b) => b.score - a.score);
-    return { suggested_type: scores[0].type, confidence_score: scores[0].score };
+    return { suggested_type: scores[0].type, confidence_score: scores[0].score, reason: scores[0].reason };
   }
 
-  // Fallback for names that didn't match anything specific
-  return { suggested_type: "UNKNOWN", confidence_score: 20 };
+  return { suggested_type: "UNKNOWN", confidence_score: 20, reason: "No matching criteria met" };
 }
 
 // ==========================================
@@ -1119,17 +1123,144 @@ router.post("/dxf/upload", requireAuth, upload.single("dxf_file"), async (req: A
 
     // Parse layers line-by-line of ASCII DXF
     const lines = fileContent.split(/\r?\n/);
-    const layersDetectedSet = new Set<string>();
     
-    // Group code '8' indicates Layer name in DXF files
-    for (let i = 0; i < lines.length - 1; i++) {
-       if (lines[i].trim() === "8") {
-          const namePart = lines[i + 1].trim();
-          if (namePart && namePart.length < 150) {
-              layersDetectedSet.add(namePart);
+    // 1. Alternating key-value token extraction to prevent value 8 being confused with group code 8
+    const tokens: { code: number; value: string; lineNo: number }[] = [];
+    let currentCode: number | null = null;
+    for (let i = 0; i < lines.length; i++) {
+       const line = lines[i].trim();
+       if (line === "") continue; // skip blank lines
+       if (currentCode === null) {
+          const code = parseInt(line, 10);
+          if (!isNaN(code)) {
+             currentCode = code;
+          }
+       } else {
+          tokens.push({ code: currentCode, value: line, lineNo: i + 1 });
+          currentCode = null;
+       }
+    }
+
+    // 2. Entity and layer parser
+    interface DxfEntity {
+      type: string;
+      handle: string;
+      layer: string;
+      color: number;
+      vertexCount: number;
+      coordinatesCount: number;
+    }
+
+    const ENTITY_TYPES = new Set([
+      "LINE", "LWPOLYLINE", "POLYLINE", "CIRCLE", "ARC", "TEXT", "MTEXT", 
+      "POINT", "3DFACE", "SOLID", "HATCH", "INSERT", "ELLIPSE", "SPLINE", 
+      "DIMENSION", "VERTEX"
+    ]);
+
+    const entities: DxfEntity[] = [];
+    let currentEntity: any = null;
+    let inEntitiesSection = false;
+
+    for (let t = 0; t < tokens.length; t++) {
+       const token = tokens[t];
+       
+       // Track SECTION boundary transitions
+       if (token.code === 0 && token.value.toUpperCase() === "SECTION") {
+          if (t + 1 < tokens.length && tokens[t+1].code === 2 && tokens[t+1].value.toUpperCase() === "ENTITIES") {
+             inEntitiesSection = true;
+          }
+       }
+       if (token.code === 0 && token.value.toUpperCase() === "ENDSEC") {
+          inEntitiesSection = false;
+       }
+
+       if (token.code === 0) {
+          const valUpper = token.value.toUpperCase();
+          if (ENTITY_TYPES.has(valUpper)) {
+             if (currentEntity) {
+                // Post-process vertex and coordinate metrics
+                let vc = currentEntity.vertexCount || 0;
+                if (currentEntity.type === "LINE") {
+                   vc = 2;
+                } else if (["CIRCLE", "ARC", "TEXT", "MTEXT", "POINT"].includes(currentEntity.type)) {
+                   vc = 1;
+                } else if (vc === 0) {
+                   vc = currentEntity.xCoordsCount || 1;
+                }
+                currentEntity.vertexCount = vc;
+                entities.push(currentEntity);
+             }
+             currentEntity = {
+                type: valUpper,
+                handle: "",
+                layer: "0",
+                color: 7,
+                vertexCount: 0,
+                coordinatesCount: 0,
+                xCoordsCount: 0
+             };
+          } else {
+             if (currentEntity) {
+                let vc = currentEntity.vertexCount || 0;
+                if (currentEntity.type === "LINE") {
+                   vc = 2;
+                } else if (["CIRCLE", "ARC", "TEXT", "MTEXT", "POINT"].includes(currentEntity.type)) {
+                   vc = 1;
+                } else if (vc === 0) {
+                   vc = currentEntity.xCoordsCount || 1;
+                }
+                currentEntity.vertexCount = vc;
+                entities.push(currentEntity);
+                currentEntity = null;
+             }
+          }
+       } else if (currentEntity) {
+          if (token.code === 5) {
+             currentEntity.handle = token.value;
+          } else if (token.code === 8) {
+             currentEntity.layer = token.value;
+          } else if (token.code === 62) {
+             const col = parseInt(token.value, 10);
+             if (!isNaN(col)) {
+                currentEntity.color = col;
+             }
+          } else if (token.code === 90) {
+             const vc = parseInt(token.value, 10);
+             if (!isNaN(vc)) {
+                currentEntity.vertexCount = vc;
+             }
+          } else if (token.code === 10) {
+             currentEntity.xCoordsCount = (currentEntity.xCoordsCount || 0) + 1;
+             currentEntity.coordinatesCount++;
+          } else if (token.code === 20 || token.code === 30 || token.code === 11 || token.code === 21 || token.code === 31) {
+             currentEntity.coordinatesCount++;
           }
        }
     }
+    if (currentEntity) {
+       let vc = currentEntity.vertexCount || 0;
+       if (currentEntity.type === "LINE") {
+          vc = 2;
+       } else if (["CIRCLE", "ARC", "TEXT", "MTEXT", "POINT"].includes(currentEntity.type)) {
+          vc = 1;
+       } else if (vc === 0) {
+          vc = currentEntity.xCoordsCount || 1;
+       }
+       currentEntity.vertexCount = vc;
+       entities.push(currentEntity);
+    }
+
+    // 3. Collect unique layer names referencing actual entity layer assignments
+    const layerEntitiesMap = new Map<string, DxfEntity[]>();
+    for (const ent of entities) {
+       const lyr = ent.layer;
+       if (!layerEntitiesMap.has(lyr)) {
+          layerEntitiesMap.set(lyr, []);
+       }
+       layerEntitiesMap.get(lyr)!.push(ent);
+    }
+
+    const layersDetectedSet = new Set<string>(layerEntitiesMap.keys());
 
     // Default seeded standard catalog of layers if the parsed list is empty
     if (layersDetectedSet.size === 0) {
@@ -1180,16 +1311,41 @@ router.post("/dxf/upload", requireAuth, upload.single("dxf_file"), async (req: A
     let totalEntitiesCount = 0;
     const itemsToSave: any[] = [];
 
+    // Detailed debug logging of each parsed entity as required by Task 4
+    console.log("=== DXF ENTITY PARSER DEBUG REPORT ===");
+    for (let eIdx = 0; eIdx < entities.length; eIdx++) {
+       const ent = entities[eIdx];
+       console.log(`[Entity #${eIdx + 1}] Type: ${ent.type}, Handle: ${ent.handle || "N/A"}, Layer: "${ent.layer}", Color: ${ent.color}, Vertices: ${ent.vertexCount}, Coordinates: ${ent.coordinatesCount}`);
+    }
+    console.log("=======================================");
+
+    // Write sample entity logs to database import_job_logs to document the exact debug report per entity (Task 4)
+    const sampleSize = Math.min(entities.length, 10);
+    for (let k = 0; k < sampleSize; k++) {
+       const ent = entities[k];
+       await db.query(
+          `INSERT INTO import_job_logs (import_job_id, step_name, log_level, message) VALUES ($1, $2, $3, $4)`,
+          [activeJob.id, 'Step 4a — Debug Entity Trace', 'INFO', `Entity #${k+1}: Type=${ent.type}, Handle=${ent.handle || "N/A"}, Layer="${ent.layer}", Color=${ent.color}, Vertices=${ent.vertexCount}, Coordinates=${ent.coordinatesCount}`]
+       );
+    }
+    if (entities.length > sampleSize) {
+       await db.query(
+          `INSERT INTO import_job_logs (import_job_id, step_name, log_level, message) VALUES ($1, $2, $3, $4)`,
+          [activeJob.id, 'Step 4b — Debug Entity Summary', 'INFO', `... and ${entities.length - sampleSize} more entities successfully logged to console.`]
+       );
+    }
+
     // Analyze counts and mappings hierarchy
     for (const rawName of detectedLayersList) {
-       const isSeededType = rawName === "PLOT_NO" || rawName === "ROAD_9M" || rawName === "PARK_AMENITY" || rawName === "ELECTRIAL_GRID_UTILITY" || rawName === "BOUNDARY_LIMIT" || rawName === "IGNORE_METADATA_LABELS";
-       const entitiesCount = isSeededType ? Math.floor(Math.random() * 85) + 12 : Math.floor(Math.random() * 300) + 10;
+       const layerEntities = layerEntitiesMap.get(rawName) || [];
+       const entitiesCount = layerEntities.length || (rawName === "PLOT_NO" || rawName === "ROAD_9M" || rawName === "PARK_AMENITY" || rawName === "ELECTRIAL_GRID_UTILITY" || rawName === "BOUNDARY_LIMIT" || rawName === "IGNORE_METADATA_LABELS" ? Math.floor(Math.random() * 85) + 12 : 0);
        totalEntitiesCount += entitiesCount;
 
        let assignedType = "IGNORE";
        let suggestedType = "UNKNOWN";
        let confidenceScore = 0;
        let mappingSource = "SYSTEM";
+       let mappingReason = "No matching criteria met";
 
        // 1. Check Tenant Auto-Learned Presets
        if (autoLearnedMappings[rawName]) {
@@ -1197,6 +1353,7 @@ router.post("/dxf/upload", requireAuth, upload.single("dxf_file"), async (req: A
           suggestedType = autoLearnedMappings[rawName];
           confidenceScore = 98;
           mappingSource = "LEARNED";
+          mappingReason = "Matched pre-saved tenant auto-learned presets";
        } 
        // 2. Check other tenant templates
        else {
@@ -1207,6 +1364,7 @@ router.post("/dxf/upload", requireAuth, upload.single("dxf_file"), async (req: A
                 suggestedType = m[rawName];
                 confidenceScore = 95;
                 mappingSource = "TEMPLATE";
+                mappingReason = "Matched pre-saved tenant mapping template";
                 foundInTemplate = true;
                 break;
              }
@@ -1220,6 +1378,7 @@ router.post("/dxf/upload", requireAuth, upload.single("dxf_file"), async (req: A
                 suggestedType = globalPresetMappings[upperRaw];
                 confidenceScore = 90;
                 mappingSource = "GLOBAL";
+                mappingReason = "Matched BhoomiOne platform standard layer preset rules";
              } 
              // 4. Default to upgraded Heuristic engine
              else {
@@ -1228,17 +1387,14 @@ router.post("/dxf/upload", requireAuth, upload.single("dxf_file"), async (req: A
                 confidenceScore = heuristic.confidence_score;
                 assignedType = heuristic.suggested_type !== "UNKNOWN" ? heuristic.suggested_type : "IGNORE";
                 mappingSource = "SYSTEM";
+                mappingReason = heuristic.reason;
              }
           }
        }
 
-       // Sanitize and translate assignedType to a standard layout-valid category
+       // Sanitize and translate assignedType to standard layout-valid category (Rules 9 & 10: PARK and LABEL are preserved!)
        const upperAssigned = (assignedType || "IGNORE").toUpperCase().trim();
-       if (upperAssigned === "PARK" || upperAssigned === "AMENITY") {
-          assignedType = "AMENITY";
-       } else if (upperAssigned === "LABEL" || upperAssigned === "TEXT" || upperAssigned === "IGNORE") {
-          assignedType = "IGNORE";
-       } else if (["PLOT", "ROAD", "UTILITY", "BOUNDARY"].includes(upperAssigned)) {
+       if (["PLOT", "ROAD", "PARK", "AMENITY", "UTILITY", "BOUNDARY", "LABEL", "IGNORE"].includes(upperAssigned)) {
           assignedType = upperAssigned;
        } else {
           assignedType = "IGNORE";
@@ -1246,12 +1402,13 @@ router.post("/dxf/upload", requireAuth, upload.single("dxf_file"), async (req: A
 
        itemsToSave.push({
           name: rawName,
-          layer_name: rawName,
+          layer_name: rawName.trim(),
           object_count: entitiesCount,
           entity_count: entitiesCount,
           suggested_type: suggestedType,
           confidence_score: confidenceScore,
           mapping_source: mappingSource,
+          mapping_reason: mappingReason,
           assigned_type: assignedType
        });
 
@@ -1262,6 +1419,17 @@ router.post("/dxf/upload", requireAuth, upload.single("dxf_file"), async (req: A
          [tenantId, dxfFile.id, rawName, assignedType, suggestedType, confidenceScore, mappingSource]
        );
     }
+
+    // Write Unique Layer Summary logs to node console and database (Task 5)
+    console.log("=== DXF UNIQUE LAYER SUMMARY ===");
+    for (const item of itemsToSave) {
+       console.log(`Layer: Raw="${item.name}", Normalized="${item.layer_name}", Count=${item.entity_count}, SuggestedType=${item.suggested_type}, Confidence=${item.confidence_score}%, Reason="${item.mapping_reason}"`);
+       await db.query(
+          `INSERT INTO import_job_logs (import_job_id, step_name, log_level, message) VALUES ($1, $2, $3, $4)`,
+          [activeJob.id, 'Step 5a — Layer Summary Detail', 'INFO', `Layer "${item.name}": Normalized="${item.layer_name}", Count=${item.entity_count}, Suggested="${item.suggested_type}" (${item.confidence_score}%), Reason="${item.mapping_reason}"`]
+       );
+    }
+    console.log("================================");
 
     // Update Import Job
     await db.query(
