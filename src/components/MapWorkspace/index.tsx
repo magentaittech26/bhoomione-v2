@@ -14,7 +14,14 @@ import {
   CheckCircle2,
   AlertTriangle,
   Map,
-  HelpCircle
+  HelpCircle,
+  UploadCloud,
+  X,
+  FileImage,
+  PenTool,
+  Globe,
+  FileCode,
+  Wrench
 } from "lucide-react";
 import api from "../../lib/api.ts";
 import { runValidationSuite } from "../../lib/plotEngine.ts";
@@ -351,6 +358,7 @@ const MOCK_EXTRACTED_OBJECTS: MockGeometry[] = [
 type WizardStep =
   | "info"
   | "method"
+  | "import_pdf"
   | "boundary"
   | "roads"
   | "parks"
@@ -364,6 +372,7 @@ type WizardStep =
 const WIZARD_STEPS_META = [
   { id: "info", label: "Layout Info" },
   { id: "method", label: "Creation Method" },
+  { id: "import_pdf", label: "Import PDF / Image" },
   { id: "boundary", label: "Boundary" },
   { id: "roads", label: "Roads" },
   { id: "parks", label: "Parks" },
@@ -408,6 +417,19 @@ const WIZARD_HELP: Record<string, {
       "You can only select one creation pipeline per layout draft. Choosing manual disables automated layer extraction."
     ],
     nextAction: "Select an option and click 'Next' to enter the spatial drafting studio."
+  },
+  import_pdf: {
+    title: "Import PDF / Image Drawing",
+    why: "Importing approved drawings in PDF, PNG, or JPG formats provides a visual tracing base, making it easy to digitize layouts accurately without manually calculating scales.",
+    description: "Upload your municipal layout diagram or blueprint file. Once uploaded, you can manually trace plots directly on top of the drawing to form precise geometric coordinates.",
+    tips: [
+      "Select a clear, high-resolution PDF or Image file (max 25MB).",
+      "Ensure the drawing has legible boundary markers and plot labels."
+    ],
+    warnings: [
+      "You must upload a valid layout drawing file before proceeding to the boundary tracing step."
+    ],
+    nextAction: "Upload your drawing file, and click 'Next' to start tracing the boundary."
   },
   boundary: {
     title: "Establish Layout Boundary Limit",
@@ -683,7 +705,7 @@ export default function MapWorkspaceIndex({
   const [wizardLayoutType, setWizardLayoutType] = useState<"Residential" | "Commercial" | "Mixed-Use" | "">("");
   const [wizardLayoutPhase, setWizardLayoutPhase] = useState("Phase 1");
   const [wizardLayoutDesc, setWizardLayoutDesc] = useState("");
-  const [wizardCreationMethod, setWizardCreationMethod] = useState<"pdf" | "image" | "dxf" | "manual" | "">("");
+  const [wizardCreationMethod, setWizardCreationMethod] = useState<"pdf" | "image" | "dxf" | "manual" | "gis" | "">("");
   const [wizardUploadedFile, setWizardUploadedFile] = useState<{ name: string; size: number } | null>(null);
   const [wizardCompletedSteps, setWizardCompletedSteps] = useState<Record<string, boolean>>({});
 
@@ -813,11 +835,11 @@ export default function MapWorkspaceIndex({
   };
 
   const handleWizardPrev = () => {
-    const currentStepIndex = WIZARD_STEPS_META.findIndex(x => x.id === wizardStep);
+    const currentStepIndex = activeSteps.findIndex(x => x.id === wizardStep);
     if (currentStepIndex > 0) {
-      const prevStep = WIZARD_STEPS_META[currentStepIndex - 1].id as WizardStep;
+      const prevStep = activeSteps[currentStepIndex - 1].id as WizardStep;
       setWizardStep(prevStep);
-      setStatusLog(`Moved back to step: ${WIZARD_STEPS_META[currentStepIndex - 1].label}`);
+      setStatusLog(`Moved back to step: ${activeSteps[currentStepIndex - 1].label}`);
     }
   };
 
@@ -838,8 +860,19 @@ export default function MapWorkspaceIndex({
         alert("Please select a Creation Method before proceeding.");
         return;
       }
-      if (wizardCreationMethod !== "manual" && !wizardUploadedFile) {
-        alert("Please select or drag-and-drop a coordinate file to align layers.");
+      if (wizardCreationMethod === "dxf") {
+        alert("This module will be enabled in the next development phase.");
+        return;
+      }
+      if (wizardCreationMethod === "gis") {
+        alert("Available in future release.");
+        return;
+      }
+    }
+
+    if (wizardStep === "import_pdf") {
+      if (!wizardUploadedFile) {
+        alert("Please select or drag-and-drop a PDF, PNG, or JPG layout blueprint to proceed.");
         return;
       }
     }
@@ -854,22 +887,22 @@ export default function MapWorkspaceIndex({
 
     setWizardCompletedSteps(prev => ({ ...prev, [wizardStep]: true }));
 
-    const currentStepIndex = WIZARD_STEPS_META.findIndex(x => x.id === wizardStep);
-    if (currentStepIndex < WIZARD_STEPS_META.length - 1) {
-      const nextStep = WIZARD_STEPS_META[currentStepIndex + 1].id as WizardStep;
+    const currentStepIndex = activeSteps.findIndex(x => x.id === wizardStep);
+    if (currentStepIndex < activeSteps.length - 1) {
+      const nextStep = activeSteps[currentStepIndex + 1].id as WizardStep;
       setWizardStep(nextStep);
-      setStatusLog(`Proceeded to step: ${WIZARD_STEPS_META[currentStepIndex + 1].label}`);
+      setStatusLog(`Proceeded to step: ${activeSteps[currentStepIndex + 1].label}`);
     }
   };
 
   const handleWizardSkip = () => {
     setWizardCompletedSteps(prev => ({ ...prev, [wizardStep]: true }));
 
-    const currentStepIndex = WIZARD_STEPS_META.findIndex(x => x.id === wizardStep);
-    if (currentStepIndex < WIZARD_STEPS_META.length - 1) {
-      const nextStep = WIZARD_STEPS_META[currentStepIndex + 1].id as WizardStep;
+    const currentStepIndex = activeSteps.findIndex(x => x.id === wizardStep);
+    if (currentStepIndex < activeSteps.length - 1) {
+      const nextStep = activeSteps[currentStepIndex + 1].id as WizardStep;
       setWizardStep(nextStep);
-      setStatusLog(`Skipped step: ${WIZARD_STEPS_META[currentStepIndex].label}`);
+      setStatusLog(`Skipped step: ${activeSteps[currentStepIndex].label}`);
     }
   };
 
@@ -1298,6 +1331,14 @@ export default function MapWorkspaceIndex({
   const activeVersionObj = versions.find(v => v.id === activeVersionId);
   const selectedObj = objects.find(o => o.id === selectedObjectId) || null;
 
+  // Deriving the dynamic list of active wizard steps
+  const activeSteps = WIZARD_STEPS_META.filter(step => {
+    if (step.id === "import_pdf") {
+      return wizardCreationMethod === "pdf";
+    }
+    return true;
+  });
+
   // Unpack additional fields from approval_number safely for activeLayoutObj
   const unpacked = activeLayoutObj?.approval_number ? (() => {
     const res = { approval_number: "", phase: "", survey_number: "", description: "" };
@@ -1708,7 +1749,7 @@ export default function MapWorkspaceIndex({
                   </span>
                 </div>
                 <h2 className="text-sm font-bold text-white tracking-tight">
-                  Layout Creation Studio &mdash; <span className="text-indigo-400">{(wizardStep === "info" && selectedLayoutId) ? "Project & Layout Info" : WIZARD_STEPS_META.find(s => s.id === wizardStep)?.label}</span>
+                  Layout Creation Studio &mdash; <span className="text-indigo-400">{(wizardStep === "info" && selectedLayoutId) ? "Project & Layout Info" : activeSteps.find(s => s.id === wizardStep)?.label}</span>
                 </h2>
               </div>
             </div>
@@ -1740,7 +1781,7 @@ export default function MapWorkspaceIndex({
                   Project Progress
                 </h3>
                 <nav className="space-y-1.5">
-                  {WIZARD_STEPS_META.map((step, idx) => {
+                  {activeSteps.map((step, idx) => {
                     const label = (step.id === "info" && selectedLayoutId) ? "Project & Layout Info" : step.label;
                     const isActive = wizardStep === step.id;
                     const isCompleted = step.id === "info" 
@@ -1751,8 +1792,8 @@ export default function MapWorkspaceIndex({
                         key={step.id}
                         onClick={() => {
                           // Allow jumping back to previously configured steps
-                          const stepIdx = WIZARD_STEPS_META.findIndex(s => s.id === step.id);
-                          const activeIdx = WIZARD_STEPS_META.findIndex(s => s.id === wizardStep);
+                          const stepIdx = activeSteps.findIndex(s => s.id === step.id);
+                          const activeIdx = activeSteps.findIndex(s => s.id === wizardStep);
                           if (stepIdx < activeIdx || isCompleted) {
                             setWizardStep(step.id as WizardStep);
                             setStatusLog(`Switched step viewport to: ${label}`);
@@ -1967,127 +2008,319 @@ export default function MapWorkspaceIndex({
 
               {/* STEP 2: Configure Creation Method & Drag-and-Drop */}
               {wizardStep === "method" && (
-                <div className="flex-1 p-8 overflow-y-auto flex flex-col justify-center max-w-4xl mx-auto w-full space-y-6 animate-fadeIn" id="wizard-method-view">
-                  <div className="space-y-1">
-                    <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
-                      Step 2: Configure Coordinate Base Method
+                <div className="flex-1 p-6 lg:p-8 overflow-y-auto flex flex-col justify-start max-w-6xl mx-auto w-full space-y-6 animate-fadeIn" id="wizard-method-view">
+                  <div className="space-y-1.5 border-b border-slate-150 pb-4">
+                    <span className="bg-indigo-50 border border-indigo-150 text-indigo-700 font-mono text-[9px] font-bold px-2.5 py-0.5 rounded uppercase">
+                      Step 2: Plotting creation method
+                    </span>
+                    <h3 className="text-base font-extrabold text-slate-900 tracking-tight mt-1">
+                      Choose Your Creation Method
                     </h3>
-                    <p className="text-xs text-slate-500">
-                      Decide whether to draw layout lines completely from scratch or import coordinates from an existing architectural survey file.
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                      Select how you would like to construct the coordinate base and boundary lines for your municipal plotting draft inside Map Studio.
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    {[
-                      { id: "manual", title: "Draw Manually", desc: "Construct boundaries, roads, and plots from a clean coordinate system." },
-                      { id: "dxf", title: "Import DXF File", desc: "Extract layers automatically from a native CAD vector coordinates map." },
-                      { id: "pdf", title: "Import PDF", desc: "Align vertices against a flattened PDF vector sheet or survey certificate." },
-                      { id: "image", title: "Import PNG/JPG", desc: "Overlay an aerial survey layout blueprint as a spatial reference." }
-                    ].map((m) => (
-                      <div
-                        key={m.id}
-                        onClick={() => {
-                          setWizardCreationMethod(m.id as any);
-                          if (m.id === "manual") setWizardUploadedFile(null);
-                        }}
-                        className={`border-2 rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between space-y-2 ${
-                          wizardCreationMethod === m.id 
-                            ? "border-indigo-600 bg-indigo-50/50 shadow-sm" 
-                            : "border-slate-200 bg-white hover:border-slate-350"
-                        }`}
-                      >
-                        <div className="space-y-1">
-                          <h4 className="text-xs font-bold text-slate-800">{m.title}</h4>
-                          <p className="text-[11px] text-slate-500 leading-normal">{m.desc}</p>
-                        </div>
-                        <div className="flex justify-end pt-1">
-                          <span className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                            wizardCreationMethod === m.id 
-                              ? "bg-indigo-600 border-indigo-600 text-white" 
-                              : "border-slate-300"
-                          }`}>
-                            {wizardCreationMethod === m.id && <span className="w-1.5 h-1.5 bg-white rounded-full"></span>}
-                          </span>
-                        </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                    {/* Left Column: 4 Guided Cards */}
+                    <div className="lg:col-span-7 space-y-4">
+                      {[
+                        {
+                          id: "pdf",
+                          title: "PDF / IMAGE IMPORT",
+                          icon: FileImage,
+                          iconBg: "bg-indigo-50 text-indigo-600 border-indigo-100",
+                          desc: "Import approved layout drawings in PDF, PNG or JPG format and manually trace plots.",
+                          recommended: "Existing approved layouts.",
+                          status: "Ready",
+                          statusColor: "bg-emerald-100 text-emerald-800 border-emerald-200",
+                          buttonText: "Continue",
+                          disabled: false,
+                          onClick: () => {
+                            setWizardCreationMethod("pdf");
+                            setStatusLog("Selected Creation Method: PDF / Image Import");
+                          }
+                        },
+                        {
+                          id: "dxf",
+                          title: "DXF IMPORT",
+                          icon: FileCode,
+                          iconBg: "bg-amber-50 text-amber-600 border-amber-100",
+                          desc: "Import AutoCAD DXF drawings with automatic layer recognition and manual review.",
+                          recommended: "Engineers and survey teams.",
+                          status: "Coming in Next Phase",
+                          statusColor: "bg-amber-100 text-amber-800 border-amber-200",
+                          buttonText: "Preview",
+                          disabled: true,
+                          onClick: () => {
+                            alert("This module will be enabled in the next development phase.");
+                          }
+                        },
+                        {
+                          id: "manual",
+                          title: "DRAW MANUALLY",
+                          icon: PenTool,
+                          iconBg: "bg-sky-50 text-sky-600 border-sky-100",
+                          desc: "Create the complete project boundary, roads, amenities and plots directly inside BhoomiOne.",
+                          recommended: "New layouts.",
+                          status: "Ready",
+                          statusColor: "bg-emerald-100 text-emerald-800 border-emerald-200",
+                          buttonText: "Continue",
+                          disabled: false,
+                          onClick: () => {
+                            setWizardCreationMethod("manual");
+                            setWizardUploadedFile(null);
+                            setStatusLog("Selected Creation Method: Draw Manually");
+                          }
+                        },
+                        {
+                          id: "gis",
+                          title: "GIS / SURVEY IMPORT",
+                          icon: Globe,
+                          iconBg: "bg-slate-100 text-slate-600 border-slate-200",
+                          desc: "Import survey coordinates or GIS datasets.",
+                          recommended: "Advanced GIS users.",
+                          status: "Future Release",
+                          statusColor: "bg-slate-150 text-slate-600 border-slate-200",
+                          buttonText: "Disabled",
+                          disabled: true,
+                          onClick: () => {
+                            alert("Available in future release.");
+                          }
+                        }
+                      ].map((card) => {
+                        const isSelected = wizardCreationMethod === card.id;
+                        const IconComp = card.icon;
+                        return (
+                          <div
+                            key={card.id}
+                            onClick={card.onClick}
+                            className={`border rounded-2xl p-5 transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 cursor-pointer hover:shadow-md ${
+                              isSelected 
+                                ? "border-indigo-600 bg-indigo-50/40 ring-2 ring-indigo-500/10 shadow-sm" 
+                                : "border-slate-200 bg-white hover:border-slate-350"
+                            }`}
+                          >
+                            <div className="flex gap-4 items-start">
+                              <div className={`p-3 rounded-xl border ${card.iconBg} flex-shrink-0 mt-0.5`}>
+                                <IconComp className="w-6 h-6" />
+                              </div>
+                              <div className="space-y-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <h4 className="text-xs font-extrabold text-slate-900 tracking-wider font-mono">{card.title}</h4>
+                                  <span className={`text-[9px] font-mono font-bold px-2.5 py-0.5 rounded-full border ${card.statusColor}`}>
+                                    {card.status}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-slate-605 leading-relaxed max-w-md">{card.desc}</p>
+                                {card.recommended && (
+                                  <p className="text-[11px] text-indigo-700 font-medium flex items-center gap-1">
+                                    <span className="text-slate-400 font-normal">Recommended for:</span> {card.recommended}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            
+                            <div className="flex-shrink-0 self-end sm:self-center">
+                              <button
+                                disabled={card.disabled}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  card.onClick();
+                                  if (!card.disabled) {
+                                    handleWizardNext();
+                                  }
+                                }}
+                                className={`text-xs font-bold px-4 py-2 rounded-xl transition-all border ${
+                                  card.disabled
+                                    ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
+                                    : isSelected
+                                      ? "bg-indigo-655 hover:bg-indigo-750 text-white border-indigo-700 shadow-sm cursor-pointer"
+                                      : "bg-white text-slate-755 border-slate-250 hover:bg-slate-50 cursor-pointer"
+                                }`}
+                              >
+                                {card.buttonText}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Right Column: Comparison Table "Which method is best?" */}
+                    <div className="lg:col-span-5 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+                      <div className="space-y-1">
+                        <h3 className="text-xs font-extrabold text-slate-900 tracking-wider uppercase flex items-center gap-2">
+                          <Compass className="w-4 h-4 text-indigo-600" />
+                          <span>Which method is best?</span>
+                        </h3>
+                        <p className="text-xs text-slate-500 leading-relaxed">
+                          Compare the layout design pipelines side-by-side to choose the optimal workflow for your municipal drawings.
+                        </p>
                       </div>
-                    ))}
+
+                      <div className="overflow-x-auto border border-slate-150 rounded-xl bg-slate-50/50">
+                        <table className="w-full text-left border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-slate-100 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">
+                              <th className="p-3">Method</th>
+                              <th className="p-3">Difficulty</th>
+                              <th className="p-3">Accuracy</th>
+                              <th className="p-3">Speed</th>
+                              <th className="p-3">Requirements</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-150 text-[11px]">
+                            <tr className="hover:bg-slate-50/80 transition-colors">
+                              <td className="p-3 font-semibold text-slate-800">PDF / Image</td>
+                              <td className="p-3">
+                                <span className="bg-amber-50 text-amber-800 border border-amber-100 px-1.5 py-0.5 rounded text-[9px] font-bold">Medium</span>
+                              </td>
+                              <td className="p-3 text-emerald-700 font-medium">High</td>
+                              <td className="p-3 text-slate-600">2-4 hrs</td>
+                              <td className="p-3 text-slate-500 font-mono text-[9px]">PDF/PNG/JPG</td>
+                            </tr>
+                            <tr className="hover:bg-slate-50/80 transition-colors">
+                              <td className="p-3 font-semibold text-slate-800">DXF Import</td>
+                              <td className="p-3">
+                                <span className="bg-emerald-50 text-emerald-800 border border-emerald-100 px-1.5 py-0.5 rounded text-[9px] font-bold">Low</span>
+                              </td>
+                              <td className="p-3 text-indigo-700 font-medium">Absolute</td>
+                              <td className="p-3 text-slate-600">&lt;5 mins</td>
+                              <td className="p-3 text-slate-500 font-mono text-[9px]">AutoCAD DXF</td>
+                            </tr>
+                            <tr className="hover:bg-slate-50/80 transition-colors">
+                              <td className="p-3 font-semibold text-slate-800">Manual</td>
+                              <td className="p-3">
+                                <span className="bg-rose-50 text-rose-800 border border-rose-100 px-1.5 py-0.5 rounded text-[9px] font-bold">High</span>
+                              </td>
+                              <td className="p-3 text-slate-600">Medium</td>
+                              <td className="p-3 text-slate-600">1-2 days</td>
+                              <td className="p-3 text-slate-500">None</td>
+                            </tr>
+                            <tr className="hover:bg-slate-50/80 transition-colors">
+                              <td className="p-3 font-semibold text-slate-800">GIS / Survey</td>
+                              <td className="p-3">
+                                <span className="bg-emerald-50 text-emerald-800 border border-emerald-100 px-1.5 py-0.5 rounded text-[9px] font-bold">Low</span>
+                              </td>
+                              <td className="p-3 text-indigo-700 font-medium">Absolute</td>
+                              <td className="p-3 text-slate-600">&lt;1 min</td>
+                              <td className="p-3 text-slate-500 font-mono text-[9px]">GIS/Shape</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 text-[11px] text-indigo-800 leading-relaxed space-y-1">
+                        <p className="font-bold flex items-center gap-1.5 text-indigo-950">
+                          <Activity className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>BhoomiOne Calibration Engine</span>
+                        </p>
+                        <p>
+                          Our backend automatically overlays and locks scale dimensions so tracing alignments remain perfectly consistent with actual field coordinate surveys.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 3A: Import PDF/Image Drawing */}
+              {wizardStep === "import_pdf" && (
+                <div className="flex-1 p-6 lg:p-8 overflow-y-auto flex flex-col justify-start max-w-2xl mx-auto w-full space-y-6 animate-fadeIn" id="wizard-import-pdf-view">
+                  <div className="space-y-1.5 border-b border-slate-150 pb-4">
+                    <span className="bg-indigo-50 border border-indigo-150 text-indigo-700 font-mono text-[9px] font-bold px-2.5 py-0.5 rounded uppercase">
+                      Step 3A: Digital Tracing Overlay
+                    </span>
+                    <h3 className="text-base font-extrabold text-slate-900 tracking-tight mt-1">
+                      Import Layout Drawing / Survey Blueprint
+                    </h3>
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                      Upload an approved municipal layout blueprint in PDF, PNG, or JPG format. The drawing will be loaded as an ambient drafting layer, allowing you to trace boundary limits and plots with millimeter precision.
+                    </p>
                   </div>
 
-                  {/* Drag-and-Drop Area for File Upload */}
-                  {wizardCreationMethod && wizardCreationMethod !== "manual" && (
-                    <div 
-                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                      onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const file = e.dataTransfer.files?.[0];
+                  {/* Drag and Drop Zone */}
+                  <div 
+                    onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                    onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const file = e.dataTransfer.files?.[0];
+                      if (file) {
+                        setWizardUploadedFile({ name: file.name, size: file.size });
+                        setStatusLog(`Blueprint file dropped: ${file.name}`);
+                      }
+                    }}
+                    onClick={() => {
+                      const input = document.createElement("input");
+                      input.type = "file";
+                      input.accept = ".pdf, image/*";
+                      input.onchange = (e: any) => {
+                        const file = e.target.files?.[0];
                         if (file) {
                           setWizardUploadedFile({ name: file.name, size: file.size });
-                          setStatusLog(`Coordinate file dropped: ${file.name}`);
+                          setStatusLog(`Blueprint file selected: ${file.name}`);
                         }
-                      }}
-                      onClick={() => {
-                        const input = document.createElement("input");
-                        input.type = "file";
-                        input.accept = wizardCreationMethod === "dxf" ? ".dxf" : wizardCreationMethod === "pdf" ? ".pdf" : "image/*";
-                        input.onchange = (e: any) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            setWizardUploadedFile({ name: file.name, size: file.size });
-                            setStatusLog(`Coordinate file selected: ${file.name}`);
-                          }
-                        };
-                        input.click();
-                      }}
-                      className="border-2 border-dashed border-indigo-200 rounded-2xl p-8 text-center bg-white hover:bg-slate-50 cursor-pointer transition-all space-y-3"
-                      id="wizard-drag-drop-zone"
-                    >
-                      <div className="mx-auto bg-indigo-50 text-indigo-600 w-12 h-12 rounded-full flex items-center justify-center">
-                        <Layers className="w-6 h-6" />
-                      </div>
-                      <div className="space-y-1 text-xs">
-                        <p className="font-bold text-slate-800">
-                          Drag and drop your .{wizardCreationMethod.toUpperCase()} blueprint coordinate file here
-                        </p>
-                        <p className="text-slate-500 text-[11px]">
-                          or click to choose file from your system explorer (Max 25MB)
-                        </p>
-                      </div>
-                      <p className="text-[10px] text-slate-400">
-                        BhoomiOne parses coordinate schemas, geometric vertices, and AutoCAD layouts automatically.
+                      };
+                      input.click();
+                    }}
+                    className="border-2 border-dashed border-indigo-200 hover:border-indigo-400 rounded-2xl p-8 text-center bg-white hover:bg-slate-50 cursor-pointer transition-all space-y-4 shadow-sm"
+                    id="pdf-drag-drop-zone"
+                  >
+                    <div className="mx-auto bg-indigo-50 text-indigo-600 w-12 h-12 rounded-full flex items-center justify-center">
+                      <UploadCloud className="w-6 h-6" />
+                    </div>
+                    <div className="space-y-1 text-xs">
+                      <p className="font-bold text-slate-800">
+                        Drag and drop your PDF or Image blueprint here
+                      </p>
+                      <p className="text-slate-500 text-[11px]">
+                        Supports high-resolution PDF, PNG, or JPG (Max 25MB)
                       </p>
                     </div>
-                  )}
+                  </div>
 
-                  {/* Uploaded File Stats & Auto-Extract Action */}
+                  {/* Selected File Card */}
                   {wizardUploadedFile && (
-                    <div className="bg-white border border-slate-200 rounded-2xl p-4 flex items-center justify-between shadow-sm animate-fadeIn" id="uploaded-file-stats">
-                      <div className="flex items-center gap-3">
-                        <div className="bg-emerald-50 text-emerald-700 p-2.5 rounded-xl border border-emerald-100">
-                          <CheckCircle2 className="w-5 h-5" />
+                    <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4 animate-fadeIn" id="pdf-uploaded-stats">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="bg-emerald-50 text-emerald-700 p-2.5 rounded-xl border border-emerald-100">
+                            <CheckCircle2 className="w-5 h-5" />
+                          </div>
+                          <div className="space-y-0.5">
+                            <p className="text-xs font-bold text-slate-800 truncate max-w-xs sm:max-w-md">
+                              {wizardUploadedFile.name}
+                            </p>
+                            <p className="text-[10px] text-slate-500 font-mono">
+                              {(wizardUploadedFile.size / (1024 * 1024)).toFixed(2)} MB &bull; Subdivision Drawing Base
+                            </p>
+                          </div>
                         </div>
-                        <div className="space-y-0.5">
-                          <p className="text-xs font-bold text-slate-800 truncate max-w-sm">
-                            {wizardUploadedFile.name}
-                          </p>
-                          <p className="text-[10px] text-slate-500 font-mono">
-                            {(wizardUploadedFile.size / (1024 * 1024)).toFixed(2)} MB &bull; AutoCAD Spatial Layer Group
-                          </p>
-                        </div>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setWizardUploadedFile(null);
+                            setStatusLog("Cleared uploaded blueprint drawing base.");
+                          }}
+                          className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-slate-100 transition-all cursor-pointer border-0"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
                       </div>
 
-                      <button
-                        onClick={() => {
-                          // Inject mock extracted vector geometry coordinates instantly!
-                          setObjects(MOCK_EXTRACTED_OBJECTS);
-                          setStatusLog("Extracted 1 boundary polygon, 2 road arterials, and 5 subdivided plots from DXF coordinate records!");
-                          alert("SUCCESS: Extracted AutoCAD Layer coordinates. Outer boundary polygon, roads, and 5 initial subdivided plot cards mapped automatically to layout drafting canvas!");
-                        }}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-sm transition-colors flex items-center gap-1.5"
-                      >
-                        <span>Auto-Extract Layers</span>
-                      </button>
+                      {/* Simulated Alignment Progress */}
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-[10px] font-mono text-slate-500">
+                          <span>Vertex coordinate scaling aligned</span>
+                          <span className="font-bold text-emerald-600">100% Calibrated</span>
+                        </div>
+                        <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                          <div className="bg-emerald-500 h-full w-full rounded-full transition-all duration-500"></div>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -2486,9 +2719,10 @@ export default function MapWorkspaceIndex({
               </button>
               <button
                 onClick={handleSaveWizardDraftManually}
-                className="text-xs font-bold text-slate-600 hover:text-slate-850 hover:bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 transition-all"
+                className="text-xs font-bold text-slate-650 hover:text-slate-850 hover:bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 transition-all flex items-center gap-1.5"
               >
-                Save Progress
+                <Database className="w-3.5 h-3.5" />
+                <span>Save Draft</span>
               </button>
             </div>
 
@@ -2499,13 +2733,13 @@ export default function MapWorkspaceIndex({
                 className={`text-xs font-bold px-4 py-2 rounded-xl border transition-all ${
                   wizardStep === "info" 
                     ? "bg-slate-50 text-slate-300 border-slate-150 cursor-not-allowed" 
-                    : "bg-white text-slate-700 border-slate-250 hover:bg-slate-50"
+                    : "bg-white text-slate-700 border-slate-250 hover:bg-slate-50 cursor-pointer"
                 }`}
               >
-                &larr; Back
+                &larr; Previous
               </button>
 
-              {wizardStep !== "publish" && wizardStep !== "validation" && wizardStep !== "info" && (
+              {wizardStep !== "publish" && wizardStep !== "validation" && wizardStep !== "info" && wizardStep !== "method" && (
                 <button
                   onClick={handleWizardSkip}
                   className="text-xs font-bold text-slate-500 hover:text-slate-850 hover:bg-slate-100 px-4 py-2 rounded-xl border border-slate-200 transition-all"
@@ -2537,9 +2771,14 @@ export default function MapWorkspaceIndex({
               ) : (
                 <button
                   onClick={handleWizardNext}
-                  className="bg-indigo-650 hover:bg-indigo-700 text-white font-bold text-xs px-6 py-2 rounded-xl transition-all shadow-sm"
+                  disabled={wizardStep === "method" && !(wizardCreationMethod === "pdf" || wizardCreationMethod === "manual")}
+                  className={`font-bold text-xs px-6 py-2 rounded-xl transition-all shadow-sm ${
+                    wizardStep === "method" && !(wizardCreationMethod === "pdf" || wizardCreationMethod === "manual")
+                      ? "bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed"
+                      : "bg-indigo-650 hover:bg-indigo-700 text-white cursor-pointer"
+                  }`}
                 >
-                  Next Step &rarr;
+                  Continue &rarr;
                 </button>
               )}
             </div>
