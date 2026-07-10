@@ -534,6 +534,7 @@ interface MapWorkspaceIndexProps {
   projects?: any[];
   layouts?: any[];
   onBackToInventory?: () => void;
+  onEditLayoutDetails?: (layoutId: string) => void;
 }
 
 export default function MapWorkspaceIndex({ 
@@ -541,7 +542,8 @@ export default function MapWorkspaceIndex({
   initialLayoutId = null,
   projects = [],
   layouts = [],
-  onBackToInventory
+  onBackToInventory,
+  onEditLayoutDetails
 }: MapWorkspaceIndexProps = {}) {
   // Navigation flow state: "projects" | "layouts" | "workspace"
   const [currentStep, setCurrentStep] = useState<"projects" | "layouts" | "workspace">("projects");
@@ -576,7 +578,7 @@ export default function MapWorkspaceIndex({
 
         // Automatically launch the Layout Studio Wizard for this existing layout!
         setIsWizardMode(true);
-        setWizardStep("method"); // Continue directly to step 2: Choose Method
+        setWizardStep("info"); // Start at Step 1: Project & Layout Info
         setWizardLayoutName(layout.name || "");
         
         // Map layout type to selection options: Residential, Commercial, Mixed-Use
@@ -623,7 +625,7 @@ export default function MapWorkspaceIndex({
           setObjects([]);
         }
 
-        setStatusLog(`Layout Studio Wizard launched for "${layout.name}". Skipped step 1 (Layout Info already exists in ERP).`);
+        setStatusLog(`Layout Studio Wizard launched for "${layout.name}". Verifying project & layout info.`);
         return;
       }
     }
@@ -1012,6 +1014,57 @@ export default function MapWorkspaceIndex({
   const handleSelectLayout = (layoutId: string) => {
     setSelectedLayoutId(layoutId);
     setCurrentStep("workspace");
+    
+    // Automatically launch Layout Creation Studio Wizard!
+    setIsWizardMode(true);
+    setWizardStep("info"); // Start on info step
+    
+    // Find the layout to prepopulate wizard state
+    const layout = layoutsList.find(l => String(l.id) === String(layoutId));
+    if (layout) {
+      setWizardLayoutName(layout.name || "");
+      const lowerType = (layout.layout_type || "").toLowerCase();
+      if (lowerType.includes("commercial")) {
+        setWizardLayoutType("Commercial");
+      } else if (lowerType.includes("mixed")) {
+        setWizardLayoutType("Mixed-Use");
+      } else {
+        setWizardLayoutType("Residential");
+      }
+      
+      const unpackedLay = layout.approval_number ? (() => {
+        const res = { approval_number: "", phase: "", survey_number: "", description: "" };
+        const parts = layout.approval_number.split(" | ");
+        parts.forEach((part: string) => {
+          const [key, ...valParts] = part.split(":");
+          const val = valParts.join(":").trim();
+          if (key === "Ap") res.approval_number = val;
+          else if (key === "Ph") res.phase = val;
+          else if (key === "Sy") res.survey_number = val;
+          else if (key === "De") res.description = val;
+        });
+        return res;
+      })() : { approval_number: "", phase: "Phase 1", survey_number: "", description: "" };
+
+      setWizardLayoutPhase(unpackedLay.phase || "Phase 1");
+      setWizardLayoutDesc(unpackedLay.description || "");
+      setWizardCreationMethod("");
+      setWizardUploadedFile(null);
+      setWizardCompletedSteps({ info: true });
+
+      // Load specific geometry unique to this layout from localStorage
+      const savedGeom = localStorage.getItem(`bhoomi_geometry_layout_${layoutId}`);
+      if (savedGeom) {
+        try {
+          setObjects(JSON.parse(savedGeom));
+        } catch (e) {
+          console.error("Failed to load geometry from localStorage for layout", layoutId, e);
+        }
+      } else {
+        setObjects([]);
+      }
+    }
+    
     setStatusLog(`Workspace Shell loaded for selected layout plan. Scale rulers aligned.`);
   };
 
@@ -1240,10 +1293,31 @@ export default function MapWorkspaceIndex({
     };
   }, [currentStep, selectedObjectId, objects]);
 
-  const activeProjectObj = projectsList.find(p => p.id === selectedProjectId);
-  const activeLayoutObj = layoutsList.find(l => l.id === selectedLayoutId);
+  const activeProjectObj = projectsList.find(p => String(p.id) === String(selectedProjectId));
+  const activeLayoutObj = layoutsList.find(l => String(l.id) === String(selectedLayoutId));
   const activeVersionObj = versions.find(v => v.id === activeVersionId);
   const selectedObj = objects.find(o => o.id === selectedObjectId) || null;
+
+  // Unpack additional fields from approval_number safely for activeLayoutObj
+  const unpacked = activeLayoutObj?.approval_number ? (() => {
+    const res = { approval_number: "", phase: "", survey_number: "", description: "" };
+    const parts = activeLayoutObj.approval_number.split(" | ");
+    parts.forEach((part: string) => {
+      const [key, ...valParts] = part.split(":");
+      const val = valParts.join(":").trim();
+      if (key === "Ap") res.approval_number = val;
+      else if (key === "Ph") res.phase = val;
+      else if (key === "Sy") res.survey_number = val;
+      else if (key === "De") res.description = val;
+    });
+    return res;
+  })() : { approval_number: "", phase: "Phase 1", survey_number: "", description: "" };
+
+  const isLayoutInfoMissing = !activeLayoutObj?.name || 
+                              !activeLayoutObj?.code || 
+                              !activeLayoutObj?.layout_type || 
+                              !unpacked.phase || 
+                              !unpacked.description;
 
   // Filter lists based on search
   const filteredProjects = projectsList.filter(p => 
@@ -1669,7 +1743,9 @@ export default function MapWorkspaceIndex({
                   {WIZARD_STEPS_META.map((step, idx) => {
                     const label = (step.id === "info" && selectedLayoutId) ? "Project & Layout Info" : step.label;
                     const isActive = wizardStep === step.id;
-                    const isCompleted = wizardCompletedSteps[step.id];
+                    const isCompleted = step.id === "info" 
+                      ? (!!selectedProjectId && !!selectedLayoutId && !!activeLayoutObj)
+                      : !!wizardCompletedSteps[step.id];
                     return (
                       <div
                         key={step.id}
@@ -1762,164 +1838,130 @@ export default function MapWorkspaceIndex({
               {/* STEP 1: Layout Info Form */}
               {wizardStep === "info" && (
                 <div className="flex-1 p-8 overflow-y-auto flex items-center justify-center animate-fadeIn" id="wizard-info-view">
-                  {selectedLayoutId ? (
-                    <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-2xl w-full shadow-md space-y-6">
-                      <div className="space-y-1.5 border-b border-slate-100 pb-4">
-                        <span className="bg-indigo-50 border border-indigo-150 text-indigo-700 font-mono text-[9px] font-bold px-2.5 py-0.5 rounded uppercase">
-                          System Registry Lock
-                        </span>
-                        <h3 className="text-base font-extrabold text-slate-900 tracking-tight mt-1 flex items-center gap-1.5">
-                          Step 1: Project & Layout Info (Read Only)
-                        </h3>
-                        <p className="text-xs text-slate-500 leading-relaxed">
-                          This Layout subdivision plan already exists in the BhoomiOne ERP registry. Basic metadata parameters are read-only to guarantee single source of truth integrity.
-                        </p>
-                      </div>
+                  <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-2xl w-full shadow-md space-y-6">
+                    <div className="space-y-1.5 border-b border-slate-100 pb-4">
+                      <span className="bg-indigo-50 border border-indigo-150 text-indigo-700 font-mono text-[9px] font-bold px-2.5 py-0.5 rounded uppercase">
+                        System Registry Lock
+                      </span>
+                      <h3 className="text-base font-extrabold text-slate-900 tracking-tight mt-1 flex items-center gap-1.5">
+                        Step 1: Project & Layout Info (Read Only)
+                      </h3>
+                      <p className="text-xs text-slate-500 leading-relaxed">
+                        This Layout subdivision plan already exists in the BhoomiOne ERP registry. Basic metadata parameters are read-only to guarantee single source of truth integrity.
+                      </p>
+                    </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Parent Project Context */}
-                        <div className="space-y-3.5 bg-slate-50/50 p-4 rounded-xl border border-slate-150">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1">
-                            Parent Project Context
-                          </p>
-                          <div className="space-y-2 text-xs">
-                            <p className="flex justify-between gap-4">
-                              <span className="text-slate-500">Project Name:</span>
-                              <strong className="text-slate-800 text-right">{activeProjectObj?.name || "N/A"}</strong>
-                            </p>
-                            <p className="flex justify-between gap-4">
-                              <span className="text-slate-500">Project Code:</span>
-                              <strong className="text-slate-800 font-mono text-right">{activeProjectObj?.code || "N/A"}</strong>
-                            </p>
-                            <p className="flex justify-between gap-4">
-                              <span className="text-slate-500">Developer:</span>
-                              <strong className="text-slate-800 text-right">{activeProjectObj?.developer_name || activeProjectObj?.developer || "N/A"}</strong>
-                            </p>
-                            <p className="flex justify-between gap-4">
-                              <span className="text-slate-500">Location:</span>
-                              <strong className="text-slate-800 text-right">{activeProjectObj?.location || "N/A"}</strong>
-                            </p>
+                    <div className="space-y-6">
+                      {/* PROJECT INFORMATION Section */}
+                      <div className="bg-slate-50/70 rounded-2xl p-6 border border-slate-200/80 space-y-4">
+                        <h4 className="text-xs font-extrabold text-indigo-700 uppercase tracking-widest border-b border-slate-100 pb-2">
+                          Project Information
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-xs">
+                          <div className="space-y-1">
+                            <span className="text-slate-400 block font-medium">Project Name:</span>
+                            <strong className="text-slate-850 font-semibold">{activeProjectObj?.name || "N/A"}</strong>
                           </div>
-                        </div>
-
-                        {/* Layout Subdivision Plan */}
-                        <div className="space-y-3.5 bg-slate-50/50 p-4 rounded-xl border border-slate-150">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1">
-                            Layout Subdivision Plan
-                          </p>
-                          <div className="space-y-2 text-xs">
-                            <p className="flex justify-between gap-4">
-                              <span className="text-slate-500">Layout Name:</span>
-                              <strong className="text-slate-800 text-right">{wizardLayoutName || activeLayoutObj?.name || "N/A"}</strong>
-                            </p>
-                            <p className="flex justify-between gap-4">
-                              <span className="text-slate-500">Zoning Type:</span>
-                              <strong className="text-slate-800 text-right">{wizardLayoutType || activeLayoutObj?.layout_type || "N/A"}</strong>
-                            </p>
-                            <p className="flex justify-between gap-4">
-                              <span className="text-slate-500">Development Phase:</span>
-                              <strong className="text-slate-800 text-right">{wizardLayoutPhase || "Phase 1"}</strong>
-                            </p>
-                            <p className="flex justify-between gap-4">
-                              <span className="text-slate-500">Lifecycle State:</span>
-                              <strong className="text-indigo-700 font-bold uppercase font-mono text-right">{activeLayoutObj?.status || "N/A"}</strong>
-                            </p>
+                          <div className="space-y-1">
+                            <span className="text-slate-400 block font-medium">Project Code:</span>
+                            <strong className="text-slate-850 font-mono font-bold uppercase">{activeProjectObj?.code || "N/A"}</strong>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-slate-400 block font-medium">Developer:</span>
+                            <strong className="text-slate-850 font-semibold">{activeProjectObj?.developer_name || activeProjectObj?.developer || "N/A"}</strong>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-slate-400 block font-medium">Location:</span>
+                            <strong className="text-slate-850 font-semibold">{activeProjectObj?.location || "N/A"}</strong>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-slate-400 block font-medium">RERA Number:</span>
+                            <strong className="text-indigo-700 font-mono font-bold uppercase">{activeProjectObj?.rera_number || "PENDING"}</strong>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-slate-400 block font-medium">Project Status:</span>
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-[10px] font-bold text-slate-700 uppercase">
+                              {activeProjectObj?.status || "PLANNING"}
+                            </span>
                           </div>
                         </div>
                       </div>
 
-                      {wizardLayoutDesc && (
-                        <div className="space-y-1 bg-slate-50 p-3 rounded-lg border border-slate-100 text-xs">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Description</span>
-                          <p className="italic text-slate-600 leading-relaxed">{wizardLayoutDesc}</p>
+                      {/* LAYOUT INFORMATION Section */}
+                      <div className="bg-slate-50/70 rounded-2xl p-6 border border-slate-200/80 space-y-4">
+                        <h4 className="text-xs font-extrabold text-indigo-700 uppercase tracking-widest border-b border-slate-100 pb-2">
+                          Layout Information
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-xs">
+                          <div className="space-y-1">
+                            <span className="text-slate-400 block font-medium">Layout Name:</span>
+                            <strong className="text-slate-850 font-semibold">{wizardLayoutName || activeLayoutObj?.name || "N/A"}</strong>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-slate-400 block font-medium">Layout Code:</span>
+                            <strong className="text-slate-850 font-mono font-bold uppercase">{activeLayoutObj?.code || "N/A"}</strong>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-slate-400 block font-medium">Layout Type:</span>
+                            <strong className="text-slate-850 font-semibold">{activeLayoutObj?.layout_type || "N/A"}</strong>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-slate-400 block font-medium">Zoning Classification:</span>
+                            <strong className="text-slate-850 font-semibold">{activeLayoutObj?.layout_type || "N/A"}</strong>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-slate-400 block font-medium">Development Phase:</span>
+                            <strong className="text-slate-850 font-semibold">{unpacked.phase || "Phase 1"}</strong>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-slate-400 block font-medium">Approval Status:</span>
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-150 text-[10px] font-bold text-indigo-700 uppercase">
+                              {activeLayoutObj?.status || "N/A"}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Description box */}
+                        <div className="space-y-1.5 border-t border-slate-100 pt-4 mt-2">
+                          <span className="text-slate-400 block font-medium text-xs">Description:</span>
+                          <p className="italic text-slate-650 text-xs leading-relaxed bg-white p-3 rounded-xl border border-slate-150">
+                            {unpacked.description || "No operational brief registered."}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* "Complete Layout Details" Missing alert if anything is incomplete */}
+                      {isLayoutInfoMissing && (
+                        <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+                          <div className="flex gap-3">
+                            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                            <div className="space-y-1">
+                              <p className="text-xs font-bold">Incomplete Layout Specifications</p>
+                              <p className="text-[11px] text-amber-700 leading-normal">
+                                Some layout descriptor values (e.g., development phase or brief) are missing from the registry database.
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => onEditLayoutDetails?.(selectedLayoutId)}
+                            className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs py-2 px-4 rounded-xl shadow-sm shrink-0 transition-colors cursor-pointer border border-amber-700"
+                          >
+                            Complete Layout Details
+                          </button>
                         </div>
                       )}
-
-                      <div className="pt-4 border-t border-slate-100 flex justify-end">
-                        <button
-                          onClick={() => setWizardStep("method")}
-                          className="inline-flex items-center gap-1.5 bg-indigo-650 hover:bg-indigo-750 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition-all shadow-sm cursor-pointer"
-                        >
-                          <span>Continue to Step 2: Choose Method</span>
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
                     </div>
-                  ) : (
-                    <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-xl w-full shadow-md space-y-6">
-                      <div className="space-y-1">
-                        <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
-                          Step 1: Collect Layout Plan Information
-                        </h3>
-                        <p className="text-xs text-slate-500">
-                          Specify basic parameters regarding zoning designations, surveys, and planned construction phases.
-                        </p>
-                      </div>
 
-                      <div className="space-y-4">
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                            <span>Layout Name</span>
-                            <span className="text-rose-500 font-bold">*</span>
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="e.g., Sector C Green Park Meadows"
-                            value={wizardLayoutName}
-                            onChange={(e) => setWizardLayoutName(e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800"
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                              <span>Zoning Classification</span>
-                              <span className="text-rose-500 font-bold">*</span>
-                            </label>
-                            <select
-                              value={wizardLayoutType}
-                              onChange={(e) => setWizardLayoutType(e.target.value as any)}
-                              className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800"
-                            >
-                              <option value="">-- Select Zoning --</option>
-                              <option value="Residential">Residential</option>
-                              <option value="Commercial">Commercial</option>
-                              <option value="Mixed-Use">Mixed-Use</option>
-                            </select>
-                          </div>
-
-                          <div className="space-y-1">
-                            <label className="text-xs font-bold text-slate-700">
-                              Development Phase
-                            </label>
-                            <select
-                              value={wizardLayoutPhase}
-                              onChange={(e) => setWizardLayoutPhase(e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800"
-                            >
-                              <option value="Phase 1">Phase 1 (Immediate Release)</option>
-                              <option value="Phase 2">Phase 2 (Under Survey)</option>
-                              <option value="Phase 3">Phase 3 (Future Booking)</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-slate-700">
-                            Detailed Operational Brief
-                          </label>
-                          <textarea
-                            placeholder="Draft layout survey details, developer notes, or municipal clearance indices..."
-                            value={wizardLayoutDesc}
-                            onChange={(e) => setWizardLayoutDesc(e.target.value)}
-                            rows={4}
-                            className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 resize-none"
-                          />
-                        </div>
-                      </div>
+                    <div className="pt-4 border-t border-slate-100 flex justify-end">
+                      <button
+                        onClick={() => setWizardStep("method")}
+                        className="inline-flex items-center gap-1.5 bg-indigo-650 hover:bg-indigo-750 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition-all shadow-sm cursor-pointer"
+                      >
+                        <span>Continue to Step 2: Choose Method</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                  )}
+                  </div>
                 </div>
               )}
 
@@ -2472,7 +2514,19 @@ export default function MapWorkspaceIndex({
                 </button>
               )}
 
-              {wizardStep === "publish" ? (
+              {wizardStep === "info" ? (
+                <button
+                  onClick={() => setWizardStep("method")}
+                  disabled={!(selectedProjectId && selectedLayoutId && activeLayoutObj)}
+                  className={`font-bold text-xs px-6 py-2 rounded-xl transition-all shadow-sm ${
+                    (selectedProjectId && selectedLayoutId && activeLayoutObj)
+                      ? "bg-indigo-650 hover:bg-indigo-700 text-white cursor-pointer"
+                      : "bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed"
+                  }`}
+                >
+                  Continue to Creation Method &rarr;
+                </button>
+              ) : wizardStep === "publish" ? (
                 <button
                   onClick={handlePublishLayoutSubmit}
                   className="bg-emerald-600 hover:bg-emerald-750 text-white font-extrabold text-xs px-6 py-2 rounded-xl transition-all shadow-sm flex items-center gap-1.5"

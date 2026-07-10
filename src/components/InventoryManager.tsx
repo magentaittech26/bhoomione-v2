@@ -3498,6 +3498,14 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
             onBackToInventory={() => {
               setActiveTab("layouts");
             }}
+            onEditLayoutDetails={(layoutId) => {
+              const layoutObj = lookupLayouts.find(l => String(l.id) === String(layoutId));
+              if (layoutObj) {
+                setActiveTab("layouts");
+                setSelectedLayout(layoutObj);
+                handleStartEditLayout(layoutObj);
+              }
+            }}
           />
         </div>
       )}
