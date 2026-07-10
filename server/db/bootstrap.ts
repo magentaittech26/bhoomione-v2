@@ -270,6 +270,28 @@ export async function bootstrapDatabase() {
       )
     `);
 
+    // 16b. layout_assets Table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS layout_assets (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        layout_id UUID NOT NULL REFERENCES layouts(id) ON DELETE CASCADE,
+        asset_type VARCHAR(50) NOT NULL, -- 'PDF', 'IMAGE', 'DXF', 'SVG', 'GIS'
+        file_name VARCHAR(255) NOT NULL,
+        file_path TEXT NOT NULL, -- Holds the base64 or URL data
+        mime_type VARCHAR(100) NOT NULL,
+        file_size BIGINT NOT NULL,
+        uploaded_by VARCHAR(255) NOT NULL,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb, -- Custom resolution, scale factor, or selected page reference
+        is_active BOOLEAN NOT NULL DEFAULT TRUE, -- Active or archived
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Index support
+    await client.query("CREATE INDEX IF NOT EXISTS idx_layout_assets_layout_id ON layout_assets(layout_id)");
+    await client.query("CREATE INDEX IF NOT EXISTS idx_layout_assets_is_active ON layout_assets(is_active)");
+
     // 17. dxf_files Table
     await client.query(`
       CREATE TABLE IF NOT EXISTS dxf_files (

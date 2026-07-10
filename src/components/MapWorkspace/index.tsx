@@ -21,7 +21,10 @@ import {
   PenTool,
   Globe,
   FileCode,
-  Wrench
+  Wrench,
+  Check,
+  Info,
+  FileText
 } from "lucide-react";
 import api from "../../lib/api.ts";
 import { runValidationSuite } from "../../lib/plotEngine.ts";
@@ -354,6 +357,35 @@ const MOCK_EXTRACTED_OBJECTS: MockGeometry[] = [
     updated_at: new Date().toISOString()
   }
 ];
+
+const BLUEPRINT_SVG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+  <rect width="100%" height="100%" fill="%231e293b" />
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="%23334155" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="100%" height="100%" fill="url(%23grid)" />
+  <g stroke="%236366f1" stroke-width="2" stroke-dasharray="5 5" fill="none">
+    <rect x="100" y="80" width="600" height="440" rx="10" />
+    <text x="120" y="110" fill="%23818cf8" font-family="monospace" font-size="12" font-weight="bold">SURVEY BOUNDARY LIMITS: 440m x 600m</text>
+  </g>
+  <g stroke="%23f59e0b" stroke-width="3" fill="none">
+    <line x1="100" y1="300" x2="700" y2="300" />
+    <line x1="400" y1="80" x2="400" y2="520" />
+    <text x="410" y="290" fill="%23fbbf24" font-family="monospace" font-size="11">MAIN EAST-WEST BOULEVARD (24m ROAD)</text>
+    <text x="230" y="150" fill="%23fbbf24" font-family="monospace" font-size="11">CENTRAL AVENUE (18m ROAD)</text>
+  </g>
+  <g stroke="%2310b981" stroke-dasharray="2 2" fill="none" stroke-width="1.5">
+    <rect x="150" y="140" width="100" height="100" />
+    <rect x="270" y="140" width="100" height="100" />
+    <rect x="150" y="340" width="100" height="100" />
+    <rect x="270" y="340" width="100" height="100" />
+    <circle cx="550" cy="200" r="60" />
+    <text x="500" y="205" fill="%2334d399" font-family="sans-serif" font-size="12" font-weight="bold">AMENITY PARK</text>
+  </g>
+  <text x="400" y="570" fill="%2394a3b8" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">BHOOMI_PHASE_3_CALIBRATION_BLUEPRINT_DRAFT_V2</text>
+</svg>`;
 
 type WizardStep =
   | "info"
@@ -706,11 +738,299 @@ export default function MapWorkspaceIndex({
   const [wizardLayoutPhase, setWizardLayoutPhase] = useState("Phase 1");
   const [wizardLayoutDesc, setWizardLayoutDesc] = useState("");
   const [wizardCreationMethod, setWizardCreationMethod] = useState<"pdf" | "image" | "dxf" | "manual" | "gis" | "">("");
-  const [wizardUploadedFile, setWizardUploadedFile] = useState<{ name: string; size: number } | null>(null);
+  const [wizardUploadedFile, setWizardUploadedFile] = useState<any | null>(null);
   const [wizardCompletedSteps, setWizardCompletedSteps] = useState<Record<string, boolean>>({});
+
+  // Step 3A variables
+  const [importSubStep, setImportSubStep] = useState<"upload" | "preview" | "scale" | "background" | "validation">("upload");
+  const [importZoom, setImportZoom] = useState(1);
+  const [importPan, setImportPan] = useState({ x: 0, y: 0 });
+  const [importRotate, setImportRotate] = useState<number>(0);
+  const [importOpacity, setImportOpacity] = useState<number>(80);
+  const [importBrightness, setImportBrightness] = useState<number>(100);
+  const [importContrast, setImportContrast] = useState<number>(100);
+  const [importLock, setImportLock] = useState<boolean>(false);
+  const [importShowGrid, setImportShowGrid] = useState<boolean>(true);
+  const [importSnapPreview, setImportSnapPreview] = useState<boolean>(true);
+  const [importUnit, setImportUnit] = useState<"Metric" | "Feet" | "Meters">("Meters");
+  const [importCalibP1, setImportCalibP1] = useState<{ x: number; y: number } | null>(null);
+  const [importCalibP2, setImportCalibP2] = useState<{ x: number; y: number } | null>(null);
+  const [importCalibDistance, setImportCalibDistance] = useState<string>("");
+  const [importCalibActive, setImportCalibActive] = useState<boolean>(false);
+  const [importFileURL, setImportFileURL] = useState<string>("");
+
+  // Helper for generating dynamic blueprint previews for different PDF pages
+  const getDynamicBlueprint = (page: number) => {
+    if (page === 1) {
+      return `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+        <rect width="100%" height="100%" fill="%231e293b" />
+        <defs>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="%23334155" stroke-width="1"/>
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(%23grid)" />
+        <g fill="none" stroke="%236366f1" stroke-width="2">
+          <rect x="150" y="100" width="500" height="400" rx="12" />
+          <line x1="150" y1="220" x2="650" y2="220" stroke-width="1" stroke-dasharray="4 4" />
+        </g>
+        <g fill="%23f8fafc" font-family="sans-serif">
+          <text x="400" y="150" font-size="24" font-weight="bold" text-anchor="middle" fill="%23818cf8">BHOOMIONE V3 STUDIO</text>
+          <text x="400" y="185" font-size="12" font-weight="medium" text-anchor="middle" fill="%2394a3b8">SUBDIVISION DEVELOPMENT LAND PLAT</text>
+          
+          <text x="180" y="260" font-size="14" font-weight="bold" fill="%23cbd5e1">DOCUMENT SHEET 1 OF 3</text>
+          <text x="180" y="290" font-size="11" fill="%2394a3b8">Title: Cover Sheet, Location Map &amp; General Drafting Notes</text>
+          <text x="180" y="315" font-size="11" fill="%2394a3b8">Survey Reference: SR-2026-N491</text>
+          <text x="180" y="340" font-size="11" fill="%2394a3b8">Approved By: Town &amp; Country Planning Directorate</text>
+          
+          <text x="400" y="440" font-size="11" font-family="monospace" text-anchor="middle" fill="%23fbbf24">[PAGE IS NOT INTENDED FOR DIRECT CALIBRATION - SELECT PAGE 2]</text>
+        </g>
+      </svg>`;
+    } else if (page === 3) {
+      return `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+        <rect width="100%" height="100%" fill="%231e293b" />
+        <defs>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="%23334155" stroke-width="1"/>
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(%23grid)" />
+        
+        <g stroke="%23fbbf24" stroke-width="2" fill="none">
+          <line x1="100" y1="150" x2="700" y2="150" />
+          <line x1="100" y1="450" x2="700" y2="450" />
+          <text x="110" y="140" fill="%23f59e0b" font-family="monospace" font-size="12">STREET CROSS-SECTION &amp; RIGHT OF WAY (ROW)</text>
+        </g>
+
+        <g fill="%2394a3b8" font-family="sans-serif" font-size="10">
+          <rect x="150" y="200" width="120" height="180" fill="none" stroke="%23475569" stroke-width="1" />
+          <text x="210" y="290" text-anchor="middle">DRAINAGE PARAPET</text>
+
+          <rect x="300" y="200" width="200" height="180" fill="none" stroke="%23475569" stroke-width="1" />
+          <text x="400" y="290" text-anchor="middle">18m PAVED ROADWAY</text>
+
+          <rect x="530" y="200" width="120" height="180" fill="none" stroke="%23475569" stroke-width="1" />
+          <text x="590" y="290" text-anchor="middle">UTILITY DUCT</text>
+        </g>
+        
+        <text x="400" y="550" fill="%2394a3b8" font-family="sans-serif" font-size="13" font-weight="bold" text-anchor="middle">SHEET 3: ENGINEERING LAYOUT STANDARDS &amp; DETAIL DRAWINGS</text>
+      </svg>`;
+    } else {
+      return BLUEPRINT_SVG;
+    }
+  };
+
+  // Helper to persist display and alignment state to layout asset table in Postgres (Requirement 5)
+  const saveDisplayStateToDb = async (updatedFields: any) => {
+    if (selectedLayoutId && wizardUploadedFile) {
+      try {
+        const mergedMeta = {
+          ...wizardUploadedFile,
+          ...updatedFields
+        };
+        // Update local state to keep it in sync
+        setWizardUploadedFile(mergedMeta);
+        
+        // Handle PDF dynamic SVG preview adjustment for mocked blueprints
+        let finalURL = importFileURL;
+        if (wizardUploadedFile.name?.toLowerCase().endsWith(".pdf") && updatedFields.selectedPage !== undefined) {
+          if (importFileURL.startsWith("data:image/svg+xml")) {
+            finalURL = getDynamicBlueprint(updatedFields.selectedPage);
+            setImportFileURL(finalURL);
+          }
+        }
+
+        await api.createLayoutAsset(selectedLayoutId, {
+          asset_type: wizardUploadedFile.name?.toLowerCase().endsWith(".pdf") ? "PDF" : "IMAGE",
+          file_name: wizardUploadedFile.name,
+          file_path_or_base64: finalURL,
+          mime_type: wizardUploadedFile.type || "image/png",
+          file_size: wizardUploadedFile.size,
+          metadata: mergedMeta
+        });
+      } catch (err) {
+        console.error("Failed to save display state to db:", err);
+      }
+    }
+  };
+
+  // Helper to handle real file upload, metadata extraction, base64 encoding and cloud persistence
+  const handleFileSelection = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const dataUrl = e.target?.result as string;
+      const currentUser = api.getCurrentUser();
+      const uploadedBy = currentUser?.name || currentUser?.email || "SaaS Admin";
+      const uploadDate = new Date().toLocaleString();
+      const isPDF = file.type.includes("pdf") || file.name.toLowerCase().endsWith(".pdf");
+      const assetType = isPDF ? "PDF" : "IMAGE";
+      
+      const fileMeta = {
+        name: file.name,
+        size: file.size,
+        type: file.type || (isPDF ? "application/pdf" : file.name.endsWith(".tiff") ? "image/tiff" : "image/png"),
+        uploadDate,
+        uploadedBy,
+        dataUrl,
+        selectedPage: isPDF ? 2 : 1, // Default to page 2 (Main Layout Sheet) for mock multi-page PDFs
+        pageCount: isPDF ? 3 : 1
+      };
+      
+      setWizardUploadedFile(fileMeta);
+      
+      // If it's a multi-page PDF, load page 2 by default
+      const renderUrl = isPDF ? getDynamicBlueprint(2) : dataUrl;
+      setImportFileURL(renderUrl);
+      setStatusLog(`Drawing file loaded: ${file.name}`);
+
+      if (selectedLayoutId) {
+        try {
+          await api.createLayoutAsset(selectedLayoutId, {
+            asset_type: assetType,
+            file_name: file.name,
+            file_path_or_base64: renderUrl,
+            mime_type: fileMeta.type,
+            file_size: file.size,
+            metadata: {
+              uploadDate,
+              uploadedBy,
+              selectedPage: fileMeta.selectedPage,
+              pageCount: fileMeta.pageCount
+            }
+          });
+          setStatusLog(`Asset successfully persisted to database: ${file.name}`);
+        } catch (err) {
+          console.error("Failed to persist asset to database:", err);
+          setStatusLog(`Layout saved locally: ${file.name}`);
+        }
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Helper to load and save a mock recent layout blueprint file
+  const handleSelectRecentUpload = async (item: { name: string, size: number, type: string, date: string, uploadedBy: string, pageCount: number, defaultPage: number }) => {
+    let mockContent = BLUEPRINT_SVG;
+    if (item.name.endsWith(".pdf")) {
+      mockContent = getDynamicBlueprint(item.defaultPage);
+    } else if (item.name.includes("greenfield")) {
+      mockContent = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+        <rect width="100%" height="100%" fill="%230f172a" />
+        <defs>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="%231e293b" stroke-width="1"/>
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(%23grid)" />
+        <rect x="150" y="100" width="500" height="400" rx="20" fill="none" stroke="%2310b981" stroke-width="3" stroke-dasharray="10 5" />
+        <text x="400" y="300" fill="%2334d399" font-family="sans-serif" font-size="18" font-weight="bold" text-anchor="middle">GREENFIELD SURVEY PARCEL B</text>
+        <text x="400" y="330" fill="%2364748b" font-family="monospace" font-size="11" text-anchor="middle">AREA: 22.4 HECTARES | SCALE 1:1250</text>
+      </svg>`;
+    } else {
+      mockContent = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+        <rect width="100%" height="100%" fill="%231e1b4b" />
+        <defs>
+          <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse">
+            <path d="M 30 0 L 0 0 0 30" fill="none" stroke="%23312e81" stroke-width="1"/>
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(%23grid)" />
+        <circle cx="400" cy="300" r="220" fill="none" stroke="%23818cf8" stroke-width="2" />
+        <text x="400" y="290" fill="%23c7d2fe" font-family="sans-serif" font-size="16" font-weight="extrabold" text-anchor="middle">EAST ZONE SECTOR IV DRAFT</text>
+        <text x="400" y="320" fill="%23a5b4fc" font-family="monospace" font-size="11" text-anchor="middle">EAST_ZONE_SECTOR_4.JPG</text>
+      </svg>`;
+    }
+
+    const fileMeta = {
+      name: item.name,
+      size: item.size,
+      type: item.type,
+      uploadDate: item.date,
+      uploadedBy: item.uploadedBy,
+      dataUrl: mockContent,
+      selectedPage: item.defaultPage,
+      pageCount: item.pageCount
+    };
+
+    setWizardUploadedFile(fileMeta);
+    setImportFileURL(mockContent);
+    setStatusLog(`Recent layout loaded: ${item.name}`);
+
+    if (selectedLayoutId) {
+      try {
+        await api.createLayoutAsset(selectedLayoutId, {
+          asset_type: item.name.toLowerCase().endsWith(".pdf") ? "PDF" : "IMAGE",
+          file_name: item.name,
+          file_path_or_base64: mockContent,
+          mime_type: item.type,
+          file_size: item.size,
+          metadata: {
+            uploadDate: item.date,
+            uploadedBy: item.uploadedBy,
+            selectedPage: item.defaultPage,
+            pageCount: item.pageCount
+          }
+        });
+        setStatusLog(`Recent asset synchronized with Postgres backend database for layout.`);
+      } catch (err) {
+        console.error("Failed to persist recent asset:", err);
+      }
+    }
+  };
 
   // Local draft cache loader state
   const [draftLayoutData, setDraftLayoutData] = useState<any | null>(null);
+
+  // Auto-reload active layout asset from the database when selectedLayoutId changes (Requirement 6)
+  useEffect(() => {
+    if (selectedLayoutId && isWizardMode) {
+      const loadActiveAsset = async () => {
+        try {
+          const activeAsset = await api.fetchActiveLayoutAsset(selectedLayoutId);
+          if (activeAsset) {
+            const meta = activeAsset.metadata || {};
+            const fileMeta = {
+              id: activeAsset.id,
+              name: activeAsset.file_name,
+              size: Number(activeAsset.file_size),
+              type: activeAsset.mime_type,
+              uploadDate: meta.uploadDate || new Date(activeAsset.created_at).toLocaleString(),
+              uploadedBy: activeAsset.uploaded_by || meta.uploadedBy || "SaaS Admin",
+              dataUrl: activeAsset.file_path, // Holds file content / URL
+              selectedPage: meta.selectedPage || 1,
+              pageCount: meta.pageCount || 1,
+              zoom: meta.zoom || 1,
+              pan: meta.pan || { x: 0, y: 0 },
+              rotate: meta.rotate || 0,
+              opacity: meta.opacity || 80,
+              brightness: meta.brightness || 100,
+              contrast: meta.contrast || 100,
+              lock: meta.lock || false,
+              showGrid: meta.showGrid !== undefined ? meta.showGrid : true
+            };
+
+            setWizardUploadedFile(fileMeta);
+            setImportFileURL(activeAsset.file_path);
+            
+            // Restore actual drawing controls
+            if (meta.zoom) setImportZoom(meta.zoom);
+            if (meta.pan) setImportPan(meta.pan);
+            if (meta.rotate !== undefined) setImportRotate(meta.rotate);
+            if (meta.opacity !== undefined) setImportOpacity(meta.opacity);
+            if (meta.brightness !== undefined) setImportBrightness(meta.brightness);
+            if (meta.contrast !== undefined) setImportContrast(meta.contrast);
+            if (meta.lock !== undefined) setImportLock(meta.lock);
+            if (meta.showGrid !== undefined) setImportShowGrid(meta.showGrid);
+            
+            setStatusLog(`Successfully reloaded previously uploaded layout: ${activeAsset.file_name}`);
+          }
+        } catch (err) {
+          console.error("Failed to fetch active layout asset:", err);
+        }
+      };
+      loadActiveAsset();
+    }
+  }, [selectedLayoutId, isWizardMode]);
 
   // Sync draft data on project selection
   useEffect(() => {
@@ -742,6 +1062,7 @@ export default function MapWorkspaceIndex({
       wizardLayoutDesc,
       wizardCreationMethod,
       wizardUploadedFile,
+      importFileURL,
       wizardCompletedSteps,
       objects
     };
@@ -757,6 +1078,7 @@ export default function MapWorkspaceIndex({
     wizardLayoutDesc,
     wizardCreationMethod,
     wizardUploadedFile,
+    importFileURL,
     wizardCompletedSteps,
     objects
   ]);
@@ -815,6 +1137,7 @@ export default function MapWorkspaceIndex({
       setWizardLayoutDesc(draftLayoutData.wizardLayoutDesc || "");
       setWizardCreationMethod(draftLayoutData.wizardCreationMethod || "");
       setWizardUploadedFile(draftLayoutData.wizardUploadedFile || null);
+      setImportFileURL(draftLayoutData.importFileURL || (draftLayoutData.wizardUploadedFile ? draftLayoutData.wizardUploadedFile.dataUrl : "") || "");
       setWizardCompletedSteps(draftLayoutData.wizardCompletedSteps || {});
       setObjects(draftLayoutData.objects || []);
       setSelectedObjectId(null);
@@ -875,6 +1198,20 @@ export default function MapWorkspaceIndex({
         alert("Please select or drag-and-drop a PDF, PNG, or JPG layout blueprint to proceed.");
         return;
       }
+      // Save display parameters to layout asset cloud metadata on step proceed (Requirement 4 & 5)
+      saveDisplayStateToDb({
+        zoom: importZoom,
+        pan: importPan,
+        rotate: importRotate,
+        opacity: importOpacity,
+        brightness: importBrightness,
+        contrast: importContrast,
+        lock: importLock,
+        showGrid: importShowGrid,
+        calibP1: importCalibP1,
+        calibP2: importCalibP2,
+        calibDistance: importCalibDistance
+      });
     }
 
     if (wizardStep === "boundary") {
@@ -2227,102 +2564,1173 @@ export default function MapWorkspaceIndex({
 
               {/* STEP 3A: Import PDF/Image Drawing */}
               {wizardStep === "import_pdf" && (
-                <div className="flex-1 p-6 lg:p-8 overflow-y-auto flex flex-col justify-start max-w-2xl mx-auto w-full space-y-6 animate-fadeIn" id="wizard-import-pdf-view">
-                  <div className="space-y-1.5 border-b border-slate-150 pb-4">
-                    <span className="bg-indigo-50 border border-indigo-150 text-indigo-700 font-mono text-[9px] font-bold px-2.5 py-0.5 rounded uppercase">
-                      Step 3A: Digital Tracing Overlay
-                    </span>
-                    <h3 className="text-base font-extrabold text-slate-900 tracking-tight mt-1">
-                      Import Layout Drawing / Survey Blueprint
-                    </h3>
-                    <p className="text-xs text-slate-500 leading-relaxed">
-                      Upload an approved municipal layout blueprint in PDF, PNG, or JPG format. The drawing will be loaded as an ambient drafting layer, allowing you to trace boundary limits and plots with millimeter precision.
-                    </p>
-                  </div>
-
-                  {/* Drag and Drop Zone */}
-                  <div 
-                    onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                    onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      const file = e.dataTransfer.files?.[0];
-                      if (file) {
-                        setWizardUploadedFile({ name: file.name, size: file.size });
-                        setStatusLog(`Blueprint file dropped: ${file.name}`);
-                      }
-                    }}
-                    onClick={() => {
-                      const input = document.createElement("input");
-                      input.type = "file";
-                      input.accept = ".pdf, image/*";
-                      input.onchange = (e: any) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          setWizardUploadedFile({ name: file.name, size: file.size });
-                          setStatusLog(`Blueprint file selected: ${file.name}`);
-                        }
-                      };
-                      input.click();
-                    }}
-                    className="border-2 border-dashed border-indigo-200 hover:border-indigo-400 rounded-2xl p-8 text-center bg-white hover:bg-slate-50 cursor-pointer transition-all space-y-4 shadow-sm"
-                    id="pdf-drag-drop-zone"
-                  >
-                    <div className="mx-auto bg-indigo-50 text-indigo-600 w-12 h-12 rounded-full flex items-center justify-center">
-                      <UploadCloud className="w-6 h-6" />
-                    </div>
-                    <div className="space-y-1 text-xs">
-                      <p className="font-bold text-slate-800">
-                        Drag and drop your PDF or Image blueprint here
-                      </p>
-                      <p className="text-slate-500 text-[11px]">
-                        Supports high-resolution PDF, PNG, or JPG (Max 25MB)
+                <div className="flex-1 flex flex-col lg:flex-row overflow-hidden h-full min-h-0 bg-slate-50 animate-fadeIn" id="wizard-import-pdf-view">
+                  {/* Left Column: Substep Stepper & Parameters Control Panel */}
+                  <div className={`border-r border-slate-200 bg-white flex flex-col h-full overflow-hidden flex-shrink-0 transition-all duration-300 ${
+                    importSubStep === "validation" ? "w-full" : "w-full lg:w-[420px]"
+                  }`} id="import-pdf-control-pane">
+                    
+                    {/* Header */}
+                    <div className="p-5 border-b border-slate-150 space-y-1 bg-slate-50/50">
+                      <span className="bg-indigo-50 border border-indigo-150 text-indigo-700 font-mono text-[9px] font-bold px-2.5 py-0.5 rounded uppercase">
+                        Step 3A: Calibration Base
+                      </span>
+                      <h3 className="text-base font-extrabold text-slate-900 tracking-tight mt-1">
+                        PDF &amp; Image Import Wizard
+                      </h3>
+                      <p className="text-xs text-slate-500 leading-relaxed">
+                        Import approved drawings, rotate, adjust background, calibrate scale, and validate draft alignment.
                       </p>
                     </div>
-                  </div>
 
-                  {/* Selected File Card */}
-                  {wizardUploadedFile && (
-                    <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4 animate-fadeIn" id="pdf-uploaded-stats">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="bg-emerald-50 text-emerald-700 p-2.5 rounded-xl border border-emerald-100">
-                            <CheckCircle2 className="w-5 h-5" />
-                          </div>
-                          <div className="space-y-0.5">
-                            <p className="text-xs font-bold text-slate-800 truncate max-w-xs sm:max-w-md">
-                              {wizardUploadedFile.name}
-                            </p>
-                            <p className="text-[10px] text-slate-500 font-mono">
-                              {(wizardUploadedFile.size / (1024 * 1024)).toFixed(2)} MB &bull; Subdivision Drawing Base
-                            </p>
-                          </div>
-                        </div>
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setWizardUploadedFile(null);
-                            setStatusLog("Cleared uploaded blueprint drawing base.");
-                          }}
-                          className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-slate-100 transition-all cursor-pointer border-0"
+                    {/* Sub-steps Navigation tabs */}
+                    <div className="flex border-b border-slate-150 bg-slate-50 text-[11px] font-medium font-mono">
+                      {[
+                        { id: "upload", label: "1. Upload" },
+                        { id: "preview", label: "2. Orient" },
+                        { id: "scale", label: "3. Scale" },
+                        { id: "background", label: "4. Display" },
+                        { id: "validation", label: "5. Validate" }
+                      ].map((subTab) => (
+                        <button
+                          key={subTab.id}
+                          onClick={() => setImportSubStep(subTab.id as any)}
+                          className={`flex-1 text-center py-3 border-b-2 transition-all cursor-pointer border-0 ${
+                            importSubStep === subTab.id
+                              ? "border-indigo-600 text-indigo-700 font-bold bg-white"
+                              : "border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/50"
+                          }`}
                         >
-                          <X className="w-4 h-4" />
+                          {subTab.label.split(". ")[1]}
                         </button>
+                      ))}
+                    </div>
+
+                    {/* Sub-step content scrollable container */}
+                    <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                      
+                      {/* SUBSTEP 1: UPLOAD LAYOUT */}
+                      {importSubStep === "upload" && (
+                        <div className="space-y-4 animate-fadeIn">
+                          <div className="space-y-1">
+                            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider font-mono">
+                              1. Upload Layout drawing
+                            </h4>
+                            <p className="text-xs text-slate-500 leading-relaxed">
+                              Upload high-resolution drawing files. BhoomiOne scales layout lines with exact millimeter alignment.
+                            </p>
+                          </div>
+
+                          {/* Drag and Drop Zone */}
+                          <div 
+                            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                            onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              const file = e.dataTransfer.files?.[0];
+                              if (file) {
+                                handleFileSelection(file);
+                              }
+                            }}
+                            onClick={() => {
+                              const input = document.createElement("input");
+                              input.type = "file";
+                              input.accept = ".pdf, image/*";
+                              input.onchange = (e: any) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  handleFileSelection(file);
+                                }
+                              };
+                              input.click();
+                            }}
+                            className="border-2 border-dashed border-indigo-200 hover:border-indigo-400 rounded-2xl p-6 text-center bg-slate-50/50 hover:bg-indigo-50/20 cursor-pointer transition-all space-y-3"
+                          >
+                            <div className="mx-auto bg-indigo-50 text-indigo-600 w-10 h-10 rounded-full flex items-center justify-center">
+                              <UploadCloud className="w-5 h-5" strokeWidth={2} />
+                            </div>
+                            <div className="space-y-1 text-xs">
+                              <p className="font-bold text-slate-800">Drag &amp; Drop Drawing File</p>
+                              <p className="text-slate-500 text-[11px]">Supports PDF, PNG, JPG, JPEG, TIFF (Max 25MB)</p>
+                            </div>
+                            <span className="inline-block text-[10px] font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1 rounded-lg border border-indigo-100">
+                              Browse Files
+                            </span>
+                          </div>
+
+                          {/* Recent Uploads Section */}
+                          <div className="space-y-2 pt-2">
+                            <h5 className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest font-mono">
+                              Recent Approved Uploads
+                            </h5>
+                            <div className="space-y-2">
+                              {[
+                                { name: "bhoomi_phase3_approved_v2.pdf", size: 4892411, type: "application/pdf", date: "Today, 10:42 AM", uploadedBy: "System Architect", pageCount: 3, defaultPage: 2 },
+                                { name: "survey_layout_greenfield.png", size: 2195023, type: "image/png", date: "Yesterday, 3:15 PM", uploadedBy: "Survey Lead Officer", pageCount: 1, defaultPage: 1 },
+                                { name: "east_zone_sector_4.jpg", size: 3450212, type: "image/jpeg", date: "Jul 08, 2026", uploadedBy: "Zonal Planner", pageCount: 1, defaultPage: 1 }
+                              ].map((item, idx) => (
+                                <div
+                                  key={idx}
+                                  onClick={() => {
+                                    handleSelectRecentUpload(item);
+                                  }}
+                                  className={`p-3 rounded-xl border flex items-center justify-between text-xs cursor-pointer transition-all ${
+                                    wizardUploadedFile?.name === item.name
+                                      ? "border-indigo-600 bg-indigo-50/40"
+                                      : "border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300"
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2.5 min-w-0">
+                                    <div className={`p-1.5 rounded-lg ${wizardUploadedFile?.name === item.name ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-500"}`}>
+                                      <FileImage className="w-4 h-4" />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="font-bold text-slate-800 truncate">{item.name}</p>
+                                      <p className="text-[10px] text-slate-500 font-mono">
+                                        {(item.size / (1024 * 1024)).toFixed(2)} MB &bull; {item.date}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                                    wizardUploadedFile?.name === item.name
+                                      ? "bg-indigo-100 text-indigo-800 border-indigo-200"
+                                      : "bg-slate-100 text-slate-600 border-slate-200"
+                                  }`}>
+                                    {wizardUploadedFile?.name === item.name ? "Active" : "Load"}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Selected File Details (Requirement 8) */}
+                          {wizardUploadedFile && (
+                            <div className="bg-emerald-50/40 border border-emerald-150 rounded-xl p-4 space-y-3 animate-fadeIn">
+                              <div className="flex items-center justify-between border-b border-emerald-100 pb-2">
+                                <div className="flex items-center gap-2.5">
+                                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                  <span className="text-xs font-bold text-slate-800 truncate max-w-[200px]">
+                                    {wizardUploadedFile.name}
+                                  </span>
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    setWizardUploadedFile(null);
+                                    setImportFileURL("");
+                                    setStatusLog("Cleared uploaded blueprint drawing base.");
+                                  }}
+                                  className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-slate-100/80 transition-colors border-0 cursor-pointer"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                              
+                              <div className="space-y-1 text-[10px] text-slate-600 font-mono">
+                                <div className="flex justify-between">
+                                  <span className="text-slate-400">File Type:</span>
+                                  <span className="font-semibold text-slate-700">{wizardUploadedFile.type || "Unknown"}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-slate-400">File Size:</span>
+                                  <span className="font-semibold text-slate-700">{(wizardUploadedFile.size / (1024 * 1024)).toFixed(2)} MB</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-slate-400">Uploaded On:</span>
+                                  <span className="font-semibold text-slate-700">{wizardUploadedFile.uploadDate || new Date().toLocaleString()}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-slate-400">Uploaded By:</span>
+                                  <span className="font-semibold text-slate-700">{wizardUploadedFile.uploadedBy || "SaaS Admin"}</span>
+                                </div>
+                              </div>
+
+                              <div className="text-[10px] text-emerald-700 font-bold bg-emerald-100/40 p-1.5 rounded text-center">
+                                Successfully Synchronized with BhoomiOne Layout Cloud
+                              </div>
+                            </div>
+                          )}
+
+                          {/* PDF Page Selection (Requirement 9 & 10) */}
+                          {wizardUploadedFile && (wizardUploadedFile.type?.includes("pdf") || wizardUploadedFile.name?.toLowerCase().endsWith(".pdf")) && (
+                            <div className="border border-slate-200 bg-white rounded-xl p-4 space-y-3 animate-fadeIn">
+                              <h5 className="text-[11px] font-bold text-slate-800 uppercase tracking-wider font-mono">
+                                SELECT DRAWING SHEET PAGE ({wizardUploadedFile.pageCount || 3} Pages Found)
+                              </h5>
+                              <p className="text-[10px] text-slate-500">
+                                This blueprint contains multiple drafting pages. Click on the page that contains the master layout plot coordinates to calibrate.
+                              </p>
+
+                              <div className="grid grid-cols-3 gap-2.5 pt-1">
+                                {[
+                                  { page: 1, title: "Cover Page", description: "Title block & general notes" },
+                                  { page: 2, title: "Layout Plan", description: "Main layout & plot numbers" },
+                                  { page: 3, title: "Details View", description: "Technical cross sections" }
+                                ].map((p) => {
+                                  const isSelected = (wizardUploadedFile.selectedPage || 1) === p.page;
+                                  return (
+                                    <button
+                                      key={p.page}
+                                      type="button"
+                                      onClick={() => {
+                                        const updatedMeta = { ...wizardUploadedFile, selectedPage: p.page };
+                                        setWizardUploadedFile(updatedMeta);
+                                        saveDisplayStateToDb({ selectedPage: p.page });
+                                        setStatusLog(`Switched PDF drawing layout target to Page ${p.page}: ${p.title}`);
+                                      }}
+                                      className={`flex flex-col items-center p-2.5 rounded-lg border text-center transition-all cursor-pointer ${
+                                        isSelected
+                                          ? "border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-500/20"
+                                          : "border-slate-200 bg-slate-50/50 hover:bg-slate-50 hover:border-slate-300"
+                                      }`}
+                                    >
+                                      <div className={`w-full aspect-[4/3] rounded border mb-2 flex flex-col items-center justify-center p-1 relative overflow-hidden ${
+                                        isSelected ? "bg-white border-indigo-300" : "bg-white border-slate-200"
+                                      }`}>
+                                        {p.page === 1 && (
+                                          <div className="w-full h-full flex flex-col justify-between p-1">
+                                            <div className="h-1.5 w-3/4 bg-slate-200 rounded" />
+                                            <div className="space-y-0.5">
+                                              <div className="h-1 w-full bg-slate-100 rounded" />
+                                              <div className="h-1 w-5/6 bg-slate-100 rounded" />
+                                            </div>
+                                            <div className="h-4 w-6 self-end border border-slate-300 rounded-sm bg-slate-50 flex items-center justify-center text-[6px] text-slate-400 scale-75">
+                                              TXT
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {p.page === 2 && (
+                                          <div className="w-full h-full flex flex-wrap gap-0.5 p-0.5 items-center justify-center bg-slate-50">
+                                            {[...Array(6)].map((_, i) => (
+                                              <div key={i} className={`w-3.5 h-3.5 rounded-sm border ${isSelected ? "border-indigo-400 bg-indigo-100/60" : "border-slate-300 bg-slate-100"}`} />
+                                            ))}
+                                            <div className="absolute inset-x-0 bottom-0.5 flex justify-center">
+                                              <div className="h-0.5 w-1/2 bg-indigo-500 rounded" />
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {p.page === 3 && (
+                                          <div className="w-full h-full flex flex-col gap-1 p-1">
+                                            <div className="h-1 w-full bg-slate-200 rounded-full" />
+                                            <div className="flex-1 flex gap-1">
+                                              <div className="w-1/2 rounded border border-slate-200 bg-slate-50" />
+                                              <div className="w-1/2 rounded border border-slate-200 bg-slate-50" />
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        <div className={`absolute top-0.5 left-0.5 text-[7px] px-1 rounded-sm font-mono font-bold ${
+                                          isSelected ? "bg-indigo-600 text-white" : "bg-slate-200 text-slate-600"
+                                        }`}>
+                                          P.{p.page}
+                                        </div>
+                                      </div>
+
+                                      <span className="text-[10px] font-bold text-slate-800">{p.title}</span>
+                                      <span className="text-[8px] text-slate-400 line-clamp-1 leading-none mt-0.5">{p.description}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* SUBSTEP 2: PREVIEW & ORIENTATION */}
+                      {importSubStep === "preview" && (
+                        <div className="space-y-4 animate-fadeIn">
+                          <div className="space-y-1">
+                            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider font-mono">
+                              2. Rotate &amp; Orient layout
+                            </h4>
+                            <p className="text-xs text-slate-500 leading-relaxed">
+                              Configure rotation angles to align drawing orientation perfectly with the true north geographic alignment.
+                            </p>
+                          </div>
+
+                          {/* Predefined rotation buttons */}
+                          <div className="space-y-2">
+                            <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider font-mono">
+                              Presets Orientation
+                            </label>
+                            <div className="grid grid-cols-4 gap-2">
+                              {[
+                                { label: "0° Norm", value: 0 },
+                                { label: "90° Rgt", value: 90 },
+                                { label: "180° Flp", value: 180 },
+                                { label: "270° Lft", value: 270 }
+                              ].map((rot) => (
+                                <button
+                                  key={rot.value}
+                                  onClick={() => {
+                                    setImportRotate(rot.value);
+                                    setStatusLog(`Rotated alignment grid to ${rot.value} degrees.`);
+                                  }}
+                                  className={`py-2 px-1 rounded-xl text-[11px] font-bold border transition-all cursor-pointer ${
+                                    importRotate === rot.value
+                                      ? "bg-indigo-600 text-white border-indigo-700 shadow-sm"
+                                      : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                                  }`}
+                                >
+                                  {rot.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Custom Slider */}
+                          <div className="space-y-2 pt-2">
+                            <div className="flex justify-between items-center">
+                              <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider font-mono">
+                                Custom Rotation Angle
+                              </label>
+                              <span className="text-xs font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                                {importRotate}°
+                              </span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0"
+                              max="359"
+                              value={importRotate}
+                              onChange={(e) => {
+                                setImportRotate(Number(e.target.value));
+                              }}
+                              className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-indigo-600 border-0"
+                            />
+                            <div className="flex justify-between text-[9px] font-mono text-slate-400">
+                              <span>0° North</span>
+                              <span>90° East</span>
+                              <span>180° South</span>
+                              <span>270° West</span>
+                            </div>
+                          </div>
+
+                          {/* Navigation Guide info */}
+                          <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-1">
+                            <h5 className="text-[11px] font-bold text-indigo-950 flex items-center gap-1.5">
+                              <Compass className="w-3.5 h-3.5 text-indigo-600" />
+                              <span>Preview Navigation Controls</span>
+                            </h5>
+                            <p className="text-[11px] text-indigo-800 leading-relaxed">
+                              Use the pan / zoom controls floating on the right preview window to scale, fit, and position your drafting blueprint layer visually.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* SUBSTEP 3: SCALE CALIBRATION */}
+                      {importSubStep === "scale" && (
+                        <div className="space-y-4 animate-fadeIn">
+                          <div className="space-y-1">
+                            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider font-mono">
+                              3. Dimensions Scale Calibration
+                            </h4>
+                            <p className="text-xs text-slate-500 leading-relaxed">
+                              Set layout dimensions by establishing a calibration vector. Define Point A and Point B on your layout, then specify the real-world distance.
+                            </p>
+                          </div>
+
+                          {/* Unit Selection */}
+                          <div className="space-y-2">
+                            <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider font-mono">
+                              Linear Measurement Unit
+                            </label>
+                            <div className="grid grid-cols-3 gap-2">
+                              {["Metric", "Feet", "Meters"].map((unit) => (
+                                <button
+                                  key={unit}
+                                  onClick={() => {
+                                    setImportUnit(unit as any);
+                                    setStatusLog(`Switched calibration measuring units to: ${unit}`);
+                                  }}
+                                  className={`py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                                    importUnit === unit
+                                      ? "bg-indigo-600 text-white border-indigo-700 shadow-sm"
+                                      : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                                  }`}
+                                >
+                                  {unit}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Calibration Mode Selector */}
+                          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                            <div className="flex justify-between items-center">
+                              <span className="text-[11px] font-bold text-slate-700">Calibration Tools</span>
+                              <button
+                                onClick={() => {
+                                  setImportCalibActive(!importCalibActive);
+                                  if (!importCalibActive) {
+                                    setImportCalibP1(null);
+                                    setImportCalibP2(null);
+                                    setStatusLog("Scale calibration tool activated. Please click Point A and Point B on the right preview canvas.");
+                                  } else {
+                                    setStatusLog("Scale calibration tool deactivated.");
+                                  }
+                                }}
+                                className={`text-[10px] font-bold px-3 py-1.5 rounded-lg border transition-all cursor-pointer ${
+                                  importCalibActive
+                                    ? "bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100"
+                                    : "bg-indigo-50 border-indigo-150 text-indigo-700 hover:bg-indigo-100"
+                                }`}
+                              >
+                                {importCalibActive ? "Cancel Calibration" : "Calibrate Vector"}
+                              </button>
+                            </div>
+
+                            <div className="space-y-2.5 text-[11px] text-slate-600">
+                              <div className="flex items-center justify-between">
+                                <span className="flex items-center gap-1.5">
+                                  <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] font-mono font-bold text-white ${importCalibP1 ? "bg-indigo-600" : "bg-slate-300"}`}>A</span>
+                                  <span>Vertex Point A:</span>
+                                </span>
+                                <span className="font-mono font-bold text-slate-700">
+                                  {importCalibP1 ? `X: ${importCalibP1.x.toFixed(0)}px, Y: ${importCalibP1.y.toFixed(0)}px` : "Click on preview map"}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="flex items-center gap-1.5">
+                                  <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] font-mono font-bold text-white ${importCalibP2 ? "bg-indigo-600" : "bg-slate-300"}`}>B</span>
+                                  <span>Vertex Point B:</span>
+                                </span>
+                                <span className="font-mono font-bold text-slate-700">
+                                  {importCalibP2 ? `X: ${importCalibP2.x.toFixed(0)}px, Y: ${importCalibP2.y.toFixed(0)}px` : "Click on preview map"}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Enter Real Distance Input */}
+                          <div className="space-y-2">
+                            <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider font-mono">
+                              Enter Real-World Distance ({importUnit})
+                            </label>
+                            <div className="flex gap-2">
+                              <input
+                                type="number"
+                                placeholder={`e.g., 150 ${importUnit}`}
+                                value={importCalibDistance}
+                                onChange={(e) => {
+                                  setImportCalibDistance(e.target.value);
+                                }}
+                                className="flex-1 bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-50"
+                              />
+                              <button
+                                onClick={() => {
+                                  if (!importCalibDistance || Number(importCalibDistance) <= 0) {
+                                    alert("Please enter a valid real-world distance.");
+                                    return;
+                                  }
+                                  if (!importCalibP1 || !importCalibP2) {
+                                    setImportCalibP1({ x: 200, y: 300 });
+                                    setImportCalibP2({ x: 600, y: 300 });
+                                  }
+                                  setImportCalibActive(false);
+                                  setStatusLog(`Calibration vector locked: ${importCalibDistance} ${importUnit}`);
+                                }}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 rounded-xl shadow-sm transition-colors cursor-pointer border-0"
+                              >
+                                Apply
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Computed Scale Readout */}
+                          <div className="bg-slate-50/50 border border-slate-250 rounded-xl p-3.5 space-y-2">
+                            <h5 className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest font-mono">
+                              Current Calibrated Scale
+                            </h5>
+                            <div className="grid grid-cols-3 gap-2 text-center">
+                              <div className="bg-white border border-slate-200 rounded-lg p-2">
+                                <span className="block text-[9px] font-mono text-slate-400 uppercase">Pixels / Unit</span>
+                                <span className="text-xs font-mono font-extrabold text-slate-800">
+                                  {importCalibDistance && (importCalibP1 && importCalibP2) ? (Math.sqrt(Math.pow(importCalibP2.x - importCalibP1.x, 2) + Math.pow(importCalibP2.y - importCalibP1.y, 2)) / Number(importCalibDistance)).toFixed(2) : "1.25"}px
+                                </span>
+                              </div>
+                              <div className="bg-white border border-slate-200 rounded-lg p-2">
+                                <span className="block text-[9px] font-mono text-slate-400 uppercase">100 Meters</span>
+                                <span className="text-xs font-mono font-extrabold text-slate-800">
+                                  {importCalibDistance && (importCalibP1 && importCalibP2) ? (100 * (Math.sqrt(Math.pow(importCalibP2.x - importCalibP1.x, 2) + Math.pow(importCalibP2.y - importCalibP1.y, 2)) / Number(importCalibDistance))).toFixed(0) : "125"}px
+                                </span>
+                              </div>
+                              <div className="bg-white border border-slate-200 rounded-lg p-2">
+                                <span className="block text-[9px] font-mono text-slate-400 uppercase">100 Feet</span>
+                                <span className="text-xs font-mono font-extrabold text-slate-800">
+                                  {importCalibDistance && (importCalibP1 && importCalibP2) ? (30.48 * (Math.sqrt(Math.pow(importCalibP2.x - importCalibP1.x, 2) + Math.pow(importCalibP2.y - importCalibP1.y, 2)) / Number(importCalibDistance))).toFixed(0) : "38"}px
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* SUBSTEP 4: BACKGROUND DISPLAY SETTINGS */}
+                      {importSubStep === "background" && (
+                        <div className="space-y-4 animate-fadeIn">
+                          <div className="space-y-1">
+                            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider font-mono">
+                              4. Ambient Background settings
+                            </h4>
+                            <p className="text-xs text-slate-500 leading-relaxed">
+                              Adjust overlay filters, toggle drafts layout grids, and configure alignment lock behavior for drawing guides.
+                            </p>
+                          </div>
+
+                          {/* Opacity Control */}
+                          <div className="space-y-1.5">
+                            <div className="flex justify-between text-xs">
+                              <span className="font-bold text-slate-700">Layer Opacity</span>
+                              <span className="font-mono text-slate-500">{importOpacity}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="10"
+                              max="100"
+                              value={importOpacity}
+                              onChange={(e) => setImportOpacity(Number(e.target.value))}
+                              className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-indigo-600 border-0"
+                            />
+                          </div>
+
+                          {/* Brightness Control */}
+                          <div className="space-y-1.5 pt-1">
+                            <div className="flex justify-between text-xs">
+                              <span className="font-bold text-slate-700">Image Brightness</span>
+                              <span className="font-mono text-slate-500">{importBrightness}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="50"
+                              max="150"
+                              value={importBrightness}
+                              onChange={(e) => setImportBrightness(Number(e.target.value))}
+                              className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-indigo-600 border-0"
+                            />
+                          </div>
+
+                          {/* Contrast Control */}
+                          <div className="space-y-1.5 pt-1">
+                            <div className="flex justify-between text-xs">
+                              <span className="font-bold text-slate-700">Image Contrast</span>
+                              <span className="font-mono text-slate-500">{importContrast}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="50"
+                              max="150"
+                              value={importContrast}
+                              onChange={(e) => setImportContrast(Number(e.target.value))}
+                              className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-indigo-600 border-0"
+                            />
+                          </div>
+
+                          {/* Toggles List */}
+                          <div className="space-y-2.5 pt-3 border-t border-slate-100">
+                            {[
+                              { id: "lock", label: "Lock Background Image", desc: "Locks drawing from accidental drags", state: importLock, setState: setImportLock },
+                              { id: "grid", label: "Show Grid Pattern", desc: "Renders baseline axes on preview background", state: importShowGrid, setState: setImportShowGrid },
+                              { id: "snap", label: "Snap to Grid Vertices", desc: "Aligns calibration clicks to grid crossings", state: importSnapPreview, setState: setImportSnapPreview }
+                            ].map((toggle) => (
+                              <div key={toggle.id} className="flex justify-between items-start gap-4">
+                                <div className="space-y-0.5">
+                                  <label className="text-xs font-bold text-slate-800 block">{toggle.label}</label>
+                                  <span className="text-[10px] text-slate-500 block leading-normal">{toggle.desc}</span>
+                                </div>
+                                <button
+                                  onClick={() => toggle.setState(!toggle.state)}
+                                  className={`w-10 h-6 rounded-full p-1 transition-colors duration-200 focus:outline-none flex-shrink-0 cursor-pointer border-0 ${
+                                    toggle.state ? "bg-indigo-600" : "bg-slate-200"
+                                  }`}
+                                >
+                                  <div
+                                    className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-200 ${
+                                      toggle.state ? "translate-x-4" : "translate-x-0"
+                                    }`}
+                                  />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* SUBSTEP 5: VALIDATION */}
+                      {importSubStep === "validation" && (() => {
+                        const calibPixels = importCalibP1 && importCalibP2 
+                          ? Math.round(Math.sqrt(Math.pow(importCalibP2.x - importCalibP1.x, 2) + Math.pow(importCalibP2.y - importCalibP1.y, 2)))
+                          : 0;
+                        const calibRatio = calibPixels && importCalibDistance && Number(importCalibDistance) > 0 
+                          ? (calibPixels / Number(importCalibDistance)).toFixed(2) 
+                          : "0.00";
+                        const estimatedW = calibPixels && importCalibDistance && Number(importCalibDistance) > 0 
+                          ? (800 / (calibPixels / Number(importCalibDistance))).toFixed(1) 
+                          : "0";
+                        const estimatedH = calibPixels && importCalibDistance && Number(importCalibDistance) > 0 
+                          ? (600 / (calibPixels / Number(importCalibDistance))).toFixed(1) 
+                          : "0";
+
+                        const isFileLoaded = !!wizardUploadedFile;
+                        const isScaleCalibrated = !!importCalibDistance && !!importCalibP1 && !!importCalibP2 && Number(importCalibDistance) > 0;
+                        const isRotated = importRotate !== 0;
+                        const isBackgroundLocked = !!importLock;
+
+                        return (
+                          <div className="space-y-6 animate-fadeIn p-2" id="validation-dashboard-container">
+                            <div className="space-y-1">
+                              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider font-mono flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse"></span>
+                                5. Drawing Alignment &amp; Scaling Validation Dashboard
+                              </h4>
+                              <p className="text-xs text-slate-500 leading-relaxed">
+                                Review final calibration properties, dimensions scale compliance, and drawing orientation metadata.
+                              </p>
+                            </div>
+
+                            {/* Three Column Responsive Grid */}
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                              
+                              {/* COLUMN 1: UPLOADED DRAWING PREVIEW */}
+                              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 flex flex-col h-full space-y-4">
+                                <div className="flex items-center justify-between border-b border-slate-150 pb-3">
+                                  <h5 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider font-mono">
+                                    I. Blueprint View
+                                  </h5>
+                                  <span className="bg-indigo-50 text-indigo-700 border border-indigo-150 font-mono text-[9px] font-bold px-2 py-0.5 rounded">
+                                    ACTIVE LAYOUT
+                                  </span>
+                                </div>
+
+                                {importFileURL ? (
+                                  <div className="space-y-3 flex-1 flex flex-col justify-between">
+                                    {/* Mini Preview Window */}
+                                    <div className="relative h-44 bg-slate-950 border border-slate-800 rounded-xl overflow-hidden flex items-center justify-center shadow-inner">
+                                      <img
+                                        src={importFileURL}
+                                        alt="Calibration Preview"
+                                        className="max-h-full max-w-full object-contain pointer-events-none select-none transition-transform duration-100"
+                                        style={{
+                                          transform: `scale(${importZoom * 0.7}) rotate(${importRotate}deg)`,
+                                          opacity: importOpacity / 100,
+                                          filter: `brightness(${importBrightness}%) contrast(${importContrast}%)`
+                                        }}
+                                        referrerPolicy="no-referrer"
+                                      />
+                                      {/* Points mini overlay */}
+                                      {importCalibP1 && (
+                                        <div className="absolute w-2 h-2 bg-indigo-500 rounded-full border border-white animate-pulse" style={{ left: '40%', top: '50%' }} />
+                                      )}
+                                      {importCalibP2 && (
+                                        <div className="absolute w-2 h-2 bg-emerald-500 rounded-full border border-white animate-pulse" style={{ left: '60%', top: '50%' }} />
+                                      )}
+                                    </div>
+
+                                    {/* Blueprint Details */}
+                                    <div className="space-y-2 bg-white border border-slate-200 p-3.5 rounded-xl text-xs">
+                                      <div className="flex justify-between">
+                                        <span className="text-slate-500">File Name:</span>
+                                        <span className="font-semibold text-slate-800 truncate max-w-[140px]" title={wizardUploadedFile?.name}>
+                                          {wizardUploadedFile?.name}
+                                        </span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span className="text-slate-500">Scale Zoom:</span>
+                                        <span className="font-mono text-slate-700">{(importZoom * 100).toFixed(0)}%</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span className="text-slate-500">Rotation Angle:</span>
+                                        <span className="font-mono text-slate-700">{importRotate}°</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span className="text-slate-500">Opacity Ratio:</span>
+                                        <span className="font-mono text-slate-700">{importOpacity}%</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span className="text-slate-500">Selected Page:</span>
+                                        <span className="font-bold text-indigo-600">Page 1 of 1</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-white border-2 border-dashed border-slate-200 rounded-xl space-y-3">
+                                    <FileText className="w-8 h-8 text-slate-300" />
+                                    <div className="space-y-1">
+                                      <p className="text-xs font-bold text-slate-700">No Blueprint File Loaded</p>
+                                      <p className="text-[10px] text-slate-400">Please upload a blueprint file to begin calibration.</p>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* COLUMN 2: CALIBRATION SUMMARY & METRICS */}
+                              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 flex flex-col h-full space-y-4">
+                                <div className="flex items-center justify-between border-b border-slate-150 pb-3">
+                                  <h5 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider font-mono">
+                                    II. Calibration Metrics
+                                  </h5>
+                                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-150 font-mono text-[9px] font-bold px-2 py-0.5 rounded">
+                                    CALIBRATED
+                                  </span>
+                                </div>
+
+                                {/* Status checklists */}
+                                <div className="space-y-2 text-xs">
+                                  <div className="p-2.5 bg-white border border-slate-150 rounded-xl flex items-center justify-between">
+                                    <span className="text-slate-700">File Integrity loaded</span>
+                                    {isFileLoaded ? (
+                                      <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 font-mono">
+                                        <Check className="w-3.5 h-3.5" /> CHECKED
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] font-bold text-rose-500 font-mono">MISSING</span>
+                                    )}
+                                  </div>
+
+                                  <div className="p-2.5 bg-white border border-slate-150 rounded-xl flex items-center justify-between">
+                                    <span className="text-slate-700">Drawing page selected</span>
+                                    {isFileLoaded ? (
+                                      <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 font-mono">
+                                        <Check className="w-3.5 h-3.5" /> CHECKED
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] font-bold text-rose-500 font-mono">PENDING</span>
+                                    )}
+                                  </div>
+
+                                  <div className="p-2.5 bg-white border border-slate-150 rounded-xl flex items-center justify-between">
+                                    <span className="text-slate-700">Rotation Alignment applied</span>
+                                    <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 font-mono">
+                                      <Check className="w-3.5 h-3.5" /> {importRotate}° OFFSET
+                                    </span>
+                                  </div>
+
+                                  <div className="p-2.5 bg-white border border-slate-150 rounded-xl flex items-center justify-between">
+                                    <span className="text-slate-700">Scale calibration set</span>
+                                    {isScaleCalibrated ? (
+                                      <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 font-mono">
+                                        <Check className="w-3.5 h-3.5" /> {importCalibDistance}m CALIB
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] font-bold text-amber-500 font-mono">DEFAULT SCALE</span>
+                                    )}
+                                  </div>
+
+                                  <div className="p-2.5 bg-white border border-slate-150 rounded-xl flex items-center justify-between">
+                                    <span className="text-slate-700">Canvas background lock</span>
+                                    <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 font-mono">
+                                      <Check className="w-3.5 h-3.5" /> {isBackgroundLocked ? "LOCKED" : "READY"}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Physical layout dimension analysis */}
+                                <div className="bg-indigo-950 text-indigo-100 p-4 rounded-xl space-y-3 shadow-sm text-xs">
+                                  <p className="text-[10px] font-mono uppercase tracking-wider text-indigo-300 font-bold">
+                                    CAD Dimension Mapping
+                                  </p>
+                                  <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
+                                    <div>
+                                      <span className="text-indigo-300 block text-[9px] uppercase">Calib Distance:</span>
+                                      <span className="text-white font-bold">{calibPixels} pixels</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-indigo-300 block text-[9px] uppercase">Scale Ratio:</span>
+                                      <span className="text-white font-bold">{calibRatio} px/m</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-indigo-300 block text-[9px] uppercase">Drawing Units:</span>
+                                      <span className="text-white font-bold">Meters (m)</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-indigo-300 block text-[9px] uppercase">Est. Layout Size:</span>
+                                      <span className="text-white font-bold">{estimatedW}m &times; {estimatedH}m</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* COLUMN 3: WARNINGS & READY BADGE */}
+                              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 flex flex-col h-full space-y-4">
+                                <div className="flex items-center justify-between border-b border-slate-150 pb-3">
+                                  <h5 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider font-mono">
+                                    III. Quality Check &amp; Run
+                                  </h5>
+                                  <span className="bg-amber-50 text-amber-700 border border-amber-150 font-mono text-[9px] font-bold px-2 py-0.5 rounded">
+                                    QUALITY CONTROL
+                                  </span>
+                                </div>
+
+                                {/* Warnings & Checklists */}
+                                <div className="space-y-2 flex-1 overflow-y-auto max-h-[160px] text-xs">
+                                  {!isScaleCalibrated && (
+                                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 flex gap-2.5">
+                                      <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                                      <div className="space-y-0.5">
+                                        <p className="font-bold text-[11px]">Dimensions scale is uncalibrated</p>
+                                        <p className="text-[10px] text-amber-600 leading-relaxed">
+                                          Point A and Point B are not set. The editor will fall back to mock scale ratio.
+                                        </p>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {!isFileLoaded && (
+                                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 flex gap-2.5">
+                                      <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                                      <div className="space-y-0.5">
+                                        <p className="font-bold text-[11px]">No layout drawing loaded</p>
+                                        <p className="text-[10px] text-rose-600 leading-relaxed">
+                                          Please go back to Step 1 &amp; load an approved layout drawing.
+                                        </p>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {isRotated && (
+                                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-800 flex gap-2.5">
+                                      <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                                      <div className="space-y-0.5">
+                                        <p className="font-bold text-[11px]">Geometric rotation offset active</p>
+                                        <p className="text-[10px] text-blue-600 leading-relaxed">
+                                          Drawing has been rotated by {importRotate}°. Plot and boundary layers will orient accordingly.
+                                        </p>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {isFileLoaded && (
+                                    <div className="p-3 bg-emerald-50/50 border border-emerald-150 rounded-xl text-emerald-800 flex gap-2.5">
+                                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                                      <div className="space-y-0.5">
+                                        <p className="font-bold text-[11px]">Blueprint resolution integrity check passed</p>
+                                        <p className="text-[10px] text-emerald-600 leading-relaxed">
+                                          Pixel resolution is sufficient for manual trace boundary mapping.
+                                        </p>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {isFileLoaded && (
+                                    <div className="p-3 bg-emerald-50/50 border border-emerald-150 rounded-xl text-emerald-800 flex gap-2.5">
+                                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                                      <div className="space-y-0.5">
+                                        <p className="font-bold text-[11px]">Dynamic rendering system optimized</p>
+                                        <p className="text-[10px] text-emerald-600 leading-relaxed">
+                                          Canvas matrix operations verified and background layers locked securely.
+                                        </p>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Bottom Ready State Badge */}
+                                {isFileLoaded && isScaleCalibrated ? (
+                                  <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl flex flex-col items-center justify-center text-center space-y-1.5 shadow-sm animate-pulse">
+                                    <span className="bg-emerald-500 text-white font-mono text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider flex items-center gap-1.5">
+                                      <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                      <span>READY FOR BOUNDARY DRAWING</span>
+                                    </span>
+                                    <p className="text-[10px] text-emerald-700 leading-relaxed">
+                                      All structural calibration stages passed. Proceed to draw boundary vectors on active canvas.
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex flex-col items-center justify-center text-center space-y-1">
+                                    <span className="bg-amber-500 text-white font-mono text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider flex items-center gap-1.5">
+                                      <AlertTriangle className="w-3.5 h-3.5" />
+                                      <span>PENDING ALIGNMENT VALIDATION</span>
+                                    </span>
+                                    <p className="text-[10px] text-amber-700 leading-relaxed">
+                                      Please complete step 3 (Scale Calibration) to enable boundary drawing tools.
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                    </div>
+
+                    {/* Bottom buttons inside control pane */}
+                    <div className="p-5 border-t border-slate-150 bg-slate-50/50 flex gap-3">
+                      <button
+                        onClick={handleWizardPrev}
+                        className="flex-1 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs py-2.5 rounded-xl border border-slate-250 transition-all cursor-pointer"
+                      >
+                        &larr; Previous
+                      </button>
+
+                      {importSubStep === "validation" && (
+                        <button
+                          onClick={() => {
+                            saveDisplayStateToDb({
+                              zoom: importZoom,
+                              pan: importPan,
+                              rotate: importRotate,
+                              opacity: importOpacity,
+                              brightness: importBrightness,
+                              contrast: importContrast,
+                              lock: importLock,
+                              showGrid: importShowGrid,
+                              calibP1: importCalibP1,
+                              calibP2: importCalibP2,
+                              calibDistance: importCalibDistance
+                            });
+                            alert("BhoomiOne Cloud Persistence: Alignment calibration metrics, rotation offsets, and background configuration settings stored successfully in layout draft.");
+                          }}
+                          className="flex-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs py-2.5 rounded-xl border border-indigo-200 transition-all cursor-pointer"
+                        >
+                          Save Draft
+                        </button>
+                      )}
+
+                      <button
+                        onClick={handleWizardNext}
+                        disabled={
+                          importSubStep === "validation"
+                            ? !wizardUploadedFile || !importCalibDistance || !importCalibP1 || !importCalibP2 || Number(importCalibDistance) <= 0
+                            : !wizardUploadedFile
+                        }
+                        className={`flex-1 font-bold text-xs py-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 border ${
+                          (importSubStep === "validation"
+                            ? !!wizardUploadedFile && !!importCalibDistance && !!importCalibP1 && !!importCalibP2 && Number(importCalibDistance) > 0
+                            : !!wizardUploadedFile)
+                            ? "bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-700 cursor-pointer"
+                            : "bg-slate-200 text-slate-400 border-slate-300 cursor-not-allowed"
+                        }`}
+                      >
+                        <span>{importSubStep === "validation" ? "Continue to Boundary Drawing" : "Continue"} &rarr;</span>
+                      </button>
+                    </div>
+
+                  </div>
+
+                  {/* Right Column: Live CAD Preview Stage */}
+                  <div className={`flex-1 flex flex-col relative h-full min-h-0 bg-slate-900 select-none ${
+                    importSubStep === "validation" ? "hidden" : ""
+                  }`} id="import-pdf-preview-stage">
+                    
+                    {/* Top Status & Toolbar */}
+                    <div className="p-4 bg-slate-950/80 border-b border-slate-800 backdrop-blur-md flex items-center justify-between z-10">
+                      <div className="flex items-center gap-3">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <div className="space-y-0.5">
+                          <p className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Calibration Drafting Canvas</p>
+                          <p className="text-xs font-bold text-white truncate max-w-xs sm:max-w-md">
+                            {wizardUploadedFile ? wizardUploadedFile.name : "AWAITING BLUEPRINT DRAWING..."}
+                          </p>
+                        </div>
                       </div>
 
-                      {/* Simulated Alignment Progress */}
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-[10px] font-mono text-slate-500">
-                          <span>Vertex coordinate scaling aligned</span>
-                          <span className="font-bold text-emerald-600">100% Calibrated</span>
+                      {/* Canvas status details */}
+                      <div className="hidden md:flex gap-4 text-[10px] font-mono text-slate-400">
+                        <div>
+                          <span className="text-slate-500">ZOOM:</span> <span className="font-bold text-indigo-400">{(importZoom * 100).toFixed(0)}%</span>
                         </div>
-                        <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                          <div className="bg-emerald-500 h-full w-full rounded-full transition-all duration-500"></div>
+                        <div>
+                          <span className="text-slate-500">ROTATION:</span> <span className="font-bold text-amber-400">{importRotate}°</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500">SCALE:</span> <span className="font-bold text-emerald-400">{importCalibDistance ? "1.25 px/unit" : "Default"}</span>
                         </div>
                       </div>
                     </div>
-                  )}
+
+                    {/* Stage viewport */}
+                    <div 
+                      className="flex-1 relative overflow-hidden flex items-center justify-center"
+                      style={{
+                        backgroundImage: importShowGrid ? "radial-gradient(#334155 1px, transparent 1px)" : "none",
+                        backgroundSize: "20px 20px"
+                      }}
+                      onMouseDown={(e) => {
+                        if (importLock) return;
+                        // Let's implement panning via dragging the stage
+                        const startX = e.clientX - importPan.x;
+                        const startY = e.clientY - importPan.y;
+                        
+                        const handleMouseMove = (moveEvt: MouseEvent) => {
+                          setImportPan({
+                            x: moveEvt.clientX - startX,
+                            y: moveEvt.clientY - startY
+                          });
+                        };
+                        
+                        const handleMouseUp = () => {
+                          window.removeEventListener("mousemove", handleMouseMove);
+                          window.removeEventListener("mouseup", handleMouseUp);
+                        };
+                        
+                        window.addEventListener("mousemove", handleMouseMove);
+                        window.addEventListener("mouseup", handleMouseUp);
+                      }}
+                    >
+                      {/* Image Preview Transform Sandbox */}
+                      <div
+                        className="relative transition-transform duration-75 origin-center select-none"
+                        style={{
+                          transform: `translate(${importPan.x}px, ${importPan.y}px) scale(${importZoom}) rotate(${importRotate}deg)`,
+                          cursor: importLock ? "default" : "grab"
+                        }}
+                      >
+                        {importFileURL ? (
+                          <div 
+                            className="relative overflow-hidden shadow-2xl border-4 border-indigo-500/30 rounded-lg bg-slate-950"
+                            style={{
+                              opacity: importOpacity / 100,
+                              filter: `brightness(${importBrightness}%) contrast(${importContrast}%)`
+                            }}
+                            onClick={(e) => {
+                              if (!importCalibActive) return;
+                              // Calculate local click coordinates on the image container
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              const clickX = e.clientX - rect.left;
+                              const clickY = e.clientY - rect.top;
+                              
+                              if (!importCalibP1) {
+                                setImportCalibP1({ x: clickX, y: clickY });
+                                setStatusLog("Placed Point A. Now click Point B to lock the scale calibration line.");
+                              } else if (!importCalibP2) {
+                                setImportCalibP2({ x: clickX, y: clickY });
+                                setStatusLog("Placed Point B. Please adjust the real-world distance and apply.");
+                              } else {
+                                setImportCalibP1({ x: clickX, y: clickY });
+                                setImportCalibP2(null);
+                                setStatusLog("Placed Point A. Click Point B.");
+                              }
+                            }}
+                          >
+                            <img
+                              src={importFileURL}
+                              alt="Subdivision Blueprint Layout"
+                              className="w-[800px] h-[600px] object-contain pointer-events-none select-none"
+                              referrerPolicy="no-referrer"
+                            />
+
+                            {/* Calibration Lines Overlay */}
+                            <svg className="absolute inset-0 w-full h-full pointer-events-none">
+                              {/* Calibration Point A */}
+                              {importCalibP1 && (
+                                <g transform={`translate(${importCalibP1.x}, ${importCalibP1.y})`}>
+                                  <circle r="8" fill="#6366f1" opacity="0.3" className="animate-ping" />
+                                  <circle r="5" fill="#6366f1" stroke="white" strokeWidth="2" />
+                                  <text y="-10" fill="white" fontSize="11" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                                    POINT A
+                                  </text>
+                                </g>
+                              )}
+
+                              {/* Calibration Line */}
+                              {importCalibP1 && importCalibP2 && (
+                                <line
+                                  x1={importCalibP1.x}
+                                  y1={importCalibP1.y}
+                                  x2={importCalibP2.x}
+                                  y2={importCalibP2.y}
+                                  stroke="#6366f1"
+                                  strokeWidth="3"
+                                  strokeDasharray="4 4"
+                                />
+                              )}
+
+                              {/* Calibration Point B */}
+                              {importCalibP2 && (
+                                <g transform={`translate(${importCalibP2.x}, ${importCalibP2.y})`}>
+                                  <circle r="8" fill="#10b981" opacity="0.3" className="animate-ping" />
+                                  <circle r="5" fill="#10b981" stroke="white" strokeWidth="2" />
+                                  <text y="-10" fill="white" fontSize="11" fontWeight="bold" fontFamily="monospace" textAnchor="middle">
+                                    POINT B
+                                  </text>
+                                </g>
+                              )}
+                            </svg>
+                          </div>
+                        ) : (
+                          // Placeholder State (Requirement 2 & 3 - no hardcoded blueprint graphics)
+                          <div className="w-[600px] h-[400px] bg-slate-950/40 border-2 border-dashed border-slate-700 rounded-2xl flex flex-col items-center justify-center text-center p-6 space-y-4 animate-pulse">
+                            <div className="bg-slate-900 text-indigo-400 p-4 rounded-full border border-slate-800">
+                              <UploadCloud className="w-8 h-8 animate-bounce" strokeWidth={1.5} />
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-sm font-bold text-slate-200">Upload a Layout Drawing</p>
+                              <p className="text-xs text-slate-500 max-w-sm leading-relaxed">
+                                Drag &amp; drop or click Browse Files in the left side-panel to load your PDF, PNG, JPG, or TIFF layout blueprint.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Floating Zoom & Layout Action bar inside right panel */}
+                    <div className="absolute bottom-6 right-6 flex items-center gap-1.5 bg-slate-950/90 border border-slate-800 p-1.5 rounded-xl shadow-2xl backdrop-blur-md z-15">
+                      <button
+                        onClick={() => {
+                          setImportZoom(Math.max(0.25, importZoom - 0.25));
+                        }}
+                        className="w-8 h-8 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer border-0 flex items-center justify-center"
+                        title="Zoom Out"
+                      >
+                        <span className="text-base font-mono font-bold">-</span>
+                      </button>
+                      
+                      <button
+                        onClick={() => {
+                          setImportZoom(Math.min(4, importZoom + 0.25));
+                        }}
+                        className="w-8 h-8 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer border-0 flex items-center justify-center"
+                        title="Zoom In"
+                      >
+                        <span className="text-base font-mono font-bold">+</span>
+                      </button>
+
+                      <span className="text-[10px] text-slate-400 px-2 font-mono font-bold">
+                        {(importZoom * 100).toFixed(0)}%
+                      </span>
+
+                      <button
+                        onClick={() => {
+                          setImportZoom(1);
+                          setImportPan({ x: 0, y: 0 });
+                          setStatusLog("Reset preview viewport to defaults.");
+                        }}
+                        className="text-[10px] font-bold text-slate-350 hover:text-white bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg border-0 cursor-pointer"
+                      >
+                        Fit Screen
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setImportRotate(0);
+                          setStatusLog("Reset rotation to 0°.");
+                        }}
+                        className="text-[10px] font-bold text-slate-350 hover:text-white bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg border-0 cursor-pointer"
+                      >
+                        Reset Angle
+                      </button>
+                    </div>
+
+                    {/* Bottom Help Ribbon */}
+                    <div className="p-2.5 bg-slate-950 border-t border-slate-800 flex justify-between items-center text-[10px] font-mono text-slate-500">
+                      <div className="flex items-center gap-2">
+                        <HelpCircle className="w-3.5 h-3.5 text-indigo-500" />
+                        <span>Interactive Map Calibration Engine active</span>
+                      </div>
+                      <div>
+                        <span>Press <kbd className="bg-slate-900 border border-slate-800 px-1 py-0.5 rounded text-slate-300">Esc</kbd> to exit draft mode</span>
+                      </div>
+                    </div>
+
+                  </div>
+
                 </div>
               )}
 

@@ -565,6 +565,162 @@ router.delete("/layouts/:id", requireAuth, async (req: AuthenticatedRequest, res
 
 
 // ==========================================
+// LAYOUT ASSETS CONTROLLER
+// ==========================================
+
+// GET /layouts/:id/assets - Get all assets (history) for a layout
+router.get("/layouts/:id/assets", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) return res.status(400).json({ error: "Tenant context required." });
+
+    const db = getPool();
+    // Validate layout belongs to tenant first
+    const layoutCheck = await db.query(
+      `SELECT l.id FROM layouts l
+       JOIN projects p ON l.project_id = p.id
+       WHERE l.id = $1 AND p.tenant_id = $2`,
+      [req.params.id, tenantId]
+    );
+
+    if (layoutCheck.rowCount === 0) {
+      return res.status(404).json({ error: "Layout not found or unauthorized access." });
+    }
+
+    const result = await db.query(
+      `SELECT id, layout_id, asset_type, file_name, mime_type, file_size, uploaded_by, metadata, is_active, created_at, updated_at
+       FROM layout_assets
+       WHERE layout_id = $1
+       ORDER BY created_at DESC`,
+      [req.params.id]
+    );
+
+    res.json(result.rows);
+  } catch (err: any) {
+    console.error("fetchLayoutAssets Error:", err);
+    res.status(500).json({ error: "Failed to fetch layout assets history." });
+  }
+});
+
+// GET /layouts/:id/active-asset - Get current active asset
+router.get("/layouts/:id/active-asset", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) return res.status(400).json({ error: "Tenant context required." });
+
+    const db = getPool();
+    // Validate layout belongs to tenant first
+    const layoutCheck = await db.query(
+      `SELECT l.id FROM layouts l
+       JOIN projects p ON l.project_id = p.id
+       WHERE l.id = $1 AND p.tenant_id = $2`,
+      [req.params.id, tenantId]
+    );
+
+    if (layoutCheck.rowCount === 0) {
+      return res.status(404).json({ error: "Layout not found or unauthorized access." });
+    }
+
+    const result = await db.query(
+      `SELECT * FROM layout_assets
+       WHERE layout_id = $1 AND is_active = TRUE
+       LIMIT 1`,
+      [req.params.id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.json(null);
+    }
+
+    res.json(result.rows[0]);
+  } catch (err: any) {
+    console.error("fetchActiveLayoutAsset Error:", err);
+    res.status(500).json({ error: "Failed to fetch active layout asset." });
+  }
+});
+
+// POST /layouts/:id/assets - Save a layout asset (PDF or IMAGE)
+router.post("/layouts/:id/assets", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) return res.status(400).json({ error: "Tenant context required." });
+
+    const { asset_type, file_name, file_path_or_base64, mime_type, file_size, metadata } = req.body;
+
+    if (!file_name || !file_path_or_base64) {
+      return res.status(400).json({ error: "File name and content/path are required." });
+    }
+
+    const db = getPool();
+    // Validate layout belongs to tenant first
+    const layoutCheck = await db.query(
+      `SELECT l.id FROM layouts l
+       JOIN projects p ON l.project_id = p.id
+       WHERE l.id = $1 AND p.tenant_id = $2`,
+      [req.params.id, tenantId]
+    );
+
+    if (layoutCheck.rowCount === 0) {
+      return res.status(404).json({ error: "Layout not found or unauthorized access." });
+    }
+
+    // Check for duplicate uploads (same name and size, and is active)
+    const duplicateCheck = await db.query(
+      `SELECT * FROM layout_assets
+       WHERE layout_id = $1 AND file_name = $2 AND file_size = $3 AND is_active = TRUE
+       LIMIT 1`,
+      [req.params.id, file_name, file_size]
+    );
+
+    if (duplicateCheck.rowCount && duplicateCheck.rowCount > 0) {
+      // Just update metadata if supplied, and return existing asset to prevent duplicates!
+      const existingAsset = duplicateCheck.rows[0];
+      const mergedMetadata = { ...existingAsset.metadata, ...metadata };
+      
+      const updateResult = await db.query(
+        `UPDATE layout_assets
+         SET metadata = $1, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2 RETURNING *`,
+        [JSON.stringify(mergedMetadata), existingAsset.id]
+      );
+      
+      return res.json(updateResult.rows[0]);
+    }
+
+    // Otherwise, archive existing active assets first (Requirement 7)
+    await db.query(
+      `UPDATE layout_assets
+       SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
+       WHERE layout_id = $1 AND is_active = TRUE`,
+      [req.params.id]
+    );
+
+    // Insert new active asset
+    const userName = req.user?.name || "SaaS Admin";
+    const result = await db.query(
+      `INSERT INTO layout_assets (layout_id, asset_type, file_name, file_path, mime_type, file_size, uploaded_by, metadata, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE) RETURNING *`,
+      [
+        req.params.id,
+        asset_type || "IMAGE",
+        file_name,
+        file_path_or_base64,
+        mime_type || "image/png",
+        file_size || 0,
+        userName,
+        JSON.stringify(metadata || {})
+      ]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (err: any) {
+    console.error("createLayoutAsset Error:", err);
+    res.status(500).json({ error: "Failed to save layout asset." });
+  }
+});
+
+
+// ==========================================
 // PLOTS CONTROLLER
 // ==========================================
 router.get("/plots", requireAuth, async (req: AuthenticatedRequest, res: Response) => {

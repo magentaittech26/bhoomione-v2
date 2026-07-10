@@ -981,6 +981,28 @@ class ApiClient {
     return this.request<void>(`/layouts/${id}`, { method: "DELETE" });
   }
 
+  async fetchLayoutAssets(layoutId: string): Promise<any> {
+    return this.request<any>(`/layouts/${layoutId}/assets`, { method: "GET" });
+  }
+
+  async fetchActiveLayoutAsset(layoutId: string): Promise<any> {
+    return this.request<any>(`/layouts/${layoutId}/active-asset`, { method: "GET" });
+  }
+
+  async createLayoutAsset(layoutId: string, data: {
+    asset_type: string;
+    file_name: string;
+    file_path_or_base64: string;
+    mime_type: string;
+    file_size: number;
+    metadata?: any;
+  }): Promise<any> {
+    return this.request<any>(`/layouts/${layoutId}/assets`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
   async fetchPlots(params?: Record<string, any>): Promise<any> {
     let endpoint = "/plots";
     if (params) {
