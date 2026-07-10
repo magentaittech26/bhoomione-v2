@@ -3,6 +3,7 @@ import api from "../lib/api.ts";
 import { UserProfile } from "../types/auth.ts";
 import { CADImportManager } from "./CADImportManager.tsx";
 import InteractiveLayoutViewer from "./InteractiveLayoutViewer.tsx";
+import MapWorkspaceIndex from "./MapWorkspace/index.tsx";
 import { EnterpriseTaxConsole } from "./saas/EnterpriseTaxConsole.tsx";
 import {
   Building2,
@@ -3456,19 +3457,9 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
 
       {/* Interactive Layout Map tab workspace */}
       {activeTab === "viewer" && (
-        <div className="p-6">
-          <InteractiveLayoutViewer
-            user={user}
+        <div className="p-0">
+          <MapWorkspaceIndex
             initialLayoutId={selectedLayout?.id || null}
-            onAuditLogged={onAuditLogged}
-            highlightedPlotId={selectedPlot?.id || null}
-            onPlotSelected={(plot) => {
-              setSelectedPlot(plot);
-              if (plot && plot.layout_id) {
-                const lay = layouts.find(l => l.id === plot.layout_id);
-                if (lay) setSelectedLayout(lay);
-              }
-            }}
           />
         </div>
       )}

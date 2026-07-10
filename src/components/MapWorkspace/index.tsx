@@ -209,7 +209,12 @@ const INITIAL_MOCK_VERSIONS: LayoutVersion[] = [
   { id: "v-2", layout_id: "lay-1", version_number: "v1.1", change_summary: "Adjusted layout roads alignments and added green park buffers.", status: "DRAFT", snapshot_data: { layers: [], objects: [] }, created_by: "ADMIN", created_at: "2026-07-09T00:00:00Z" }
 ];
 
-export default function MapWorkspaceIndex() {
+interface MapWorkspaceIndexProps {
+  initialProjectId?: string | null;
+  initialLayoutId?: string | null;
+}
+
+export default function MapWorkspaceIndex({ initialProjectId = null, initialLayoutId = null }: MapWorkspaceIndexProps = {}) {
   // Navigation flow state: "projects" | "layouts" | "workspace"
   const [currentStep, setCurrentStep] = useState<"projects" | "layouts" | "workspace">("projects");
   
@@ -218,6 +223,23 @@ export default function MapWorkspaceIndex() {
   const [layoutsList, setLayoutsList] = useState<any[]>(MOCK_LAYOUTS);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedLayoutId, setSelectedLayoutId] = useState<string | null>(null);
+
+  // Sync initial parameters
+  useEffect(() => {
+    if (initialLayoutId) {
+      const layout = layoutsList.find(l => l.id === initialLayoutId);
+      if (layout) {
+        setSelectedProjectId(layout.project_id);
+        setSelectedLayoutId(initialLayoutId);
+        setCurrentStep("workspace");
+        return;
+      }
+    }
+    if (initialProjectId) {
+      setSelectedProjectId(initialProjectId);
+      setCurrentStep("layouts");
+    }
+  }, [initialProjectId, initialLayoutId, layoutsList]);
 
   // Search filter for landing steps
   const [projectsSearch, setProjectsSearch] = useState("");
@@ -534,6 +556,33 @@ export default function MapWorkspaceIndex() {
 
   return (
     <div className="w-full min-h-[80vh] flex flex-col bg-slate-50 relative select-none" id="map-intelligence-workspace-engine">
+      
+      {/* Universal Workspace Header */}
+      <div className="bg-white border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-sm" id="map-workspace-universal-header">
+        <div className="flex items-center gap-3">
+          <div className="bg-indigo-50 text-indigo-700 p-2 rounded-xl border border-indigo-100">
+            <Compass className="w-5 h-5" />
+          </div>
+          <div>
+            <h1 className="text-base font-bold text-slate-900 tracking-tight">Map Intelligence Workspace</h1>
+            <p className="text-[11px] text-slate-500">Professional CAD-style spatial mapping & geometry creation engine</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-150 text-xs font-semibold text-indigo-700">
+            <span className="w-1.5 h-1.5 rounded-full bg-indigo-650 animate-ping"></span>
+            <span>Map Workspace v1 Active</span>
+          </span>
+          {currentStep !== "projects" && (
+            <button 
+              onClick={handleBackToLanding}
+              className="text-xs font-bold bg-slate-100 hover:bg-slate-250 text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 transition-colors"
+            >
+              &larr; Switch Project
+            </button>
+          )}
+        </div>
+      </div>
       
       {/* ==========================================
           STEP 1: PROJECT SELECTION DIRECTORY DIRECT
