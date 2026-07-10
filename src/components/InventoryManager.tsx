@@ -3115,13 +3115,32 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                     <p className="text-[10px] text-slate-400 text-center">No layouts attached yet.</p>
                   ) : (
                     getLayoutsForProject(selectedProject.id).map(l => (
-                      <div key={l.id} className="bg-slate-50 p-1.5 rounded border border-slate-150 text-[10.5px] flex justify-between items-center">
+                      <div 
+                        key={l.id} 
+                        onClick={() => {
+                          setSelectedLayout(l);
+                          setFilterLayProject(selectedProject.id);
+                          setActiveTab("layouts");
+                        }}
+                        className="bg-slate-50 p-1.5 rounded border border-slate-150 text-[10.5px] flex justify-between items-center hover:bg-indigo-50/50 hover:border-indigo-200 cursor-pointer transition-colors"
+                      >
                         <span className="font-semibold text-slate-800">[{l.code}] {l.name}</span>
                         <span className="text-slate-400 font-mono text-[9px]">{getPlotsForLayout(l.id).length} plots</span>
                       </div>
                     ))
                   )}
                 </div>
+
+                <button
+                  onClick={() => {
+                    setFilterLayProject(selectedProject.id);
+                    setActiveTab("layouts");
+                  }}
+                  className="w-full mt-1.5 inline-flex items-center justify-center gap-1.5 bg-indigo-50 border border-indigo-150 text-indigo-700 font-bold text-[11px] py-1.5 rounded-lg hover:bg-indigo-100 transition-colors cursor-pointer"
+                >
+                  <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>View and Manage Layouts ({getLayoutsForProject(selectedProject.id).length})</span>
+                </button>
 
                 <p className="font-bold text-[10px] text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1 pt-1">Individual Plots Aggregate</p>
                 <div className="grid grid-cols-2 gap-2 text-center pt-1 font-mono text-[10.5px]">
@@ -3207,6 +3226,19 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                           </div>
                         ))
                       )}
+                    </div>
+
+                    <div className="pt-3 border-t border-slate-100 flex flex-col gap-2">
+                      <p className="font-bold text-[10px] text-slate-400 uppercase tracking-wider">Spatial Mapping Actions</p>
+                      <button
+                        onClick={() => {
+                          setActiveTab("viewer");
+                        }}
+                        className="w-full flex items-center justify-center gap-2 bg-slate-900 border border-slate-850 text-white font-bold text-xs py-2.5 rounded-xl hover:bg-slate-800 hover:shadow-md transition-all cursor-pointer shadow-sm"
+                      >
+                        <Compass className="w-4 h-4 text-rose-500 animate-spin-slow" />
+                        <span>Launch Layout Studio</span>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -3460,6 +3492,12 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
         <div className="p-0">
           <MapWorkspaceIndex
             initialLayoutId={selectedLayout?.id || null}
+            initialProjectId={selectedLayout?.project_id || selectedProject?.id || null}
+            projects={lookupProjects}
+            layouts={lookupLayouts}
+            onBackToInventory={() => {
+              setActiveTab("layouts");
+            }}
           />
         </div>
       )}

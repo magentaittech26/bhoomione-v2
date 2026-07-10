@@ -29,18 +29,9 @@ import Inspector from "./Inspector.tsx";
 import StatusBar from "./StatusBar.tsx";
 import EmptyState from "./EmptyState.tsx";
 
-// Seeded high-fidelity fallback mock data in case DB tables are unpopulated
-const MOCK_PROJECTS = [
-  { id: "proj-1", code: "PRJ-GME", name: "Green Meadows Elite", location: "North Bengaluru, Karnataka", status: "Active", totalLayouts: 2, developer: "Bhoomi Realty Developers" },
-  { id: "proj-2", code: "PRJ-SFT", name: "Springfields Township", location: "Pune West, Maharashtra", status: "Active", totalLayouts: 1, developer: "Apex Plotting Conglomerate" },
-  { id: "proj-3", code: "PRJ-GVC", name: "Golden Valley County", location: "Chennai Coastal, Tamil Nadu", status: "Draft", totalLayouts: 0, developer: "Capital Housing Estates" }
-];
-
-const MOCK_LAYOUTS = [
-  { id: "lay-1", project_id: "proj-1", code: "LAY-SEC-A", name: "Sector A Premium Residential Layout", type: "Residential", status: "Approved", totalArea: "450,000 SQFT", totalPlots: 45 },
-  { id: "lay-2", project_id: "proj-1", code: "LAY-SEC-B", name: "Sector B Commercial Tech Zone", type: "Commercial", status: "Approved", totalArea: "210,000 SQFT", totalPlots: 12 },
-  { id: "lay-3", project_id: "proj-2", code: "LAY-SF-P1", name: "Springfields Phase 1 Layout Blueprint", type: "Mixed-Use", status: "Approved", totalArea: "350,000 SQFT", totalPlots: 28 }
-];
+// No demo/mock projects or layouts. Everything is loaded dynamically from PostgreSQL.
+const MOCK_PROJECTS: any[] = [];
+const MOCK_LAYOUTS: any[] = [];
 
 const DEFAULT_LAYERS: GeometryLayer[] = [
   { id: "l-boundary", layout_id: "lay-1", layer_name: "BOUNDARY", display_name: "Site Boundary Limit", is_visible: true, is_locked: false, display_order: 1, style_config: { strokeColor: "#4F46E5", strokeWidth: 3, fillColor: "#818CF8", opacity: 0.15 }, permissions: { viewRoles: ["ADMIN", "USER"], editRoles: ["ADMIN"] }, created_at: "2026-07-09T00:00:00Z", updated_at: "2026-07-09T00:00:00Z" },
@@ -540,26 +531,99 @@ const WIZARD_HELP: Record<string, {
 interface MapWorkspaceIndexProps {
   initialProjectId?: string | null;
   initialLayoutId?: string | null;
+  projects?: any[];
+  layouts?: any[];
+  onBackToInventory?: () => void;
 }
 
-export default function MapWorkspaceIndex({ initialProjectId = null, initialLayoutId = null }: MapWorkspaceIndexProps = {}) {
+export default function MapWorkspaceIndex({ 
+  initialProjectId = null, 
+  initialLayoutId = null,
+  projects = [],
+  layouts = [],
+  onBackToInventory
+}: MapWorkspaceIndexProps = {}) {
   // Navigation flow state: "projects" | "layouts" | "workspace"
   const [currentStep, setCurrentStep] = useState<"projects" | "layouts" | "workspace">("projects");
   
   // Data State Arrays
-  const [projectsList, setProjectsList] = useState<any[]>(MOCK_PROJECTS);
-  const [layoutsList, setLayoutsList] = useState<any[]>(MOCK_LAYOUTS);
+  const [projectsList, setProjectsList] = useState<any[]>([]);
+  const [layoutsList, setLayoutsList] = useState<any[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedLayoutId, setSelectedLayoutId] = useState<string | null>(null);
 
-  // Sync initial parameters
+  // Sync projects and layouts from props if available
   useEffect(() => {
-    if (initialLayoutId) {
-      const layout = layoutsList.find(l => l.id === initialLayoutId);
+    if (projects && projects.length > 0) {
+      setProjectsList(projects);
+    }
+  }, [projects]);
+
+  useEffect(() => {
+    if (layouts && layouts.length > 0) {
+      setLayoutsList(layouts);
+    }
+  }, [layouts]);
+
+  // Sync initial parameters and auto-launch studio wizard
+  useEffect(() => {
+    if (initialLayoutId && layoutsList.length > 0) {
+      const layout = layoutsList.find(l => String(l.id) === String(initialLayoutId));
       if (layout) {
         setSelectedProjectId(layout.project_id);
         setSelectedLayoutId(initialLayoutId);
         setCurrentStep("workspace");
+
+        // Automatically launch the Layout Studio Wizard for this existing layout!
+        setIsWizardMode(true);
+        setWizardStep("method"); // Continue directly to step 2: Choose Method
+        setWizardLayoutName(layout.name || "");
+        
+        // Map layout type to selection options: Residential, Commercial, Mixed-Use
+        const lowerType = (layout.layout_type || "").toLowerCase();
+        if (lowerType.includes("commercial")) {
+          setWizardLayoutType("Commercial");
+        } else if (lowerType.includes("mixed")) {
+          setWizardLayoutType("Mixed-Use");
+        } else {
+          setWizardLayoutType("Residential");
+        }
+
+        // Unpack additional fields from approval_number safely
+        const unpacked = layout.approval_number ? (() => {
+          const res = { approval_number: "", phase: "", survey_number: "", description: "" };
+          const parts = layout.approval_number.split(" | ");
+          parts.forEach((part: string) => {
+            const [key, ...valParts] = part.split(":");
+            const val = valParts.join(":").trim();
+            if (key === "Ap") res.approval_number = val;
+            else if (key === "Ph") res.phase = val;
+            else if (key === "Sy") res.survey_number = val;
+            else if (key === "De") res.description = val;
+          });
+          return res;
+        })() : { approval_number: "", phase: "Phase 1", survey_number: "", description: "" };
+
+        setWizardLayoutPhase(unpacked.phase || "Phase 1");
+        setWizardLayoutDesc(unpacked.description || "");
+        setWizardCreationMethod("");
+        setWizardUploadedFile(null);
+        setWizardCompletedSteps({ info: true });
+
+        // Load specific geometry unique to this layout from localStorage
+        const savedGeom = localStorage.getItem(`bhoomi_geometry_layout_${initialLayoutId}`);
+        if (savedGeom) {
+          try {
+            setObjects(JSON.parse(savedGeom));
+          } catch (e) {
+            console.error("Failed to load geometry from localStorage for layout", initialLayoutId, e);
+          }
+        } else {
+          // If no specific geometries are stored, fallback to empty so the user can draw it!
+          setObjects([]);
+        }
+
+        setStatusLog(`Layout Studio Wizard launched for "${layout.name}". Skipped step 1 (Layout Info already exists in ERP).`);
         return;
       }
     }
@@ -672,6 +736,13 @@ export default function MapWorkspaceIndex({ initialProjectId = null, initialLayo
     wizardCompletedSteps,
     objects
   ]);
+
+  // Geometry specific auto-save per layout
+  useEffect(() => {
+    if (selectedLayoutId) {
+      localStorage.setItem(`bhoomi_geometry_layout_${selectedLayoutId}`, JSON.stringify(objects));
+    }
+  }, [objects, selectedLayoutId]);
 
   // Handle auto-switching the active canvas drawing tool depending on active wizard step
   useEffect(() => {
@@ -815,49 +886,121 @@ export default function MapWorkspaceIndex({ initialProjectId = null, initialLayo
     }, 800);
   };
 
-  const handlePublishLayoutSubmit = () => {
-    const newLayId = `lay-${Date.now()}`;
-    const newLayout = {
-      id: newLayId,
-      project_id: selectedProjectId,
-      code: `LAY-${wizardLayoutName.substring(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`,
-      name: wizardLayoutName,
-      type: wizardLayoutType,
-      status: "Approved",
-      totalArea: "380,000 SQFT",
-      totalPlots: objects.filter(o => o.layerName === "PLOTS").length || 15
-    };
+  const handlePublishLayoutSubmit = async () => {
+    try {
+      if (selectedLayoutId) {
+        // Update existing layout
+        const existingLayout = layoutsList.find(l => String(l.id) === String(selectedLayoutId));
+        
+        // Pack approval number info safely:
+        const unpacked = existingLayout?.approval_number ? (() => {
+          const res = { approval_number: "", phase: "", survey_number: "", description: "" };
+          const parts = existingLayout.approval_number.split(" | ");
+          parts.forEach((part: string) => {
+            const [key, ...valParts] = part.split(":");
+            const val = valParts.join(":").trim();
+            if (key === "Ap") res.approval_number = val;
+            else if (key === "Ph") res.phase = val;
+            else if (key === "Sy") res.survey_number = val;
+            else if (key === "De") res.description = val;
+          });
+          return res;
+        })() : { approval_number: "", phase: "Phase 1", survey_number: "", description: "" };
 
-    setLayoutsList(prev => [newLayout, ...prev]);
+        // Pack it back with updated wizard values
+        const packedStr = [
+          unpacked.approval_number ? `Ap:${unpacked.approval_number.trim()}` : "",
+          wizardLayoutPhase ? `Ph:${wizardLayoutPhase.trim()}` : "",
+          unpacked.survey_number ? `Sy:${unpacked.survey_number.trim()}` : "",
+          wizardLayoutDesc ? `De:${wizardLayoutDesc.trim()}` : ""
+        ].filter(Boolean).join(" | ").slice(0, 149);
 
-    localStorage.removeItem(`bhoomi_wizard_draft_${selectedProjectId}`);
-    setDraftLayoutData(null);
+        const payload = {
+          project_id: selectedProjectId,
+          name: wizardLayoutName.trim(),
+          layout_type: wizardLayoutType ? wizardLayoutType.toUpperCase() : (existingLayout?.layout_type || "RESIDENTIAL"),
+          approval_number: packedStr || null,
+          status: "LAUNCHED" // Mark as Launched upon publishing from map studio!
+        };
 
-    setIsWizardMode(false);
-    setCurrentStep("layouts");
-    setStatusLog(`Successfully published Layout Plan: "${wizardLayoutName}" live!`);
-    alert(`Layout Blueprint "${wizardLayoutName}" published live to BhoomiOne production!`);
+        await api.updateLayout(selectedLayoutId, payload);
+        
+        // Save the geometries to localStorage specifically for this layout
+        localStorage.setItem(`bhoomi_geometry_layout_${selectedLayoutId}`, JSON.stringify(objects));
+        
+        // Remove draft data
+        localStorage.removeItem(`bhoomi_wizard_draft_${selectedProjectId}`);
+        setDraftLayoutData(null);
+
+        setIsWizardMode(false);
+        setCurrentStep("workspace"); // Stay in workspace view
+        
+        setStatusLog(`Successfully updated and published Layout Plan: "${wizardLayoutName}" live!`);
+        alert(`Layout Blueprint "${wizardLayoutName}" published live to BhoomiOne production!`);
+        
+        // Reload layout list
+        const resLayouts = await api.fetchLayouts({ per_page: 1000 });
+        setLayoutsList(resLayouts.data || []);
+      } else {
+        // Create new layout if none selected
+        const payload = {
+          project_id: selectedProjectId,
+          name: wizardLayoutName.trim(),
+          code: `LAY-${wizardLayoutName.substring(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`,
+          layout_type: wizardLayoutType ? wizardLayoutType.toUpperCase() : "RESIDENTIAL",
+          status: "LAUNCHED"
+        };
+        const res = await api.createLayout(payload);
+        const newLayoutId = res.id;
+        
+        // Save geometries to localStorage specifically for this new layout
+        localStorage.setItem(`bhoomi_geometry_layout_${newLayoutId}`, JSON.stringify(objects));
+
+        localStorage.removeItem(`bhoomi_wizard_draft_${selectedProjectId}`);
+        setDraftLayoutData(null);
+
+        setIsWizardMode(false);
+        setCurrentStep("workspace");
+        setSelectedLayoutId(newLayoutId);
+        
+        setStatusLog(`Successfully created and published new Layout Plan: "${wizardLayoutName}" live!`);
+        alert(`Layout Blueprint "${wizardLayoutName}" published live to BhoomiOne production!`);
+
+        // Reload layout list
+        const resLayouts = await api.fetchLayouts({ per_page: 1000 });
+        setLayoutsList(resLayouts.data || []);
+      }
+    } catch (err: any) {
+      console.error("Failed to save layout publish", err);
+      alert("Failed to publish layout: " + (err.message || err));
+    }
   };
 
-  // Fetch initial data from APIs, fallback to mocks
+  // Fetch initial data from APIs, fallback to empty
   useEffect(() => {
     async function loadInitialData() {
       try {
-        const fetchedProjects = await api.fetchProjects();
-        if (fetchedProjects && fetchedProjects.length > 0) {
-          setProjectsList(fetchedProjects);
+        if (!projects || projects.length === 0) {
+          const resProjects = await api.fetchProjects({ per_page: 1000 });
+          const fetchedProjects = resProjects.data || [];
+          if (fetchedProjects && fetchedProjects.length > 0) {
+            setProjectsList(fetchedProjects);
+          }
         }
         
-        const fetchedLayouts = await api.fetchLayouts();
-        if (fetchedLayouts && fetchedLayouts.length > 0) {
-          setLayoutsList(fetchedLayouts);
+        if (!layouts || layouts.length === 0) {
+          const resLayouts = await api.fetchLayouts({ per_page: 1000 });
+          const fetchedLayouts = resLayouts.data || [];
+          if (fetchedLayouts && fetchedLayouts.length > 0) {
+            setLayoutsList(fetchedLayouts);
+          }
         }
       } catch (err) {
-        console.warn("API endpoints not fully mapped or unseeded. Falling back to high-fidelity mock assets.", err);
+        console.warn("API endpoints not fully mapped or unseeded.", err);
       }
     }
     loadInitialData();
-  }, []);
+  }, [projects, layouts]);
 
   // Update selected layout dependencies
   const handleSelectProject = (projectId: string) => {
@@ -1491,7 +1634,7 @@ export default function MapWorkspaceIndex({ initialProjectId = null, initialLayo
                   </span>
                 </div>
                 <h2 className="text-sm font-bold text-white tracking-tight">
-                  Layout Creation Studio &mdash; <span className="text-indigo-400">{WIZARD_STEPS_META.find(s => s.id === wizardStep)?.label}</span>
+                  Layout Creation Studio &mdash; <span className="text-indigo-400">{(wizardStep === "info" && selectedLayoutId) ? "Project & Layout Info" : WIZARD_STEPS_META.find(s => s.id === wizardStep)?.label}</span>
                 </h2>
               </div>
             </div>
@@ -1524,6 +1667,7 @@ export default function MapWorkspaceIndex({ initialProjectId = null, initialLayo
                 </h3>
                 <nav className="space-y-1.5">
                   {WIZARD_STEPS_META.map((step, idx) => {
+                    const label = (step.id === "info" && selectedLayoutId) ? "Project & Layout Info" : step.label;
                     const isActive = wizardStep === step.id;
                     const isCompleted = wizardCompletedSteps[step.id];
                     return (
@@ -1535,7 +1679,7 @@ export default function MapWorkspaceIndex({ initialProjectId = null, initialLayo
                           const activeIdx = WIZARD_STEPS_META.findIndex(s => s.id === wizardStep);
                           if (stepIdx < activeIdx || isCompleted) {
                             setWizardStep(step.id as WizardStep);
-                            setStatusLog(`Switched step viewport to: ${step.label}`);
+                            setStatusLog(`Switched step viewport to: ${label}`);
                           }
                         }}
                         className={`group px-3 py-2.5 rounded-xl flex items-center gap-2.5 text-xs font-semibold transition-all ${
@@ -1557,7 +1701,7 @@ export default function MapWorkspaceIndex({ initialProjectId = null, initialLayo
                             {idx + 1}
                           </span>
                         )}
-                        <span className="truncate">{step.label}</span>
+                        <span className="truncate">{label}</span>
                       </div>
                     );
                   })}
@@ -1618,79 +1762,164 @@ export default function MapWorkspaceIndex({ initialProjectId = null, initialLayo
               {/* STEP 1: Layout Info Form */}
               {wizardStep === "info" && (
                 <div className="flex-1 p-8 overflow-y-auto flex items-center justify-center animate-fadeIn" id="wizard-info-view">
-                  <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-xl w-full shadow-md space-y-6">
-                    <div className="space-y-1">
-                      <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
-                        Step 1: Collect Layout Plan Information
-                      </h3>
-                      <p className="text-xs text-slate-500">
-                        Specify basic parameters regarding zoning designations, surveys, and planned construction phases.
-                      </p>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="space-y-1">
-                        <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                          <span>Layout Name</span>
-                          <span className="text-rose-500 font-bold">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g., Sector C Green Park Meadows"
-                          value={wizardLayoutName}
-                          onChange={(e) => setWizardLayoutName(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800"
-                        />
+                  {selectedLayoutId ? (
+                    <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-2xl w-full shadow-md space-y-6">
+                      <div className="space-y-1.5 border-b border-slate-100 pb-4">
+                        <span className="bg-indigo-50 border border-indigo-150 text-indigo-700 font-mono text-[9px] font-bold px-2.5 py-0.5 rounded uppercase">
+                          System Registry Lock
+                        </span>
+                        <h3 className="text-base font-extrabold text-slate-900 tracking-tight mt-1 flex items-center gap-1.5">
+                          Step 1: Project & Layout Info (Read Only)
+                        </h3>
+                        <p className="text-xs text-slate-500 leading-relaxed">
+                          This Layout subdivision plan already exists in the BhoomiOne ERP registry. Basic metadata parameters are read-only to guarantee single source of truth integrity.
+                        </p>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* Parent Project Context */}
+                        <div className="space-y-3.5 bg-slate-50/50 p-4 rounded-xl border border-slate-150">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1">
+                            Parent Project Context
+                          </p>
+                          <div className="space-y-2 text-xs">
+                            <p className="flex justify-between gap-4">
+                              <span className="text-slate-500">Project Name:</span>
+                              <strong className="text-slate-800 text-right">{activeProjectObj?.name || "N/A"}</strong>
+                            </p>
+                            <p className="flex justify-between gap-4">
+                              <span className="text-slate-500">Project Code:</span>
+                              <strong className="text-slate-800 font-mono text-right">{activeProjectObj?.code || "N/A"}</strong>
+                            </p>
+                            <p className="flex justify-between gap-4">
+                              <span className="text-slate-500">Developer:</span>
+                              <strong className="text-slate-800 text-right">{activeProjectObj?.developer_name || activeProjectObj?.developer || "N/A"}</strong>
+                            </p>
+                            <p className="flex justify-between gap-4">
+                              <span className="text-slate-500">Location:</span>
+                              <strong className="text-slate-800 text-right">{activeProjectObj?.location || "N/A"}</strong>
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Layout Subdivision Plan */}
+                        <div className="space-y-3.5 bg-slate-50/50 p-4 rounded-xl border border-slate-150">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1">
+                            Layout Subdivision Plan
+                          </p>
+                          <div className="space-y-2 text-xs">
+                            <p className="flex justify-between gap-4">
+                              <span className="text-slate-500">Layout Name:</span>
+                              <strong className="text-slate-800 text-right">{wizardLayoutName || activeLayoutObj?.name || "N/A"}</strong>
+                            </p>
+                            <p className="flex justify-between gap-4">
+                              <span className="text-slate-500">Zoning Type:</span>
+                              <strong className="text-slate-800 text-right">{wizardLayoutType || activeLayoutObj?.layout_type || "N/A"}</strong>
+                            </p>
+                            <p className="flex justify-between gap-4">
+                              <span className="text-slate-500">Development Phase:</span>
+                              <strong className="text-slate-800 text-right">{wizardLayoutPhase || "Phase 1"}</strong>
+                            </p>
+                            <p className="flex justify-between gap-4">
+                              <span className="text-slate-500">Lifecycle State:</span>
+                              <strong className="text-indigo-700 font-bold uppercase font-mono text-right">{activeLayoutObj?.status || "N/A"}</strong>
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {wizardLayoutDesc && (
+                        <div className="space-y-1 bg-slate-50 p-3 rounded-lg border border-slate-100 text-xs">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Description</span>
+                          <p className="italic text-slate-600 leading-relaxed">{wizardLayoutDesc}</p>
+                        </div>
+                      )}
+
+                      <div className="pt-4 border-t border-slate-100 flex justify-end">
+                        <button
+                          onClick={() => setWizardStep("method")}
+                          className="inline-flex items-center gap-1.5 bg-indigo-650 hover:bg-indigo-750 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition-all shadow-sm cursor-pointer"
+                        >
+                          <span>Continue to Step 2: Choose Method</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-xl w-full shadow-md space-y-6">
+                      <div className="space-y-1">
+                        <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
+                          Step 1: Collect Layout Plan Information
+                        </h3>
+                        <p className="text-xs text-slate-500">
+                          Specify basic parameters regarding zoning designations, surveys, and planned construction phases.
+                        </p>
+                      </div>
+
+                      <div className="space-y-4">
                         <div className="space-y-1">
                           <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                            <span>Zoning Classification</span>
+                            <span>Layout Name</span>
                             <span className="text-rose-500 font-bold">*</span>
                           </label>
-                          <select
-                            value={wizardLayoutType}
-                            onChange={(e) => setWizardLayoutType(e.target.value as any)}
+                          <input
+                            type="text"
+                            placeholder="e.g., Sector C Green Park Meadows"
+                            value={wizardLayoutName}
+                            onChange={(e) => setWizardLayoutName(e.target.value)}
                             className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800"
-                          >
-                            <option value="">-- Select Zoning --</option>
-                            <option value="Residential">Residential</option>
-                            <option value="Commercial">Commercial</option>
-                            <option value="Mixed-Use">Mixed-Use</option>
-                          </select>
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                              <span>Zoning Classification</span>
+                              <span className="text-rose-500 font-bold">*</span>
+                            </label>
+                            <select
+                              value={wizardLayoutType}
+                              onChange={(e) => setWizardLayoutType(e.target.value as any)}
+                              className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800"
+                            >
+                              <option value="">-- Select Zoning --</option>
+                              <option value="Residential">Residential</option>
+                              <option value="Commercial">Commercial</option>
+                              <option value="Mixed-Use">Mixed-Use</option>
+                            </select>
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-xs font-bold text-slate-700">
+                              Development Phase
+                            </label>
+                            <select
+                              value={wizardLayoutPhase}
+                              onChange={(e) => setWizardLayoutPhase(e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800"
+                            >
+                              <option value="Phase 1">Phase 1 (Immediate Release)</option>
+                              <option value="Phase 2">Phase 2 (Under Survey)</option>
+                              <option value="Phase 3">Phase 3 (Future Booking)</option>
+                            </select>
+                          </div>
                         </div>
 
                         <div className="space-y-1">
                           <label className="text-xs font-bold text-slate-700">
-                            Development Phase
+                            Detailed Operational Brief
                           </label>
-                          <select
-                            value={wizardLayoutPhase}
-                            onChange={(e) => setWizardLayoutPhase(e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800"
-                          >
-                            <option value="Phase 1">Phase 1 (Immediate Release)</option>
-                            <option value="Phase 2">Phase 2 (Under Survey)</option>
-                            <option value="Phase 3">Phase 3 (Future Booking)</option>
-                          </select>
+                          <textarea
+                            placeholder="Draft layout survey details, developer notes, or municipal clearance indices..."
+                            value={wizardLayoutDesc}
+                            onChange={(e) => setWizardLayoutDesc(e.target.value)}
+                            rows={4}
+                            className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 resize-none"
+                          />
                         </div>
                       </div>
-
-                      <div className="space-y-1">
-                        <label className="text-xs font-bold text-slate-700">
-                          Detailed Operational Brief
-                        </label>
-                        <textarea
-                          placeholder="Draft layout survey details, developer notes, or municipal clearance indices..."
-                          value={wizardLayoutDesc}
-                          onChange={(e) => setWizardLayoutDesc(e.target.value)}
-                          rows={4}
-                          className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-800 resize-none"
-                        />
-                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
 
