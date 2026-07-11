@@ -24,7 +24,10 @@ import {
   Wrench,
   Check,
   Info,
-  FileText
+  FileText,
+  RotateCcw,
+  Trash2,
+  Save
 } from "lucide-react";
 import api from "../../lib/api.ts";
 import { runValidationSuite } from "../../lib/plotEngine.ts";
@@ -416,6 +419,77 @@ const WIZARD_STEPS_META = [
   { id: "publish", label: "Publish" },
 ];
 
+const calculatePolygonArea = (coords: Array<[number, number]>): number => {
+  let area = 0;
+  const n = coords.length;
+  if (n < 3) return 0;
+  for (let i = 0; i < n; i++) {
+    const [x1, y1] = coords[i];
+    const [x2, y2] = coords[(i + 1) % n];
+    area += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(area / 2);
+};
+
+const calculatePolygonPerimeter = (coords: Array<[number, number]>): number => {
+  let perimeter = 0;
+  const n = coords.length;
+  if (n < 2) return 0;
+  for (let i = 0; i < n; i++) {
+    const [x1, y1] = coords[i];
+    const [x2, y2] = coords[(i + 1) % n];
+    perimeter += Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+  }
+  return perimeter;
+};
+
+// Simple self-intersection helper
+const isPolygonSelfIntersecting = (pts: Array<[number, number]>): boolean => {
+  const n = pts.length;
+  if (n < 4) return false;
+
+  const orientation = (p: [number, number], q: [number, number], r: [number, number]): number => {
+    const val = (q[1] - p[1]) * (r[0] - q[0]) - (q[0] - p[0]) * (r[1] - q[1]);
+    if (Math.abs(val) < 0.00001) return 0; // collinear
+    return val > 0 ? 1 : 2; // clock or counterclock
+  };
+
+  const onSegment = (p: [number, number], q: [number, number], r: [number, number]): boolean => {
+    return q[0] <= Math.max(p[0], r[0]) && q[0] >= Math.min(p[0], r[0]) &&
+           q[1] <= Math.max(p[1], r[1]) && q[1] >= Math.min(p[1], r[1]);
+  };
+
+  const intersect = (p1: [number, number], q1: [number, number], p2: [number, number], q2: [number, number]): boolean => {
+    const o1 = orientation(p1, q1, p2);
+    const o2 = orientation(p1, q1, q2);
+    const o3 = orientation(p2, q2, p1);
+    const o4 = orientation(p2, q2, q1);
+
+    if (o1 !== o2 && o3 !== o4) return true;
+
+    if (o1 === 0 && onSegment(p1, p2, q1)) return true;
+    if (o2 === 0 && onSegment(p1, q2, q1)) return true;
+    if (o3 === 0 && onSegment(p2, p1, q2)) return true;
+    if (o4 === 0 && onSegment(p2, q1, q2)) return true;
+
+    return false;
+  };
+
+  for (let i = 0; i < n; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % n];
+    for (let j = i + 2; j < n; j++) {
+      if ((j + 1) % n === i) continue; // Skip adjacent segments
+      const c = pts[j];
+      const d = pts[(j + 1) % n];
+      if (intersect(a, b, c, d)) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
 const WIZARD_HELP: Record<string, {
   title: string;
   why: string;
@@ -731,6 +805,11 @@ export default function MapWorkspaceIndex({
   // ========================================================
   const [isWizardMode, setIsWizardMode] = useState(false);
   const [wizardStep, setWizardStep] = useState<WizardStep>("info");
+
+  // Synchronized drawing state variables for wizard mode
+  const [wizardDrawingPoints, setWizardDrawingPoints] = useState<Array<[number, number]>>([]);
+  const [wizardDrawingCurrentMouse, setWizardDrawingCurrentMouse] = useState<[number, number] | null>(null);
+  const finishDrawingRef = useRef<(() => void) | null>(null);
   
   // Form fields
   const [wizardLayoutName, setWizardLayoutName] = useState("");
@@ -740,6 +819,11 @@ export default function MapWorkspaceIndex({
   const [wizardCreationMethod, setWizardCreationMethod] = useState<"pdf" | "image" | "dxf" | "manual" | "gis" | "">("");
   const [wizardUploadedFile, setWizardUploadedFile] = useState<any | null>(null);
   const [wizardCompletedSteps, setWizardCompletedSteps] = useState<Record<string, boolean>>({});
+
+  // Boundary Drawing User Experience states
+  const [showBoundaryWelcome, setShowBoundaryWelcome] = useState(true);
+  const [showBoundaryHelp, setShowBoundaryHelp] = useState(false);
+  const [showBoundarySuccess, setShowBoundarySuccess] = useState(false);
 
   // Step 3A variables
   const [importSubStep, setImportSubStep] = useState<"upload" | "preview" | "scale" | "background" | "validation">("upload");
@@ -1109,6 +1193,27 @@ export default function MapWorkspaceIndex({
       handleSelectTool(targetTool);
     }
   }, [wizardStep, isWizardMode]);
+
+  // Sync state for boundary welcome overlay and success tracking
+  useEffect(() => {
+    if (wizardStep === "boundary") {
+      setShowBoundaryWelcome(true);
+      setShowBoundarySuccess(false);
+      setShowBoundaryHelp(false);
+    }
+  }, [wizardStep]);
+
+  // Sync success state for boundary completions
+  useEffect(() => {
+    if (wizardStep === "boundary") {
+      const hasBoundary = objects.some(o => o.layerName === "BOUNDARY");
+      if (hasBoundary && wizardDrawingPoints.length === 0 && !showBoundaryWelcome) {
+        setShowBoundarySuccess(true);
+      } else {
+        setShowBoundarySuccess(false);
+      }
+    }
+  }, [objects, wizardStep, wizardDrawingPoints.length, showBoundaryWelcome]);
 
   // Handlers
   const handleStartNewLayoutWizard = () => {
@@ -3738,63 +3843,689 @@ export default function MapWorkspaceIndex({
               {["boundary", "roads", "parks", "amenities", "utilities", "plots"].includes(wizardStep) && (
                 <div className="flex-1 flex flex-col relative" id="wizard-drawing-canvas-pane">
                   
-                  {/* Floating Step Guideline Box */}
-                  <div className="absolute top-4 left-4 bg-white/95 backdrop-blur border border-slate-200 rounded-2xl shadow-xl p-4 w-80 z-20 space-y-3 pointer-events-auto" id="wizard-floating-guide">
-                    <div className="flex justify-between items-start">
-                      <div className="space-y-0.5">
-                        <span className="text-[9px] font-bold tracking-wider bg-indigo-100 text-indigo-750 px-2 py-0.5 rounded uppercase">
-                          Drawing Mode
-                        </span>
-                        <h4 className="text-xs font-extrabold text-slate-900 tracking-tight">
-                          {WIZARD_HELP[wizardStep]?.title}
-                        </h4>
-                      </div>
-                      <span className="text-[10px] text-indigo-600 font-mono font-bold bg-indigo-50 px-2 py-0.5 rounded-full">
-                        {selectedTool.toUpperCase()}
-                      </span>
-                    </div>
+                  {/* Floating Step Guideline Box & Assistant */}
+                  {wizardStep === "boundary" ? (
+                    <>
+                      {/* STYLE INJECTIONS */}
+                      <style>{`
+                        @keyframes boundaryDrawProgress {
+                          0% { stroke-dashoffset: 600; fill: rgba(99, 102, 241, 0); }
+                          50% { stroke-dashoffset: 0; fill: rgba(99, 102, 241, 0.12); }
+                          100% { stroke-dashoffset: 0; fill: rgba(99, 102, 241, 0.12); }
+                        }
+                        @keyframes pointerMoveDemo {
+                          0% { transform: translate(40px, 90px); }
+                          20% { transform: translate(140px, 30px); }
+                          40% { transform: translate(240px, 80px); }
+                          60% { transform: translate(180px, 120px); }
+                          80% { transform: translate(80px, 110px); }
+                          100% { transform: translate(40px, 90px); }
+                        }
+                        .animate-boundary-path {
+                          stroke-dasharray: 600;
+                          animation: boundaryDrawProgress 8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+                        }
+                        .animate-pointer-demo {
+                          animation: pointerMoveDemo 8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+                        }
+                      `}</style>
 
-                    <p className="text-[11px] text-slate-600 leading-relaxed">
-                      {WIZARD_HELP[wizardStep]?.description}
-                    </p>
+                      {/* STEP 3B: Welcome Overlay */}
+                      {showBoundaryWelcome && (
+                        <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-md z-30 flex items-center justify-center p-6 pointer-events-auto" id="boundary-welcome-overlay">
+                          <div className="bg-white border border-slate-150 rounded-3xl shadow-2xl p-6 w-full max-w-sm space-y-4 animate-in fade-in zoom-in-95 duration-200 flex flex-col text-center">
+                            <div className="mx-auto w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center shadow-inner">
+                              <Compass className="w-6 h-6 animate-spin" style={{ animationDuration: '6s' }} />
+                            </div>
+                            <div className="space-y-1">
+                              <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
+                                Define Outer Boundary Limits
+                              </h3>
+                              <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
+                                Let's outline the full legal parcel limits. All subdivided plots, roads, and parks will be safely contained inside this boundary polygon.
+                              </p>
+                            </div>
 
-                    <div className="bg-slate-50 border border-slate-150 rounded-xl p-2.5 text-[10px] font-mono text-slate-600 space-y-1">
-                      <div className="flex justify-between">
-                        <span>Active Layer:</span>
-                        <span className="font-bold text-slate-800">{selectedTool.toUpperCase()}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Elements Mapped:</span>
-                        <span className="font-bold text-indigo-700">
-                          {objects.filter(o => o.layerName === selectedTool.toUpperCase() || (selectedTool === "park" && o.layerName === "PARK")).length} drawn
-                        </span>
-                      </div>
-                    </div>
+                            {/* Interactive Pure CSS Tracing Preview */}
+                            <div className="relative w-full h-32 bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden flex items-center justify-center">
+                              <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:16px_16px] opacity-40" />
+                              <svg className="absolute inset-0 w-full h-full">
+                                <g className="text-indigo-400">
+                                  <path
+                                    d="M 60,85 L 170,25 L 270,75 L 210,115 L 110,105 Z"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    className="animate-boundary-path"
+                                  />
+                                  <circle cx="60" cy="85" r="4.5" fill="#10B981" stroke="#FFFFFF" strokeWidth="1.5" />
+                                  <circle cx="170" cy="25" r="4.5" fill="#3B82F6" stroke="#FFFFFF" strokeWidth="1.5" />
+                                  <circle cx="270" cy="75" r="4.5" fill="#3B82F6" stroke="#FFFFFF" strokeWidth="1.5" />
+                                  <circle cx="210" cy="115" r="4.5" fill="#3B82F6" stroke="#FFFFFF" strokeWidth="1.5" />
+                                  <circle cx="110" cy="105" r="4.5" fill="#3B82F6" stroke="#FFFFFF" strokeWidth="1.5" />
+                                </g>
+                              </svg>
+                              {/* Animated Pointer Crosshair */}
+                              <div className="absolute left-0 top-0 w-6 h-6 text-indigo-400 pointer-events-none animate-pointer-demo -ml-3 -mt-3 flex items-center justify-center">
+                                <div className="absolute w-4 h-px bg-current" />
+                                <div className="absolute h-4 w-px bg-current" />
+                                <div className="w-2 h-2 rounded-full border border-current" />
+                              </div>
+                              <span className="absolute bottom-2 right-2 font-mono text-[8px] text-indigo-400 bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded uppercase tracking-wider font-bold">
+                                Tracing Simulation
+                              </span>
+                            </div>
 
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => {
-                          const targetLayer = selectedTool.toUpperCase();
-                          setObjects(prev => prev.filter(o => o.layerName !== targetLayer && !(selectedTool === "park" && o.layerName === "PARK")));
-                          setStatusLog(`Cleared all draft objects from ${targetLayer} layer.`);
-                        }}
-                        className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[10px] py-1.5 rounded-lg border border-slate-200 transition-colors"
-                      >
-                        Clear Layer
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (objects.length > 0) {
-                            setObjects(prev => prev.slice(0, -1));
-                            setStatusLog("Undone last drawn coordinate element.");
+                            <div className="space-y-2 pt-2">
+                              <button
+                                onClick={() => {
+                                  setShowBoundaryWelcome(false);
+                                  handleSelectTool("boundary");
+                                  setStatusLog("Boundary drawing tool activated. Click on the canvas to place your first boundary corner.");
+                                }}
+                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-2.5 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer border-0"
+                              >
+                                <span>Start Boundary Drawing</span>
+                                <ArrowRight className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setShowBoundaryWelcome(false);
+                                  setShowBoundaryHelp(true);
+                                }}
+                                className="w-full bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs py-2 rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                              >
+                                Learn How to Trace
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* STEP 3B: Help Overlay */}
+                      {showBoundaryHelp && (
+                        <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm z-40 flex items-center justify-center p-6 pointer-events-auto" id="boundary-help-overlay">
+                          <div className="bg-white border border-slate-200 rounded-3xl shadow-2xl p-6 w-full max-w-sm space-y-4 animate-in fade-in zoom-in-95 duration-200 relative flex flex-col">
+                            <button 
+                              onClick={() => setShowBoundaryHelp(false)}
+                              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 cursor-pointer p-1 bg-slate-50 hover:bg-slate-100 rounded-lg border-0"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+
+                            <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+                              <HelpCircle className="w-5 h-5 text-indigo-600 shrink-0" />
+                              <h3 className="text-xs font-bold text-slate-900">
+                                How to Trace Your Layout Boundary
+                              </h3>
+                            </div>
+
+                            {/* Animated Tracing Preview */}
+                            <div className="relative w-full h-28 bg-slate-950 rounded-xl border border-slate-800 overflow-hidden flex items-center justify-center">
+                              <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:16px_16px] opacity-40" />
+                              <svg className="absolute inset-0 w-full h-full">
+                                <g className="text-indigo-400">
+                                  <path
+                                    d="M 60,85 L 170,25 L 270,75 L 210,115 L 110,105 Z"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    className="animate-boundary-path"
+                                  />
+                                  <circle cx="60" cy="85" r="4.5" fill="#10B981" stroke="#FFFFFF" strokeWidth="1.5" />
+                                  <circle cx="170" cy="25" r="4.5" fill="#3B82F6" stroke="#FFFFFF" strokeWidth="1.5" />
+                                  <circle cx="270" cy="75" r="4.5" fill="#3B82F6" stroke="#FFFFFF" strokeWidth="1.5" />
+                                  <circle cx="210" cy="115" r="4.5" fill="#3B82F6" stroke="#FFFFFF" strokeWidth="1.5" />
+                                  <circle cx="110" cy="105" r="4.5" fill="#3B82F6" stroke="#FFFFFF" strokeWidth="1.5" />
+                                </g>
+                              </svg>
+                              {/* Animated Pointer Crosshair */}
+                              <div className="absolute left-0 top-0 w-6 h-6 text-indigo-400 pointer-events-none animate-pointer-demo -ml-3 -mt-3 flex items-center justify-center">
+                                <div className="absolute w-4 h-px bg-current" />
+                                <div className="absolute h-4 w-px bg-current" />
+                                <div className="w-2 h-2 rounded-full border border-current" />
+                              </div>
+                            </div>
+
+                            <div className="space-y-2.5 text-[10px] text-slate-600">
+                              <div className="flex gap-2 items-start">
+                                <span className="w-4 h-4 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-extrabold text-[9px] shrink-0 mt-0.5">1</span>
+                                <p className="leading-relaxed">
+                                  <strong className="text-slate-800">Place Corner Nodes:</strong> Click anywhere on the alignment backdrop to place the first node. Follow the guidelines.
+                                </p>
+                              </div>
+                              <div className="flex gap-2 items-start">
+                                <span className="w-4 h-4 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-extrabold text-[9px] shrink-0 mt-0.5">2</span>
+                                <p className="leading-relaxed">
+                                  <strong className="text-slate-800">Close the Loop:</strong> Trace the outer boundary. Double-click or click <strong className="text-indigo-600">Finish Boundary</strong> to enclose the perimeter.
+                                </p>
+                              </div>
+                              <div className="flex gap-2 items-start">
+                                <span className="w-4 h-4 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-extrabold text-[9px] shrink-0 mt-0.5">3</span>
+                                <p className="leading-relaxed">
+                                  <strong className="text-slate-800">Adjust Dynamic Nodes:</strong> Click and drag any plotted node to fine-tune the corner positions.
+                                </p>
+                              </div>
+                            </div>
+
+                            <button
+                              onClick={() => {
+                                setShowBoundaryHelp(false);
+                                handleSelectTool("boundary");
+                              }}
+                              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-2 rounded-xl transition-all cursor-pointer border-0 mt-1"
+                            >
+                              Got it, Let's Draw!
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* STEP 3B: Success Overlay */}
+                      {showBoundarySuccess && !showBoundaryWelcome && (
+                        <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-md z-30 flex items-center justify-center p-6 pointer-events-auto" id="boundary-success-overlay">
+                          <div className="bg-white border border-slate-150 rounded-3xl shadow-2xl p-6 w-full max-w-sm space-y-4 text-center flex flex-col items-center justify-center animate-in fade-in zoom-in-95 duration-200">
+                            <div className="w-14 h-14 bg-emerald-100 border border-emerald-200 text-emerald-600 rounded-full flex items-center justify-center shadow-inner animate-bounce">
+                              <CheckCircle2 className="w-8 h-8 stroke-[2.5]" />
+                            </div>
+                            
+                            <div className="space-y-1">
+                              <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">
+                                ✔ Boundary Completed!
+                              </h3>
+                              <p className="text-[11px] text-slate-500 max-w-xs mx-auto leading-relaxed">
+                                Your outer boundary has been enclosed, verified against self-intersection, and registered.
+                              </p>
+                            </div>
+
+                            {/* Finalized details card */}
+                            {(() => {
+                              const existingBoundary = objects.find(o => o.layerName === "BOUNDARY");
+                              const coords = existingBoundary ? (existingBoundary.geometry_data.coordinates as Array<[number, number]>) : [];
+                              const vertexCount = coords.length;
+                              const perimeterMeters = vertexCount >= 2 ? calculatePolygonPerimeter(coords) : 0;
+                              const areaSqm = vertexCount >= 3 ? calculatePolygonArea(coords) : 0;
+                              const areaSqft = areaSqm * 10.7639;
+
+                              return (
+                                <div className="w-full bg-slate-50 border border-slate-150 rounded-xl p-3 text-[10px] font-mono text-slate-600 space-y-1.5">
+                                  <h5 className="text-[8px] font-extrabold text-slate-400 uppercase tracking-widest font-sans border-b border-slate-100 pb-1 mb-1">
+                                    Verified Land Parcel Metrics
+                                  </h5>
+                                  <div className="flex justify-between">
+                                    <span className="text-slate-400">Vertices Plotted:</span>
+                                    <span className="font-bold text-slate-800">{vertexCount} nodes</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-slate-400">Perimeter:</span>
+                                    <span className="font-bold text-slate-800">{perimeterMeters.toFixed(1)} m</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-slate-400">Enclosed Area:</span>
+                                    <span className="font-extrabold text-emerald-600">{areaSqm.toLocaleString(undefined, { maximumFractionDigits: 1 })} m²</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-slate-400">In Sq. Feet:</span>
+                                    <span className="font-medium text-slate-500">{areaSqft.toLocaleString(undefined, { maximumFractionDigits: 0 })} sq.ft</span>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            <div className="w-full space-y-2 pt-1">
+                              <button
+                                onClick={() => {
+                                  setShowBoundarySuccess(false);
+                                  setWizardStep("roads");
+                                }}
+                                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2.5 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer border-0"
+                              >
+                                <span>Continue to Road Drawing</span>
+                                <ArrowRight className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setShowBoundarySuccess(false);
+                                  setObjects(prev => prev.filter(o => o.layerName !== "BOUNDARY"));
+                                  setWizardDrawingPoints([]);
+                                  setWizardDrawingCurrentMouse(null);
+                                  setStatusLog("Boundary deleted. Redraw active.");
+                                }}
+                                className="w-full bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs py-2 rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                              >
+                                Redraw / Adjust Boundary
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* STEP 3B: Boundary Drawing Assistant Panel */}
+                      <div className="absolute top-4 left-4 bg-white/95 backdrop-blur-md border border-slate-200 rounded-2xl shadow-xl p-4 w-85 z-20 space-y-4 pointer-events-auto flex flex-col max-h-[92%] overflow-y-auto" id="wizard-boundary-assistant">
+                        {/* Header with Tool Status */}
+                        <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                          <div className="space-y-0.5">
+                            <span className="text-[9px] font-bold tracking-wider bg-indigo-150 text-indigo-755 px-2.5 py-0.5 rounded uppercase font-mono">
+                              Step 3B: Assistant
+                            </span>
+                            <h4 className="text-xs font-extrabold text-slate-900 tracking-tight mt-1 flex items-center gap-1.5">
+                              <Compass className="w-4 h-4 text-indigo-650 shrink-0 animate-spin" style={{ animationDuration: '10s' }} />
+                              <span>Boundary Assistant</span>
+                            </h4>
+                          </div>
+                          <button
+                            onClick={() => setShowBoundaryHelp(true)}
+                            className="flex items-center gap-1 px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-750 font-bold text-[10px] rounded-xl border border-indigo-100 transition-colors cursor-pointer"
+                          >
+                            <HelpCircle className="w-3.5 h-3.5 shrink-0" />
+                            <span>Need Help?</span>
+                          </button>
+                        </div>
+
+                        {/* Guide text */}
+                        <p className="text-[11px] text-slate-500 leading-relaxed">
+                          Trace the outermost layout boundary perimeter. The system will guide you visually step-by-step.
+                        </p>
+
+                        {/* LIVE CHECKPOINT LIST */}
+                        {(() => {
+                          const existingBoundary = objects.find(o => o.layerName === "BOUNDARY");
+                          const draftCount = wizardDrawingPoints.length;
+
+                          return (
+                            <div className="space-y-2.5">
+                              <span className="text-[9px] font-bold text-slate-450 uppercase tracking-widest font-mono block">
+                                Interactive Checkpoints
+                              </span>
+                              <div className="space-y-1.5">
+                                {/* Step 1 Checkpoint */}
+                                <div className={`flex items-start gap-2.5 p-2 rounded-xl border text-[10px] transition-all ${
+                                  draftCount > 0 || existingBoundary
+                                    ? "bg-emerald-50/50 border-emerald-100/70 text-emerald-800"
+                                    : "bg-indigo-50/60 border-indigo-150 text-indigo-900"
+                                }`}>
+                                  <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-extrabold shrink-0 ${
+                                    draftCount > 0 || existingBoundary
+                                      ? "bg-emerald-100 text-emerald-600"
+                                      : "bg-indigo-600 text-white animate-pulse"
+                                  }`}>
+                                    {draftCount > 0 || existingBoundary ? "✓" : "1"}
+                                  </div>
+                                  <div className="space-y-0.5">
+                                    <p className="font-bold text-slate-800">Place First Corner Node</p>
+                                    <p className={`${draftCount > 0 || existingBoundary ? "text-slate-500" : "text-indigo-600 font-bold"}`}>
+                                      {draftCount > 0 || existingBoundary ? "Placed successfully on the map." : "Click anywhere on the map grid to begin."}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {/* Step 2 Checkpoint */}
+                                <div className={`flex items-start gap-2.5 p-2 rounded-xl border text-[10px] transition-all ${
+                                  existingBoundary
+                                    ? "bg-emerald-50/50 border-emerald-100/70 text-emerald-800"
+                                    : (draftCount >= 1
+                                        ? "bg-indigo-50/60 border-indigo-150 text-indigo-900"
+                                        : "bg-slate-50 border-slate-100 text-slate-400")
+                                }`}>
+                                  <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-extrabold shrink-0 ${
+                                    existingBoundary
+                                      ? "bg-emerald-100 text-emerald-600"
+                                      : (draftCount >= 1 ? "bg-indigo-600 text-white animate-pulse" : "bg-slate-200 text-slate-500")
+                                  }`}>
+                                    {existingBoundary ? "✓" : "2"}
+                                  </div>
+                                  <div className="space-y-0.5">
+                                    <p className="font-bold text-slate-800">Trace Parcel Perimeter</p>
+                                    <p className={`${existingBoundary ? "text-slate-500" : (draftCount >= 1 ? "text-indigo-600 font-bold" : "text-slate-400")}`}>
+                                      {existingBoundary ? "Parcel outline mapped." : (draftCount >= 1 ? "Continue clicking along property boundary." : "Trace outer legal boundaries of site.")}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {/* Step 3 Checkpoint */}
+                                <div className={`flex items-start gap-2.5 p-2 rounded-xl border text-[10px] transition-all ${
+                                  existingBoundary
+                                    ? "bg-emerald-50/50 border-emerald-100/70 text-emerald-800"
+                                    : (draftCount >= 3 && !isPolygonSelfIntersecting(wizardDrawingPoints)
+                                        ? "bg-indigo-50/60 border-indigo-150 text-indigo-900"
+                                        : "bg-slate-50 border-slate-100 text-slate-400")
+                                }`}>
+                                  <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-extrabold shrink-0 ${
+                                    existingBoundary
+                                      ? "bg-emerald-100 text-emerald-600"
+                                      : (draftCount >= 3 && !isPolygonSelfIntersecting(wizardDrawingPoints) ? "bg-indigo-600 text-white animate-pulse" : "bg-slate-200 text-slate-500")
+                                  }`}>
+                                    {existingBoundary ? "✓" : "3"}
+                                  </div>
+                                  <div className="space-y-0.5">
+                                    <p className="font-bold text-slate-800">Enclose &amp; Finalize Loop</p>
+                                    <p className={`${existingBoundary ? "text-slate-500" : (draftCount >= 3 && !isPolygonSelfIntersecting(wizardDrawingPoints) ? "text-indigo-600 font-bold" : "text-slate-400")}`}>
+                                      {existingBoundary ? "Boundary closed and validated." : (draftCount >= 3 && !isPolygonSelfIntersecting(wizardDrawingPoints) ? "Double-click first node or click 'Finish Boundary'." : "Plot at least 3 nodes to close.")}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+
+                        {/* Interactive Metrics & Validation Status Table */}
+                        {(() => {
+                          const existingBoundary = objects.find(o => o.layerName === "BOUNDARY");
+                          const draftCount = wizardDrawingPoints.length;
+                          
+                          const activeCoords = draftCount > 0 
+                            ? wizardDrawingPoints 
+                            : (existingBoundary ? (existingBoundary.geometry_data.coordinates as Array<[number, number]>) : []);
+
+                          const errors: string[] = [];
+                          if (draftCount > 0) {
+                            if (draftCount < 3) errors.push("Need at least 3 vertices to enclose boundary loop.");
+                            else if (isPolygonSelfIntersecting(wizardDrawingPoints)) errors.push("Boundary polygon intersects itself!");
+                          } else if (!existingBoundary) {
+                            errors.push("No boundary drawn yet. Click canvas to plot vertices.");
+                          } else {
+                            const coords = existingBoundary.geometry_data.coordinates as Array<[number, number]>;
+                            if (coords.length < 3) errors.push("Boundary shape has too few vertices.");
+                            if (isPolygonSelfIntersecting(coords)) errors.push("Boundary polygon intersects itself!");
                           }
-                        }}
-                        className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[10px] py-1.5 rounded-lg border border-slate-200 transition-colors"
-                      >
-                        Undo Last
-                      </button>
+
+                          const isValid = errors.length === 0;
+
+                          return (
+                            <div className="space-y-3.5">
+                              {/* Validation Checks Banner */}
+                              <div className="space-y-1.5">
+                                <span className="text-[9px] font-bold text-slate-450 uppercase tracking-widest font-mono">
+                                  Validation Check
+                                </span>
+                                {isValid ? (
+                                  <div className="bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-xl p-2.5 flex items-start gap-2 text-[10px]">
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                                    <div className="space-y-0.5">
+                                      <p className="font-bold">✓ Topology Clear</p>
+                                      <p className="text-slate-500 leading-normal">
+                                        No self-intersections detected. Boundary structure is valid.
+                                      </p>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="bg-amber-50 border border-amber-100 text-amber-800 rounded-xl p-2.5 flex items-start gap-2 text-[10px]">
+                                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                    <div className="space-y-0.5">
+                                      <p className="font-bold">Tracing Check</p>
+                                      <p className="text-amber-700 font-medium leading-relaxed">{errors[0]}</p>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Controls Cheat-sheet */}
+                              <div className="bg-slate-50 border border-slate-150 p-2.5 rounded-xl text-[10px] text-slate-500 leading-relaxed space-y-1">
+                                <p className="font-bold text-[9px] text-slate-400 uppercase tracking-wider font-sans mb-1">
+                                  Controls Guide
+                                </p>
+                                <div className="flex gap-2">
+                                  <span className="text-indigo-600 font-bold font-mono">Click Canvas:</span>
+                                  <span>Plot corner vertices</span>
+                                </div>
+                                <div className="flex gap-2">
+                                  <span className="text-indigo-600 font-bold font-mono">Drag Nodes:</span>
+                                  <span>Reposition boundary corners</span>
+                                </div>
+                                <div className="flex gap-2">
+                                  <span className="text-indigo-600 font-bold font-mono">Drag Midpoints:</span>
+                                  <span>Insert new corner dynamically</span>
+                                </div>
+                              </div>
+
+                              {/* Wizard Navigation Footer */}
+                              <div className="pt-2 border-t border-slate-100 flex gap-2">
+                                <button
+                                  onClick={handleWizardPrev}
+                                  className="flex-1 bg-white hover:bg-slate-100 text-slate-600 font-bold text-[11px] py-2 rounded-xl border border-slate-200 transition-all cursor-pointer"
+                                >
+                                  &larr; Back
+                                </button>
+                                <button
+                                  onClick={handleWizardNext}
+                                  disabled={!existingBoundary || isPolygonSelfIntersecting(existingBoundary.geometry_data.coordinates as Array<[number, number]>)}
+                                  className="flex-1 bg-indigo-650 hover:bg-indigo-755 disabled:opacity-50 text-white font-bold text-[11px] py-2 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1 cursor-pointer border-0"
+                                >
+                                  <span>Continue</span>
+                                  <ArrowRight className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+
+                      {/* STEP 3B: Top-Right Progress HUD */}
+                      {(() => {
+                        const existingBoundary = objects.find(o => o.layerName === "BOUNDARY");
+                        const draftCount = wizardDrawingPoints.length;
+                        
+                        const activeCoords = draftCount > 0 
+                          ? wizardDrawingPoints 
+                          : (existingBoundary ? (existingBoundary.geometry_data.coordinates as Array<[number, number]>) : []);
+
+                        const vertexCount = activeCoords.length;
+                        const perimeterMeters = vertexCount >= 2 ? calculatePolygonPerimeter(activeCoords) : 0;
+                        const areaSqm = vertexCount >= 3 ? calculatePolygonArea(activeCoords) : 0;
+                        const areaSqft = areaSqm * 10.7639;
+
+                        let statusText = "Awaiting First Point";
+                        let statusColor = "bg-slate-100 text-slate-600";
+                        if (draftCount > 0) {
+                          if (draftCount < 3) {
+                            statusText = `Drafting (${draftCount}/3+ nodes)`;
+                            statusColor = "bg-indigo-50 text-indigo-700 border border-indigo-100";
+                          } else if (isPolygonSelfIntersecting(wizardDrawingPoints)) {
+                            statusText = "⚠ Self-intersecting!";
+                            statusColor = "bg-rose-50 text-rose-700 border border-rose-100 animate-pulse";
+                          } else {
+                            statusText = "Ready to Enclose";
+                            statusColor = "bg-emerald-50 text-emerald-700 border border-emerald-100";
+                          }
+                        } else if (existingBoundary) {
+                          const coords = existingBoundary.geometry_data.coordinates as Array<[number, number]>;
+                          if (isPolygonSelfIntersecting(coords)) {
+                            statusText = "⚠ Self-intersecting";
+                            statusColor = "bg-rose-50 text-rose-700 border border-rose-100";
+                          } else {
+                            statusText = "✓ Enclosed & Valid";
+                            statusColor = "bg-emerald-100 text-emerald-800 font-bold border border-emerald-200";
+                          }
+                        }
+
+                        return (
+                          <div className="absolute top-4 right-4 bg-white/95 backdrop-blur-md border border-slate-200 rounded-2xl shadow-xl p-4 w-72 z-20 space-y-3 pointer-events-auto flex flex-col animate-in fade-in slide-in-from-top-4 duration-300" id="boundary-progress-hud">
+                            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                              <h4 className="text-[10px] font-extrabold text-slate-500 flex items-center gap-1.5 uppercase tracking-wider font-sans">
+                                <Activity className="w-3.5 h-3.5 text-indigo-650" />
+                                <span>Boundary Progress</span>
+                              </h4>
+                              <span className="text-[8px] font-bold text-indigo-500 font-mono tracking-widest bg-indigo-50 px-1.5 py-0.5 rounded">LIVE FEED</span>
+                            </div>
+
+                            <div className="space-y-2 text-[10px] font-mono">
+                              <div className="flex justify-between items-center bg-slate-50 p-2 rounded-xl border border-slate-100">
+                                <span className="text-slate-400 uppercase text-[8px] font-sans font-bold">Status:</span>
+                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold ${statusColor}`}>
+                                  {statusText}
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="bg-slate-50 border border-slate-100 rounded-xl p-2.5">
+                                  <span className="text-slate-400 text-[8px] uppercase font-sans font-bold block mb-1">Vertices</span>
+                                  <span className="text-sm font-extrabold text-slate-800">{vertexCount} <span className="text-[9px] font-medium text-slate-450 font-sans">nodes</span></span>
+                                </div>
+                                <div className="bg-slate-50 border border-slate-100 rounded-xl p-2.5">
+                                  <span className="text-slate-400 text-[8px] uppercase font-sans font-bold block mb-1">Perimeter</span>
+                                  <span className="text-sm font-extrabold text-slate-800">
+                                    {perimeterMeters > 0 ? `${perimeterMeters.toFixed(1)}` : "0.0"}<span className="text-[9px] font-medium text-slate-455 font-sans">m</span>
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="bg-indigo-50/40 border border-indigo-100/50 rounded-xl p-2.5">
+                                <span className="text-indigo-500 text-[8px] uppercase font-sans font-bold block mb-1">Enclosed Area</span>
+                                <div className="flex items-baseline justify-between">
+                                  <span className="text-sm font-extrabold text-indigo-750">
+                                    {areaSqm > 0 ? areaSqm.toLocaleString(undefined, { maximumFractionDigits: 1 }) : "0.0"}<span className="text-[9px] font-medium text-indigo-500 font-sans ml-0.5">m²</span>
+                                  </span>
+                                  <span className="text-[9px] text-slate-400">
+                                    ≈ {areaSqft > 0 ? areaSqft.toLocaleString(undefined, { maximumFractionDigits: 0 }) : "0"} sqft
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* STEP 3B: Bottom Center Action Bar */}
+                      {(() => {
+                        const existingBoundary = objects.find(o => o.layerName === "BOUNDARY");
+                        const draftCount = wizardDrawingPoints.length;
+
+                        return (
+                          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-md border border-slate-200 p-2.5 rounded-2xl shadow-xl z-20 flex items-center gap-3 pointer-events-auto animate-in fade-in slide-in-from-bottom-4 duration-300" id="wizard-bottom-action-bar">
+                            <button
+                              onClick={() => {
+                                if (wizardDrawingPoints.length > 0) {
+                                  setWizardDrawingPoints(prev => prev.slice(0, -1));
+                                  setStatusLog("Undone last boundary vertex.");
+                                }
+                              }}
+                              disabled={draftCount === 0}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 text-slate-700 disabled:cursor-not-allowed font-bold text-xs rounded-xl border border-slate-200 transition-all cursor-pointer"
+                              title="Undo the last coordinate vertex"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span>Undo Point</span>
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                if (finishDrawingRef.current) {
+                                  finishDrawingRef.current();
+                                }
+                              }}
+                              disabled={draftCount < 3 || isPolygonSelfIntersecting(wizardDrawingPoints)}
+                              className={`flex items-center gap-1.5 px-4 py-2 font-bold text-xs rounded-xl transition-all border cursor-pointer ${
+                                draftCount >= 3 && !isPolygonSelfIntersecting(wizardDrawingPoints)
+                                  ? "bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-700 shadow-sm"
+                                  : "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
+                              }`}
+                              title="Enclose boundary path into a closed polygon loop"
+                            >
+                              <Check className="w-3.5 h-3.5 stroke-[3]" />
+                              <span>Finish Boundary</span>
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                setObjects(prev => prev.filter(o => o.layerName !== "BOUNDARY"));
+                                setWizardDrawingPoints([]);
+                                setWizardDrawingCurrentMouse(null);
+                                setStatusLog("Deleted existing boundary. Redraw session enabled.");
+                              }}
+                              disabled={draftCount === 0 && !existingBoundary}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 disabled:opacity-40 text-rose-700 disabled:cursor-not-allowed font-bold text-xs rounded-xl border border-rose-200 transition-all cursor-pointer"
+                              title="Clear draft session or delete finished boundary"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Reset Boundary</span>
+                            </button>
+
+                            <div className="w-px h-6 bg-slate-200" />
+
+                            <button
+                              onClick={handleSaveWizardDraftManually}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 transition-all cursor-pointer"
+                            >
+                              <Save className="w-3.5 h-3.5" />
+                              <span>Save Draft</span>
+                            </button>
+
+                            <button
+                              onClick={handleWizardNext}
+                              disabled={!existingBoundary || isPolygonSelfIntersecting(existingBoundary.geometry_data.coordinates as Array<[number, number]>)}
+                              className={`flex items-center gap-1.5 px-4 py-2 font-bold text-xs rounded-xl transition-all border cursor-pointer ${
+                                existingBoundary && !isPolygonSelfIntersecting(existingBoundary.geometry_data.coordinates as Array<[number, number]>)
+                                  ? "bg-slate-900 hover:bg-slate-800 text-white border-slate-950 shadow-md"
+                                  : "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
+                              }`}
+                            >
+                              <span>Next Step</span>
+                              <ArrowRight className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        );
+                      })()}
+                    </>
+                  ) : (
+                    /* Floating Step Guideline Box */
+                    <div className="absolute top-4 left-4 bg-white/95 backdrop-blur border border-slate-200 rounded-2xl shadow-xl p-4 w-80 z-20 space-y-3 pointer-events-auto" id="wizard-floating-guide">
+                      <div className="flex justify-between items-start">
+                        <div className="space-y-0.5">
+                          <span className="text-[9px] font-bold tracking-wider bg-indigo-100 text-indigo-750 px-2 py-0.5 rounded uppercase">
+                            Drawing Mode
+                          </span>
+                          <h4 className="text-xs font-extrabold text-slate-900 tracking-tight">
+                            {WIZARD_HELP[wizardStep]?.title}
+                          </h4>
+                        </div>
+                        <span className="text-[10px] text-indigo-600 font-mono font-bold bg-indigo-50 px-2 py-0.5 rounded-full">
+                          {selectedTool.toUpperCase()}
+                        </span>
+                      </div>
+
+                      <p className="text-[11px] text-slate-600 leading-relaxed">
+                        {WIZARD_HELP[wizardStep]?.description}
+                      </p>
+
+                      <div className="bg-slate-50 border border-slate-150 rounded-xl p-2.5 text-[10px] font-mono text-slate-600 space-y-1">
+                        <div className="flex justify-between">
+                          <span>Active Layer:</span>
+                          <span className="font-bold text-slate-800">{selectedTool.toUpperCase()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Elements Mapped:</span>
+                          <span className="font-bold text-indigo-700">
+                            {objects.filter(o => o.layerName === selectedTool.toUpperCase() || (selectedTool === "park" && o.layerName === "PARK")).length} drawn
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            const targetLayer = selectedTool.toUpperCase();
+                            setObjects(prev => prev.filter(o => o.layerName !== targetLayer && !(selectedTool === "park" && o.layerName === "PARK")));
+                            setStatusLog(`Cleared all draft objects from ${targetLayer} layer.`);
+                          }}
+                          className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[10px] py-1.5 rounded-lg border border-slate-200 transition-colors"
+                        >
+                          Clear Layer
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (objects.length > 0) {
+                              setObjects(prev => prev.slice(0, -1));
+                              setStatusLog("Undone last drawn coordinate element.");
+                            }
+                          }}
+                          className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[10px] py-1.5 rounded-lg border border-slate-200 transition-colors"
+                        >
+                          Undo Last
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Interactive CAD Canvas Engine Component */}
                   <div className="flex-1 min-h-0 relative bg-slate-100">
@@ -3817,6 +4548,21 @@ export default function MapWorkspaceIndex({
                       statusLog={statusLog}
                       setStatusLog={setStatusLog}
                       drawingManager={drawingManagerRef.current}
+                      backgroundImageUrl={importFileURL}
+                      backgroundZoom={importZoom}
+                      backgroundPan={importPan}
+                      backgroundRotate={importRotate}
+                      backgroundOpacity={importOpacity}
+                      backgroundBrightness={importBrightness}
+                      backgroundContrast={importContrast}
+                      calibP1={importCalibP1}
+                      calibP2={importCalibP2}
+                      calibDistance={importCalibDistance || undefined}
+                      drawingPoints={wizardDrawingPoints}
+                      setDrawingPoints={setWizardDrawingPoints}
+                      drawingCurrentMouse={wizardDrawingCurrentMouse}
+                      setDrawingCurrentMouse={setWizardDrawingCurrentMouse}
+                      onRegisterFinishDrawing={(fn) => { finishDrawingRef.current = fn; }}
                     />
                   </div>
                 </div>
@@ -3894,6 +4640,16 @@ export default function MapWorkspaceIndex({
                       statusLog={statusLog}
                       setStatusLog={setStatusLog}
                       drawingManager={drawingManagerRef.current}
+                      backgroundImageUrl={importFileURL}
+                      backgroundZoom={importZoom}
+                      backgroundPan={importPan}
+                      backgroundRotate={importRotate}
+                      backgroundOpacity={importOpacity}
+                      backgroundBrightness={importBrightness}
+                      backgroundContrast={importContrast}
+                      calibP1={importCalibP1}
+                      calibP2={importCalibP2}
+                      calibDistance={importCalibDistance || undefined}
                     />
                   </div>
                 </div>

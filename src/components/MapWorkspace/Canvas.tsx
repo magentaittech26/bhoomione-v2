@@ -31,6 +31,25 @@ interface CanvasProps {
   setStatusLog: (log: string) => void;
   isSpacePanActive?: boolean;
   drawingManager: any; // Direct access to trigger commands
+
+  // Background alignment & calibration props
+  backgroundImageUrl?: string;
+  backgroundZoom?: number;
+  backgroundPan?: { x: number; y: number };
+  backgroundRotate?: number;
+  backgroundOpacity?: number;
+  backgroundBrightness?: number;
+  backgroundContrast?: number;
+  calibP1?: { x: number; y: number } | null;
+  calibP2?: { x: number; y: number } | null;
+  calibDistance?: string;
+
+  // Active drawing state synchronization props
+  drawingPoints?: Array<[number, number]>;
+  setDrawingPoints?: React.Dispatch<React.SetStateAction<Array<[number, number]>>>;
+  drawingCurrentMouse?: [number, number] | null;
+  setDrawingCurrentMouse?: React.Dispatch<React.SetStateAction<[number, number] | null>>;
+  onRegisterFinishDrawing?: (finishFn: () => void) => void;
 }
 
 /**
@@ -159,7 +178,26 @@ export default function Canvas({
   statusLog,
   setStatusLog,
   isSpacePanActive = false,
-  drawingManager
+  drawingManager,
+
+  // Background alignment & calibration props
+  backgroundImageUrl,
+  backgroundZoom,
+  backgroundPan,
+  backgroundRotate,
+  backgroundOpacity,
+  backgroundBrightness,
+  backgroundContrast,
+  calibP1,
+  calibP2,
+  calibDistance,
+
+  // Active drawing state synchronization props
+  drawingPoints: propsDrawingPoints,
+  setDrawingPoints: propsSetDrawingPoints,
+  drawingCurrentMouse: propsDrawingCurrentMouse,
+  setDrawingCurrentMouse: propsSetDrawingCurrentMouse,
+  onRegisterFinishDrawing
 }: CanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -177,9 +215,43 @@ export default function Canvas({
     { p1: { x: number; y: number }; p2: { x: number; y: number }; distance: number }[]
   >([]);
 
-  // Active Drawing session points
-  const [drawingPoints, setDrawingPoints] = useState<Array<[number, number]>>([]);
-  const [drawingCurrentMouse, setDrawingCurrentMouse] = useState<[number, number] | null>(null);
+  // Active Drawing session points (Supports local fallback or synchronized parent state binds)
+  const [localDrawingPoints, setLocalDrawingPoints] = useState<Array<[number, number]>>([]);
+  const [localDrawingCurrentMouse, setLocalDrawingCurrentMouse] = useState<[number, number] | null>(null);
+
+  const drawingPoints = propsDrawingPoints !== undefined ? propsDrawingPoints : localDrawingPoints;
+  const setDrawingPoints = propsSetDrawingPoints !== undefined ? propsSetDrawingPoints : setLocalDrawingPoints;
+  const drawingCurrentMouse = propsDrawingCurrentMouse !== undefined ? propsDrawingCurrentMouse : localDrawingCurrentMouse;
+  const setDrawingCurrentMouse = propsSetDrawingCurrentMouse !== undefined ? propsSetDrawingCurrentMouse : setLocalDrawingCurrentMouse;
+
+  // Background Image State & Safe Asset Loader
+  const [bgImageElement, setBgImageElement] = useState<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    if (!backgroundImageUrl) {
+      setBgImageElement(null);
+      return;
+    }
+    const img = new Image();
+    img.src = backgroundImageUrl;
+    img.referrerPolicy = "no-referrer";
+    img.onload = () => {
+      setBgImageElement(img);
+      if (engineRef.current) {
+        engineRef.current.invalidate();
+      }
+    };
+    img.onerror = () => {
+      console.error("Failed to load background alignment drawing:", backgroundImageUrl);
+    };
+  }, [backgroundImageUrl]);
+
+  // Expose the finish drawing function handler to the orchestrating wizard Right Column
+  useEffect(() => {
+    if (onRegisterFinishDrawing) {
+      onRegisterFinishDrawing(handleFinishDrawing);
+    }
+  }, [onRegisterFinishDrawing, drawingPoints, selectedTool]);
 
   // Vertex / Geometry dragging states
   const [draggedVertexIndex, setDraggedVertexIndex] = useState<number | null>(null);
@@ -245,7 +317,7 @@ export default function Canvas({
     });
   }, [zoomLevel, pan.x, pan.y]);
 
-  // Keyboard actions for drawing sessions (Cancel on Escape, pop last point on Backspace)
+  // Keyboard actions for drawing sessions (Cancel on Escape, pop last point on Backspace, delete hovered vertex)
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" || e.key === "Esc") {
@@ -263,21 +335,150 @@ export default function Canvas({
           updated.pop();
           setDrawingPoints(updated);
           setStatusLog(`Removed last plotted point. Vertices count: ${updated.length}`);
+        } else if (selectedTool === "boundary" || selectedTool === "select") {
+          const targetSelectId = selectedTool === "boundary"
+            ? (objects.find(o => o.layerName === "BOUNDARY")?.id || null)
+            : selectedObjectId;
+          
+          if (targetSelectId && hoveredVertexIndex !== null) {
+            e.preventDefault();
+            const obj = objects.find(o => o.id === targetSelectId);
+            if (obj) {
+              const coords = [...(obj.geometry_data.coordinates as Array<[number, number]>)];
+              if (coords.length > 3) {
+                const oldCoords = JSON.parse(JSON.stringify(coords));
+                coords.splice(hoveredVertexIndex, 1);
+                
+                // Update and save
+                const updatedObjs = objects.map(o => {
+                  if (o.id === targetSelectId) {
+                    return {
+                      ...o,
+                      geometry_data: { ...o.geometry_data, coordinates: coords }
+                    };
+                  }
+                  return o;
+                });
+                onUpdateObjects(updatedObjs);
+                setHoveredVertexIndex(null);
+                setStatusLog(`Deleted vertex node #${hoveredVertexIndex} from boundary.`);
+              } else {
+                setStatusLog("Boundary footprint requires at least 3 unique vertices.");
+              }
+            }
+          }
         }
       }
     };
     window.addEventListener("keydown", handleGlobalKeyDown);
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
-  }, [drawingPoints]);
+  }, [drawingPoints, objects, selectedTool, selectedObjectId, hoveredVertexIndex, onUpdateObjects]);
 
   // Synchronize Render Callbacks each time render-impacting elements update
   useEffect(() => {
     if (!engineRef.current) return;
 
-    // Pre-render hooks (Clear & Draw Grid)
+    // Pre-render hooks (Clear & Draw Grid & Draw Background Image Calibration Canvas layer)
     engineRef.current.setBeforeRender((ctx) => {
       if (!engineRef.current) return;
       engineRef.current.drawEngineeringGrid(isGridVisible);
+
+      // Draw background layout image
+      if (bgImageElement && engineRef.current) {
+        const engine = engineRef.current;
+        const state = engine.getViewportState();
+        ctx.save();
+        
+        // Transform screen space to world space
+        ctx.translate(state.panX, state.panY);
+        ctx.scale(state.zoom, state.zoom);
+
+        // Apply background alignment & calibration metrics
+        const bZoom = backgroundZoom !== undefined ? backgroundZoom : 1;
+        const bPan = backgroundPan !== undefined ? backgroundPan : { x: 0, y: 0 };
+        const bRotate = backgroundRotate !== undefined ? backgroundRotate : 0;
+        const bOpacity = backgroundOpacity !== undefined ? backgroundOpacity / 100 : 0.8;
+        const bBrightness = backgroundBrightness !== undefined ? backgroundBrightness : 100;
+        const bContrast = backgroundContrast !== undefined ? backgroundContrast : 100;
+
+        ctx.globalAlpha = bOpacity;
+        ctx.filter = `brightness(${bBrightness}%) contrast(${bContrast}%)`;
+
+        const imgW = bgImageElement.width || 800;
+        const imgH = bgImageElement.height || 600;
+
+        // Apply alignment shifts
+        ctx.translate(bPan.x, bPan.y);
+        ctx.rotate((bRotate * Math.PI) / 180);
+        ctx.scale(bZoom, bZoom);
+
+        // Draw image centered at (0, 0) in world space
+        ctx.drawImage(bgImageElement, -imgW / 2, -imgH / 2, imgW, imgH);
+
+        ctx.restore();
+      }
+
+      // Draw calibration reference line Point A and Point B if active in Step 3
+      if (calibP1 && calibP2 && engineRef.current) {
+        const engine = engineRef.current;
+        
+        // Map local container coordinates to world coordinates (centered at (0,0))
+        // Since container is 800x600, center is (400, 300)
+        const wP1 = { x: calibP1.x - 400, y: calibP1.y - 300 };
+        const wP2 = { x: calibP2.x - 400, y: calibP2.y - 300 };
+
+        const sP1 = engine.worldToScreen(wP1.x, wP1.y);
+        const sP2 = engine.worldToScreen(wP2.x, wP2.y);
+
+        ctx.save();
+        ctx.strokeStyle = "#4F46E5"; // Indigo calibration line
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(sP1.x, sP1.y);
+        ctx.lineTo(sP2.x, sP2.y);
+        ctx.stroke();
+
+        // Draw circles
+        ctx.fillStyle = "#818CF8";
+        ctx.strokeStyle = "#4F46E5";
+        ctx.lineWidth = 1.5;
+        
+        ctx.beginPath();
+        ctx.arc(sP1.x, sP1.y, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(sP2.x, sP2.y, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Label Point A & B
+        ctx.fillStyle = "#4F46E5";
+        ctx.font = "bold 9px monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "bottom";
+        ctx.fillText("POINT A", sP1.x, sP1.y - 10);
+        ctx.fillText("POINT B", sP2.x, sP2.y - 10);
+
+        // Draw label in middle
+        if (calibDistance) {
+          const midX = (sP1.x + sP2.x) / 2;
+          const midY = (sP1.y + sP2.y) / 2;
+          const label = `CALIBRATED REFERENCE: ${calibDistance}m`;
+          const textW = ctx.measureText(label).width;
+          ctx.fillStyle = "rgba(79, 70, 229, 0.9)";
+          ctx.beginPath();
+          ctx.roundRect(midX - textW / 2 - 6, midY - 9, textW + 12, 18, 4);
+          ctx.fill();
+
+          ctx.fillStyle = "#FFFFFF";
+          ctx.textBaseline = "middle";
+          ctx.fillText(label, midX, midY);
+        }
+
+        ctx.restore();
+      }
     });
 
     // Post-render hooks (Draw Geometries, Labels, Measurements overlays)
@@ -293,8 +494,8 @@ export default function Canvas({
       // A. Render Active Drawing Session Preview
       if (drawingPoints.length > 0) {
         ctx.save();
-        ctx.strokeStyle = "#4F46E5";
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#3B82F6"; // Blue outline
+        ctx.lineWidth = 2.5;
         ctx.setLineDash([6, 4]);
         ctx.beginPath();
         const startPt = engine.worldToScreen(drawingPoints[0][0], drawingPoints[0][1]);
@@ -315,7 +516,7 @@ export default function Canvas({
         ctx.stroke();
 
         if (selectedTool !== "road") {
-          ctx.fillStyle = "rgba(79, 70, 229, 0.12)";
+          ctx.fillStyle = "rgba(59, 130, 246, 0.08)"; // Transparent fill
           ctx.fill();
         }
         ctx.restore();
@@ -380,7 +581,7 @@ export default function Canvas({
           const label = `${dist.toFixed(1)}m`;
           const textW = ctx.measureText(label).width;
 
-          ctx.fillStyle = "rgba(79, 70, 229, 0.9)";
+          ctx.fillStyle = "rgba(59, 130, 246, 0.9)";
           ctx.beginPath();
           ctx.roundRect(midX - textW / 2 - 4, midY - 7, textW + 8, 14, 3);
           ctx.fill();
@@ -393,9 +594,14 @@ export default function Canvas({
         ctx.restore();
       }
 
-      // B. Render Selected Object Coordinate Handles & Midpoints
-      if (selectedTool === "select" && selectedObjectId) {
-        const activeObj = objects.find(o => o.id === selectedObjectId);
+      // B. Render Selected Object Coordinate Handles & Midpoints (Enhanced styling support for Boundary Wizard mode)
+      const isBoundaryOrSelect = selectedTool === "select" || selectedTool === "boundary";
+      const targetRenderObjectId = selectedTool === "boundary"
+        ? (objects.find(o => o.layerName === "BOUNDARY")?.id || null)
+        : selectedObjectId;
+
+      if (isBoundaryOrSelect && targetRenderObjectId) {
+        const activeObj = objects.find(o => o.id === targetRenderObjectId);
         if (activeObj && (activeObj.object_type === "POLYGON" || activeObj.object_type === "POLYLINE" || activeObj.object_type === "BOUNDARY")) {
           const coords = activeObj.geometry_data.coordinates as Array<[number, number]>;
           
@@ -406,11 +612,19 @@ export default function Canvas({
               const screenPt = engine.worldToScreen(pt[0], pt[1]);
               const isHovered = hoveredVertexIndex === idx;
 
-              ctx.fillStyle = isHovered ? "#F59E0B" : "#FFFFFF"; // Amber if hovered, otherwise white
-              ctx.strokeStyle = "#4F46E5";
-              ctx.lineWidth = isHovered ? 2.5 : 1.5;
+              // Visuals: Selected vertex (orange), Hover vertex (green), otherwise white with blue border
+              if (isHovered) {
+                ctx.fillStyle = "#10B981"; // Green hover vertex
+              } else if (draggedVertexIndex === idx) {
+                ctx.fillStyle = "#F97316"; // Orange selected/dragged vertex
+              } else {
+                ctx.fillStyle = "#FFFFFF";
+              }
+
+              ctx.strokeStyle = "#3B82F6"; // Blue outline
+              ctx.lineWidth = isHovered || draggedVertexIndex === idx ? 2.5 : 1.5;
               ctx.beginPath();
-              ctx.arc(screenPt.x, screenPt.y, isHovered ? 6 : 4, 0, Math.PI * 2);
+              ctx.arc(screenPt.x, screenPt.y, isHovered || draggedVertexIndex === idx ? 6.5 : 4.5, 0, Math.PI * 2);
               ctx.fill();
               ctx.stroke();
             });
@@ -428,7 +642,7 @@ export default function Canvas({
               const midScreen = engine.worldToScreen(midWorld[0], midWorld[1]);
 
               const isHovered = hoveredMidpointIndex === i;
-              ctx.fillStyle = isHovered ? "#10B981" : "rgba(79, 70, 229, 0.5)"; // Green on hover, soft indigo
+              ctx.fillStyle = isHovered ? "#10B981" : "rgba(59, 130, 246, 0.5)"; // Green on hover, soft blue
               ctx.strokeStyle = "#FFFFFF";
               ctx.lineWidth = 1.25;
               ctx.beginPath();
@@ -449,7 +663,31 @@ export default function Canvas({
     });
 
     engineRef.current.invalidate();
-  }, [layers, objects, selectedObjectId, searchQuery, isGridVisible, measureStart, measureCurrent, savedMeasurements, selectedTool, drawingPoints, drawingCurrentMouse, hoveredVertexIndex, hoveredMidpointIndex]);
+  }, [
+    layers, 
+    objects, 
+    selectedObjectId, 
+    searchQuery, 
+    isGridVisible, 
+    measureStart, 
+    measureCurrent, 
+    savedMeasurements, 
+    selectedTool, 
+    drawingPoints, 
+    drawingCurrentMouse, 
+    hoveredVertexIndex, 
+    hoveredMidpointIndex,
+    bgImageElement,
+    backgroundZoom,
+    backgroundPan,
+    backgroundRotate,
+    backgroundOpacity,
+    backgroundBrightness,
+    backgroundContrast,
+    calibP1,
+    calibP2,
+    calibDistance
+  ]);
 
   /**
    * Dedicated overlay drawing module for CAD scale measurements
@@ -717,9 +955,14 @@ export default function Canvas({
       return;
     }
 
-    // Highlight hovering states on vertex / midpoints (Select tool only)
-    if (selectedTool === "select" && selectedObjectId) {
-      const activeObj = objects.find(o => o.id === selectedObjectId);
+    // Highlight hovering states on vertex / midpoints (Select tool or Boundary tool)
+    const isBoundaryOrSelect = selectedTool === "select" || selectedTool === "boundary";
+    const targetSelectObjectId = selectedTool === "boundary"
+      ? (objects.find(o => o.layerName === "BOUNDARY")?.id || null)
+      : selectedObjectId;
+
+    if (isBoundaryOrSelect && targetSelectObjectId) {
+      const activeObj = objects.find(o => o.id === targetSelectObjectId);
       if (activeObj && (activeObj.object_type === "POLYGON" || activeObj.object_type === "POLYLINE" || activeObj.object_type === "BOUNDARY")) {
         const coords = activeObj.geometry_data.coordinates as Array<[number, number]>;
         
@@ -849,7 +1092,81 @@ export default function Canvas({
       return;
     }
 
-    if (["boundary", "road", "plot", "park", "amenity", "utility"].includes(selectedTool)) {
+    const hasExistingBoundary = objects.some(o => o.layerName === "BOUNDARY");
+
+    if (selectedTool === "boundary") {
+      const targetSelectId = objects.find(o => o.layerName === "BOUNDARY")?.id || null;
+
+      // 1. Check if dragging an existing vertex handle of the boundary
+      if (targetSelectId && hoveredVertexIndex !== null) {
+        const activeObj = objects.find(o => o.id === targetSelectId);
+        if (activeObj) {
+          const coords = activeObj.geometry_data.coordinates as Array<[number, number]>;
+          setDraggedVertexObjectId(targetSelectId);
+          setDraggedVertexIndex(hoveredVertexIndex);
+          setDraggedVertexStartCoords(JSON.parse(JSON.stringify(coords)));
+          setStatusLog(`Started boundary vertex node #${hoveredVertexIndex} reshape drag.`);
+          return;
+        }
+      }
+
+      // 2. Check if dragging a midpoint split handle of the boundary (to insert a new vertex)
+      if (targetSelectId && hoveredMidpointIndex !== null) {
+        const activeObj = objects.find(o => o.id === targetSelectId);
+        if (activeObj) {
+          const coords = activeObj.geometry_data.coordinates as Array<[number, number]>;
+          const len = coords.length;
+          const p1 = coords[hoveredMidpointIndex];
+          const p2 = coords[(hoveredMidpointIndex + 1) % len];
+          const splitPt: [number, number] = [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2];
+
+          const updatedCoords = [...coords];
+          updatedCoords.splice(hoveredMidpointIndex + 1, 0, splitPt);
+
+          // Update instantly
+          const updatedObjs = objects.map(o => {
+            if (o.id === targetSelectId) {
+              return {
+                ...o,
+                geometry_data: { ...o.geometry_data, coordinates: updatedCoords }
+              };
+            }
+            return o;
+          });
+          onUpdateObjects(updatedObjs);
+
+          // Anchor vertex drag on this newly inserted vertex!
+          setDraggedVertexObjectId(targetSelectId);
+          setDraggedVertexIndex(hoveredMidpointIndex + 1);
+          setDraggedVertexStartCoords(JSON.parse(JSON.stringify(coords)));
+          setHoveredVertexIndex(hoveredMidpointIndex + 1);
+          setHoveredMidpointIndex(null);
+          setStatusLog(`Inserted vertex node at midpoint. Dynamic drag initiated.`);
+          return;
+        }
+      }
+
+      // 3. Draw or add point to drafting session:
+      if (!hasExistingBoundary || drawingPoints.length > 0) {
+        setDrawingPoints(prev => [...prev, [finalX, finalY]]);
+        setDrawingCurrentMouse([finalX, finalY]);
+        setStatusLog(`Vertex plotted at (${finalX.toFixed(1)}m, ${finalY.toFixed(1)}m). Double-click edge node to finish.`);
+        return;
+      } else {
+        const existingBoundary = objects.find(o => o.layerName === "BOUNDARY");
+        if (existingBoundary) {
+          onSelectObject(existingBoundary);
+        }
+        setStatusLog("Boundary already exists. Drag vertex or midpoint nodes to edit, or delete existing boundary to redraw.");
+        
+        setIsDragging(true);
+        setDragStart({ x: e.clientX, y: e.clientY });
+        setPanAtStart({ x: pan.x, y: pan.y });
+        return;
+      }
+    }
+
+    if (["road", "plot", "park", "amenity", "utility"].includes(selectedTool)) {
       setDrawingPoints(prev => [...prev, [finalX, finalY]]);
       setDrawingCurrentMouse([finalX, finalY]);
       setStatusLog(`Vertex plotted at (${finalX.toFixed(1)}m, ${finalY.toFixed(1)}m). Double-click edge node to finish.`);
