@@ -42,7 +42,9 @@ import {
   Copy,
   Move,
   Scissors,
-  CheckCircle2
+  CheckCircle2,
+  ArrowLeft,
+  ArrowRight
 } from "lucide-react";
 
 interface InventoryManagerProps {
@@ -344,6 +346,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
   const [selectedProject, setSelectedProject] = useState<any | null>(null);
   const [selectedLayout, setSelectedLayout] = useState<any | null>(null);
   const [selectedPlot, setSelectedPlot] = useState<any | null>(null);
+  const [returnToViewerAfterSave, setReturnToViewerAfterSave] = useState(false);
 
   // Derived safe metadata for plot details panel to prevent rendering crashes
   const plotMeta = selectedPlot ? tryParseJSON(selectedPlot.dimensions_metadata, {}) : {};
@@ -900,6 +903,36 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
     }
   }, [activeTab, plotPage, debouncedSearch, filterPlotStatus, filterPlotFacing, filterPlotCorner, filterPlotLayoutId, filterPlotRoadWidth, filterPlotMinArea, filterPlotMaxArea, plotSortBy, plotSortDir]);
 
+  // Synchronize selectedProject and selectedLayout context across tabs
+  useEffect(() => {
+    if (activeTab === "viewer" || activeTab === "layouts") {
+      if (selectedProject) {
+        const layoutsForProj = lookupLayouts.filter(l => l.project_id === selectedProject.id);
+        if (layoutsForProj.length === 0) {
+          if (selectedLayout) {
+            setSelectedLayout(null);
+          }
+        } else {
+          if (!selectedLayout || selectedLayout.project_id !== selectedProject.id) {
+            setSelectedLayout(layoutsForProj[0]);
+          }
+        }
+      } else if (selectedLayout) {
+        const parentProject = lookupProjects.find(p => p.id === selectedLayout.project_id);
+        if (parentProject) {
+          setSelectedProject(parentProject);
+        }
+      }
+    }
+  }, [activeTab, selectedProject, selectedLayout, lookupLayouts, lookupProjects]);
+
+  // Reset selectedLayout if switching projects
+  useEffect(() => {
+    if (selectedLayout && selectedProject && selectedLayout.project_id !== selectedProject.id) {
+      setSelectedLayout(null);
+    }
+  }, [selectedProject]);
+
   const fetchMarketplaceTenantData = async () => {
     setLoading(true);
     try {
@@ -1225,17 +1258,35 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
         status: formLay.status
       };
 
+      let savedLayout: any = null;
       if (editId) {
         const res = await api.updateLayout(editId, payload);
+        savedLayout = res;
         displaySuccess(`Layout plan '${res.name}' specification modified!`);
         dispatchAuditLog("LAYOUT_UPDATE", "layouts", res.id, `Updated metrics and layouts state config for Phase: ${res.code}`);
       } else {
         const res = await api.createLayout(payload);
+        savedLayout = res;
         displaySuccess(`New Layout Phase register '${res.name}' created!`);
         dispatchAuditLog("LAYOUT_CREATE", "layouts", res.id, `Created New Layout subdivisions zone: ${res.name} (${res.code})`);
       }
       setCurrModal(null);
       await loadData();
+
+      if (returnToViewerAfterSave) {
+        const targetId = editId || (savedLayout && savedLayout.id);
+        if (targetId) {
+          const layRes = await api.fetchLayouts({ per_page: 1000 });
+          const layList = layRes.data || layRes || [];
+          setLookupLayouts(layList);
+          const found = layList.find((l: any) => String(l.id) === String(targetId));
+          if (found) {
+            setSelectedLayout(found);
+          }
+        }
+        setActiveTab("viewer");
+        setReturnToViewerAfterSave(false);
+      }
     } catch (err: any) {
       setErrorMess(err.message || "Failed to commit layout records.");
     }
@@ -3488,27 +3539,119 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
       )}
 
       {/* Interactive Layout Map tab workspace */}
-      {activeTab === "viewer" && (
-        <div className="p-0">
-          <MapWorkspaceIndex
-            initialLayoutId={selectedLayout?.id || null}
-            initialProjectId={selectedLayout?.project_id || selectedProject?.id || null}
-            projects={lookupProjects}
-            layouts={lookupLayouts}
-            onBackToInventory={() => {
-              setActiveTab("layouts");
-            }}
-            onEditLayoutDetails={(layoutId) => {
-              const layoutObj = lookupLayouts.find(l => String(l.id) === String(layoutId));
-              if (layoutObj) {
+      {activeTab === "viewer" && (() => {
+        if (!selectedProject) {
+          return (
+            <div className="flex-1 p-8 overflow-y-auto flex items-center justify-center min-h-[60vh]" id="no-project-fallback-view">
+              <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-md w-full shadow-md text-center space-y-6">
+                <div className="mx-auto bg-indigo-50 text-indigo-650 w-12 h-12 rounded-full flex items-center justify-center">
+                  <Building2 className="w-6 h-6" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
+                    Please select a project first
+                  </h3>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                    To access the Map Studio, you must first select an active project from the Projects tab.
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setActiveTab("projects");
+                  }}
+                  className="mx-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-2.5 px-5 rounded-xl shadow-sm transition-colors cursor-pointer border border-indigo-750 flex items-center justify-center gap-1.5"
+                >
+                  <Building2 className="w-4 h-4" />
+                  <span>Go to Projects</span>
+                </button>
+              </div>
+            </div>
+          );
+        }
+
+        const projectLayouts = getLayoutsForProject(selectedProject.id);
+        if (projectLayouts.length === 0) {
+          return (
+            <div className="flex-1 p-8 overflow-y-auto flex items-center justify-center min-h-[60vh]" id="no-layouts-fallback-view">
+              <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-md w-full shadow-md text-center space-y-6">
+                <div className="mx-auto bg-indigo-50 text-indigo-650 w-12 h-12 rounded-full flex items-center justify-center">
+                  <Layers className="w-6 h-6" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
+                    This project has no layouts yet.
+                  </h3>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                    To open the interactive Map Studio, you must first register at least one layout subdivision plan under this project.
+                  </p>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+                  <button
+                    onClick={() => {
+                      setFormLay({
+                        project_id: selectedProject.id,
+                        name: "",
+                        code: "",
+                        layout_type: "RESIDENTIAL",
+                        approval_number: "",
+                        survey_number: "",
+                        approval_date: "",
+                        total_area_value: "",
+                        total_area_unit_id: units[0]?.id || "",
+                        measurement_unit_id: units[0]?.id || "",
+                        status: "DRAFT",
+                        phase: "",
+                        description: ""
+                      });
+                      setReturnToViewerAfterSave(true);
+                      setCurrModal("create_layout");
+                    }}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-2.5 px-4 rounded-xl shadow-sm transition-colors cursor-pointer border border-indigo-700 flex items-center justify-center gap-1.5"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Create Layout</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setActiveTab("layouts");
+                    }}
+                    className="bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs py-2.5 px-4 rounded-xl border border-slate-250 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <span>Back to Layouts</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        // If layouts exist but selectedLayout is null or from a different project, auto-load first layout
+        const activeLayoutObj = (selectedLayout && selectedLayout.project_id === selectedProject.id) 
+          ? selectedLayout 
+          : projectLayouts[0];
+
+        return (
+          <div className="p-0">
+            <MapWorkspaceIndex
+              initialLayoutId={activeLayoutObj.id}
+              initialProjectId={selectedProject.id}
+              projects={lookupProjects}
+              layouts={lookupLayouts}
+              onBackToInventory={() => {
                 setActiveTab("layouts");
-                setSelectedLayout(layoutObj);
-                handleStartEditLayout(layoutObj);
-              }
-            }}
-          />
-        </div>
-      )}
+              }}
+              onEditLayoutDetails={(layoutId) => {
+                const layoutObj = lookupLayouts.find(l => String(l.id) === String(layoutId));
+                if (layoutObj) {
+                  setReturnToViewerAfterSave(true);
+                  setSelectedLayout(layoutObj);
+                  handleStartEditLayout(layoutObj);
+                }
+              }}
+            />
+          </div>
+        );
+      })()}
 
       {/* CAD Imports Full Workspace Integration */}
       {activeTab === "cad" && (
@@ -4095,7 +4238,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                 </div>
               </div>
               <div className="flex justify-end gap-2.5 pt-3">
-                <button type="button" onClick={() => setCurrModal(null)} className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-50">Cancel</button>
+                <button type="button" onClick={() => { setCurrModal(null); setReturnToViewerAfterSave(false); }} className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-50">Cancel</button>
                 <button type="submit" className="px-4 py-2 bg-indigo-650 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold">Save Layout</button>
               </div>
             </form>
