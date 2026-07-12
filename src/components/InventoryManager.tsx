@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from "react";
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import api from "../lib/api.ts";
 import { UserProfile } from "../types/auth.ts";
 import { CADImportManager } from "./CADImportManager.tsx";
+import LayoutWorkspace from "./LayoutWorkspace.tsx";
 import InteractiveLayoutViewer from "./InteractiveLayoutViewer.tsx";
 import MapWorkspaceIndex from "./MapWorkspace/index.tsx";
 import { EnterpriseTaxConsole } from "./saas/EnterpriseTaxConsole.tsx";
@@ -44,7 +46,11 @@ import {
   Scissors,
   CheckCircle2,
   ArrowLeft,
-  ArrowRight
+  ArrowRight,
+  Users,
+  BarChart3,
+  FolderOpen,
+  Settings
 } from "lucide-react";
 
 interface InventoryManagerProps {
@@ -71,7 +77,8 @@ const tryParseJSON = (val: any, fallback: any = {}) => {
 };
 
 export default function InventoryManager({ user, onAuditLogged }: InventoryManagerProps) {
-  const [activeTab, setActiveTab] = useState<"projects" | "layouts" | "plots" | "cad" | "viewer" | "marketplace" | "commercial">("projects");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "projects" | "layouts" | "plots" | "cad" | "viewer" | "marketplace" | "commercial">("dashboard");
+  const [projectWorkspaceTab, setProjectWorkspaceTab] = useState<"overview" | "layouts" | "plots" | "sales" | "customers" | "documents" | "reports" | "settings">("overview");
   const [plotDisplayMode, setPlotDisplayMode] = useState<"spreadsheet" | "card">("spreadsheet");
   const hasSetInitialTab = React.useRef(false);
 
@@ -354,6 +361,22 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
   // Global search input
   const [globalSearch, setGlobalSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [recentAudits, setRecentAudits] = useState<any[]>([
+    { id: "audit-1", action: "LAYOUT_PUBLISH", model: "layouts", summary: "Successfully updated and published Layout Plan: 'Royal Orchard Phase 1' live!", created_at: new Date(Date.now() - 3600000).toISOString() },
+    { id: "audit-2", action: "PROJECT_CREATE", model: "projects", summary: "Created New Real estate Project registry: Bhoomi One Heights", created_at: new Date(Date.now() - 7200000).toISOString() },
+    { id: "audit-3", action: "PLOT_UPDATE", model: "plots", summary: "Toggled extensible attribute 'corner_plot' on plot: 104", created_at: new Date(Date.now() - 10800000).toISOString() }
+  ]);
+  const [projectLeads, setProjectLeads] = useState<any[]>([
+    { id: "lead-1", name: "Ananya Sharma", email: "ananya.sharma@gmail.com", phone: "+91 98765 43210", plotNum: "101", paidAmount: "₹2,50,000", rep: "Vikram Singh", status: "Booked", date: "2026-07-10" },
+    { id: "lead-2", name: "Rohan Verma", email: "rohan.v@outlook.com", phone: "+91 87654 32109", plotNum: "102", paidAmount: "₹50,000", rep: "Meera Nair", status: "Reserved", date: "2026-07-11" },
+    { id: "lead-3", name: "Dr. Sandeep Patel", email: "sandeep.patel@aiims.edu", phone: "+91 76543 21098", plotNum: "105", paidAmount: "₹0", rep: "Vikram Singh", status: "Lead", date: "2026-07-09" }
+  ]);
+  const [projectDocuments, setProjectDocuments] = useState<any[]>([
+    { id: "doc-1", name: "RERA_Registration_Approved_Certificate.pdf", category: "RERA Certificate", size: "2.4 MB", status: "Approved", date: "2026-06-15" },
+    { id: "doc-2", name: "Municipal_Layout_Subdivision_Drawing_V2.pdf", category: "Approved Drawing", size: "14.8 MB", status: "Completed", date: "2026-07-01" },
+    { id: "doc-3", name: "Environmental_Clearance_NOC_Draft.pdf", category: "NOC Certificate", size: "1.1 MB", status: "Pending", date: "2026-07-08" }
+  ]);
+  const [completedTasks, setCompletedTasks] = useState<Record<string, Record<string, boolean>>>({});
 
   // Debounce search input to avoid API slamming
   useEffect(() => {
@@ -362,6 +385,55 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
     }, 400);
     return () => clearTimeout(handler);
   }, [globalSearch]);
+
+  // Synchronize layout/plot filters and formProj state with selectedProject context
+  useEffect(() => {
+    if (selectedProject) {
+      setFilterLayProject(selectedProject.id);
+      setLayoutPage(1);
+
+      // Populate layout and plot states
+      const projectLayouts = lookupLayouts.filter(l => String(l.project_id) === String(selectedProject.id));
+      if (projectLayouts.length > 0) {
+        setFilterPlotLayoutId(projectLayouts[0].id);
+      } else {
+        setFilterPlotLayoutId("ALL");
+      }
+      setPlotPage(1);
+
+      // Prepopulate formProj for Settings tab
+      const meta = typeof selectedProject.approvals_metadata === "string"
+        ? tryParseJSON(selectedProject.approvals_metadata)
+        : (selectedProject.approvals_metadata || {});
+
+      setFormProj({
+        name: selectedProject.name || "",
+        code: selectedProject.code || "",
+        developer_name: selectedProject.developer_name || "",
+        project_type: selectedProject.project_type || meta.project_type || "RESIDENTIAL",
+        status: selectedProject.status || "PLANNING",
+        state: selectedProject.state || meta.state || "",
+        district: selectedProject.district || meta.district || "",
+        taluk: selectedProject.taluk || meta.taluk || "",
+        location: selectedProject.location || "",
+        village: selectedProject.village || meta.village || "",
+        pincode: selectedProject.pincode || meta.pincode || "",
+        latitude: selectedProject.latitude || meta.latitude || "",
+        longitude: selectedProject.longitude || meta.longitude || "",
+        description: selectedProject.description || meta.description || "",
+        rera_number: selectedProject.rera_number || "",
+        approval_status: selectedProject.approval_status || "PENDING",
+        approval_authority: selectedProject.approval_authority || "",
+        launch_date: selectedProject.launch_date ? selectedProject.launch_date.split("T")[0] : "",
+        possession_target_date: selectedProject.possession_target_date ? selectedProject.possession_target_date.split("T")[0] : "",
+        approvals_metadata: typeof selectedProject.approvals_metadata === "string" ? selectedProject.approvals_metadata : JSON.stringify(meta),
+        country: selectedProject.country || meta.country || "IN"
+      });
+    } else {
+      setFilterLayProject("ALL");
+      setFilterPlotLayoutId("ALL");
+    }
+  }, [selectedProject]);
 
   // Grid Paginations (Current Page)
   const [projectPage, setProjectPage] = useState(1);
@@ -850,6 +922,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
         facing: filterPlotFacing === "ALL" ? "" : filterPlotFacing,
         corner_plot: filterPlotCorner === "ALL" ? "" : (filterPlotCorner === "YES" ? "true" : "false"),
         layout_id: filterPlotLayoutId === "ALL" ? "" : filterPlotLayoutId,
+        project_id: selectedProject ? selectedProject.id : "",
         road_width_min: filterPlotRoadWidth,
         area_min: filterPlotMinArea,
         area_max: filterPlotMaxArea,
@@ -892,16 +965,26 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
   }, [activeTab, projectPage, debouncedSearch, filterProjLocation, filterProjAppr, filterProjStatus, projSortBy, projSortDir]);
 
   useEffect(() => {
-    if (activeTab === "layouts") {
+    if (activeTab === "layouts" || (selectedProject !== null && projectWorkspaceTab === "layouts")) {
       fetchLayoutsPage();
     }
-  }, [activeTab, layoutPage, debouncedSearch, filterLayProject, filterLayType, filterLayStatus, laySortBy, laySortDir]);
+  }, [activeTab, selectedProject, projectWorkspaceTab, layoutPage, debouncedSearch, filterLayProject, filterLayType, filterLayStatus, laySortBy, laySortDir]);
 
   useEffect(() => {
-    if (activeTab === "plots") {
+    if (activeTab === "plots" || (selectedProject !== null && projectWorkspaceTab === "plots")) {
       fetchPlotsPage();
     }
-  }, [activeTab, plotPage, debouncedSearch, filterPlotStatus, filterPlotFacing, filterPlotCorner, filterPlotLayoutId, filterPlotRoadWidth, filterPlotMinArea, filterPlotMaxArea, plotSortBy, plotSortDir]);
+  }, [activeTab, selectedProject, projectWorkspaceTab, plotPage, debouncedSearch, filterPlotStatus, filterPlotFacing, filterPlotCorner, filterPlotLayoutId, filterPlotRoadWidth, filterPlotMinArea, filterPlotMaxArea, plotSortBy, plotSortDir]);
+
+  useEffect(() => {
+    if (selectedProject) {
+      setFilterLayProject(selectedProject.id);
+    } else {
+      setFilterLayProject("ALL");
+    }
+    setLayoutPage(1);
+    setPlotPage(1);
+  }, [selectedProject]);
 
   // Synchronize selectedProject and selectedLayout context across tabs
   useEffect(() => {
@@ -965,14 +1048,23 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
   };
 
   const dispatchAuditLog = (action: string, model: string, modelId: string, summary: string) => {
+    const logObj = {
+      id: `LocalAudit-${Date.now()}`,
+      action,
+      model,
+      modelId,
+      summary,
+      created_at: new Date().toISOString()
+    };
+    setRecentAudits(prev => [logObj, ...prev].slice(0, 8));
     if (onAuditLogged) {
       onAuditLogged({
-        id: `LocalAudit-${Date.now()}`,
+        id: logObj.id,
         action,
         entity_name: model,
         entity_id: modelId,
         details: summary,
-        created_at: new Date().toISOString()
+        created_at: logObj.created_at
       });
     }
   };
@@ -1953,6 +2045,887 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
   };
   const getPlotsForLayout = (layId: string) => plots.filter(p => p.layout_id === layId);
 
+  // --- SUB-TABS RENDERERS FOR ERP PROJECT WORKSPACE ---
+
+  // 1. Overview Tab
+  const renderOverviewTab = () => {
+    if (!selectedProject) return null;
+    const lays = getLayoutsForProject(selectedProject.id);
+    const plts = plots.filter(p => lays.some(l => String(l.id) === String(p.layout_id)));
+    
+    const milestoneTasks = [
+      { id: "rera_upload", name: "RERA Registration Certificate Upload & Compliance" },
+      { id: "cad_verification", name: "On-site Cadastral GPS Boundary Demarcation" },
+      { id: "layout_drafting", name: "Layout Phase 1 Plot Subdivision Draft" },
+      { id: "legal_registry", name: "Verify Legal Land Titles & Encumbrance Status" },
+      { id: "noc_pipeline", name: "Obtain Sewerage & Water Pipeline NOC" },
+      { id: "municipal_approval", name: "Secure Municipal Town Planning Final Sanction" }
+    ];
+
+    const projId = selectedProject.id;
+    const currentProjCompletedTasks = completedTasks[projId] || {};
+    const completedCount = milestoneTasks.filter(t => currentProjCompletedTasks[t.id]).length;
+    const completionRate = Math.round((completedCount / milestoneTasks.length) * 100);
+
+    const toggleTask = (taskId: string) => {
+      setCompletedTasks(prev => {
+        const curr = prev[projId] || {};
+        return {
+          ...prev,
+          [projId]: {
+            ...curr,
+            [taskId]: !curr[taskId]
+          }
+        };
+      });
+      if (onAuditLogged) {
+        onAuditLogged({
+          id: `audit-${Date.now()}`,
+          action: "PROJECT_TASK_TOGGLE",
+          model: "projects",
+          summary: `Toggled status of milestone task '${taskId}' for Project: ${selectedProject.code}`,
+          created_at: new Date().toISOString()
+        });
+      }
+    };
+
+    // Filter project-specific bookings/leads (CRM)
+    const projectBookings = projectLeads.filter(l => l.status === "Booked" || l.status === "Reserved");
+
+    // Filter recent audit activity
+    const projectActivities = recentAudits.filter(log => 
+      String(log.targetId) === String(selectedProject.id) || 
+      log.summary.toLowerCase().includes(selectedProject.code.toLowerCase()) ||
+      log.summary.toLowerCase().includes(selectedProject.name.toLowerCase())
+    );
+
+    return (
+      <div className="space-y-6 animate-fade-in" id="overview-tab-view">
+        {/* Quick KPI Stat blocks */}
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div className="bg-slate-50 border border-slate-200/60 p-4 rounded-2xl flex items-center gap-3">
+            <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl">
+              <Layers className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Subdivision Layouts</p>
+              <p className="text-sm font-extrabold text-slate-950 mt-0.5">{lays.length} Phases</p>
+            </div>
+          </div>
+          <div className="bg-slate-50 border border-slate-200/60 p-4 rounded-2xl flex items-center gap-3">
+            <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl">
+              <Compass className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Active Plots</p>
+              <p className="text-sm font-extrabold text-slate-950 mt-0.5">{plts.length} Parcels</p>
+            </div>
+          </div>
+          <div className="bg-slate-50 border border-slate-200/60 p-4 rounded-2xl flex items-center gap-3">
+            <div className="p-2.5 bg-sky-50 text-sky-600 rounded-xl">
+              <Check className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Plots Available</p>
+              <p className="text-sm font-extrabold text-slate-950 mt-0.5">{plts.filter(p => p.status === "AVAILABLE").length} Units</p>
+            </div>
+          </div>
+          <div className="bg-slate-50 border border-slate-200/60 p-4 rounded-2xl flex items-center gap-3">
+            <div className="p-2.5 bg-rose-50 text-rose-600 rounded-xl">
+              <Percent className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">LTV Sold Ratio</p>
+              <p className="text-sm font-extrabold text-slate-950 mt-0.5">
+                {plts.length > 0 ? `${Math.round((plts.filter(p => p.status === "SOLD" || p.status === "BOOKED").length / plts.length) * 100)}%` : "0%"}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Detailed Info Cards Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          
+          {/* LEFT COLUMN: Project Summary & Interactive Milestone checklist */}
+          <div className="space-y-6">
+            
+            {/* Project Summary */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-xs">
+              <h3 className="text-xs font-bold text-slate-800 tracking-tight flex items-center gap-2 border-b border-slate-100 pb-3 uppercase">
+                <Building2 className="w-4 h-4 text-indigo-650" />
+                <span>Project Summary Profile</span>
+              </h3>
+              <div className="space-y-3 text-xs text-slate-600">
+                <div className="grid grid-cols-3 border-b border-slate-100 pb-2">
+                  <span className="font-semibold text-slate-400">Developer Name</span>
+                  <span className="col-span-2 font-bold text-slate-850">{selectedProject.developer_name || "Bhoomi Developers"}</span>
+                </div>
+                <div className="grid grid-cols-3 border-b border-slate-100 pb-2">
+                  <span className="font-semibold text-slate-400">Project Type</span>
+                  <span className="col-span-2 font-bold text-indigo-700 font-mono text-[10px] tracking-wide uppercase">{selectedProject.project_type || "RESIDENTIAL"}</span>
+                </div>
+                <div className="grid grid-cols-3 border-b border-slate-100 pb-2">
+                  <span className="font-semibold text-slate-400">Location Area</span>
+                  <span className="col-span-2 font-medium text-slate-700">{selectedProject.location || "N/A"}</span>
+                </div>
+                <div className="grid grid-cols-3 border-b border-slate-100 pb-2">
+                  <span className="font-semibold text-slate-400">Village / Taluk</span>
+                  <span className="col-span-2 font-medium text-slate-700">
+                    {selectedProject.village ? `${selectedProject.village}` : "N/A"} 
+                    {selectedProject.taluk ? `, ${selectedProject.taluk}` : ""}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 border-b border-slate-100 pb-2">
+                  <span className="font-semibold text-slate-400">District / State</span>
+                  <span className="col-span-2 font-medium text-slate-700">
+                    {selectedProject.district ? `${selectedProject.district}` : "N/A"}
+                    {selectedProject.state ? `, ${selectedProject.state}` : ""}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 border-b border-slate-100 pb-2">
+                  <span className="font-semibold text-slate-400">ZIP / Pincode</span>
+                  <span className="col-span-2 font-mono font-bold text-slate-800">{selectedProject.pincode || "N/A"}</span>
+                </div>
+                <div className="grid grid-cols-3 border-b border-slate-100 pb-2">
+                  <span className="font-semibold text-slate-400">GPS Coordinates</span>
+                  <span className="col-span-2 font-mono text-indigo-650 font-bold">
+                    {selectedProject.latitude ? `${selectedProject.latitude}, ${selectedProject.longitude}` : "N/A"}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 border-b border-slate-100 pb-2">
+                  <span className="font-semibold text-slate-400">RERA Registration</span>
+                  <span className="col-span-2 font-mono font-bold text-indigo-700">{selectedProject.rera_number || "N/A"}</span>
+                </div>
+                <div className="grid grid-cols-3 border-b border-slate-100 pb-2">
+                  <span className="font-semibold text-slate-400">Approval Status</span>
+                  <span className="col-span-2">
+                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border inline-block ${
+                      selectedProject.approval_status === "APPROVED" ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
+                      selectedProject.approval_status === "REJECTED" ? "bg-rose-50 text-rose-700 border-rose-100" :
+                      "bg-amber-50 text-amber-700 border-amber-100"
+                    }`}>
+                      {selectedProject.approval_status}
+                    </span>
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 pt-1">
+                  <span className="font-semibold text-slate-400">Possession Target</span>
+                  <span className="col-span-2 font-bold text-slate-800">
+                    {selectedProject.possession_target_date ? new Date(selectedProject.possession_target_date).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : "N/A"}
+                  </span>
+                </div>
+              </div>
+              <div className="bg-slate-50 border border-slate-200/60 p-3 rounded-xl space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Description & Notes</span>
+                <p className="text-xs text-slate-600 leading-relaxed italic">{selectedProject.description || "No project description provided in layout records settings."}</p>
+              </div>
+            </div>
+
+            {/* Interactive Pending Tasks Milestones Checklist */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-xs">
+              <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 className="text-xs font-bold text-slate-800 tracking-tight flex items-center gap-2 uppercase">
+                  <CheckSquare className="w-4 h-4 text-indigo-650" />
+                  <span>Pending Tasks & Milestones</span>
+                </h3>
+                <span className="text-xs font-mono font-bold text-indigo-650 bg-indigo-50 px-2 py-0.5 rounded-lg">
+                  {completionRate}% Done
+                </span>
+              </div>
+              <div className="space-y-2.5">
+                {milestoneTasks.map(task => {
+                  const isDone = !!currentProjCompletedTasks[task.id];
+                  return (
+                    <div 
+                      key={task.id}
+                      onClick={() => toggleTask(task.id)}
+                      className="flex items-center gap-3 p-2.5 hover:bg-slate-50 border border-slate-100 rounded-xl cursor-pointer transition-colors"
+                    >
+                      <button type="button" className="text-slate-400 hover:text-indigo-600 transition-colors">
+                        {isDone ? (
+                          <CheckSquare className="w-4 h-4 text-emerald-500 fill-emerald-50" />
+                        ) : (
+                          <Square className="w-4 h-4" />
+                        )}
+                      </button>
+                      <span className={`text-xs font-medium transition-all ${isDone ? "line-through text-slate-400" : "text-slate-700"}`}>
+                        {task.name}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+          </div>
+
+          {/* RIGHT COLUMN: Recent Layouts, Recent Bookings, Recent Activity */}
+          <div className="space-y-6">
+            
+            {/* Recent Layouts */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-xs">
+              <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 className="text-xs font-bold text-slate-800 tracking-tight flex items-center gap-2 uppercase">
+                  <Layers className="w-4 h-4 text-indigo-650" />
+                  <span>Recent Layout Phases</span>
+                </h3>
+                <button 
+                  onClick={() => setProjectWorkspaceTab("layouts")}
+                  className="text-[10px] font-bold text-indigo-600 hover:underline"
+                >
+                  View All
+                </button>
+              </div>
+              {lays.length === 0 ? (
+                <div className="text-center py-6 text-slate-400 text-xs">
+                  No layout subdivisions created yet for this project.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {lays.slice(0, 3).map(l => (
+                    <div key={l.id} className="p-3 bg-slate-50 border border-slate-200/50 rounded-xl flex justify-between items-center">
+                      <div>
+                        <p className="text-xs font-bold text-slate-900">{l.name}</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">Code: <span className="font-mono font-semibold text-indigo-600">{l.code}</span> &bull; Status: <span className="font-semibold text-slate-500">{l.status}</span></p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setSelectedLayout(l);
+                          setActiveTab("viewer");
+                        }}
+                        className="bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-[10px] font-bold px-2.5 py-1.5 rounded-lg shadow-3xs flex items-center gap-1 transition-all"
+                      >
+                        <Compass className="w-3 h-3 text-indigo-500" />
+                        <span>Launch Studio</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Recent Bookings (CRM) */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-xs">
+              <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 className="text-xs font-bold text-slate-800 tracking-tight flex items-center gap-2 uppercase">
+                  <Tag className="w-4 h-4 text-indigo-650" />
+                  <span>Recent Booking & Sales Ledger</span>
+                </h3>
+                <button 
+                  onClick={() => setProjectWorkspaceTab("sales")}
+                  className="text-[10px] font-bold text-indigo-600 hover:underline"
+                >
+                  View CRM Ledger
+                </button>
+              </div>
+              {projectBookings.length === 0 ? (
+                <div className="text-center py-6 text-slate-400 text-xs">
+                  No registered active buyers or plot bookings tracked.
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {projectBookings.slice(0, 3).map(b => (
+                    <div key={b.id} className="p-3 bg-slate-50/50 border border-slate-200/40 rounded-xl flex justify-between items-center text-xs">
+                      <div>
+                        <p className="font-bold text-slate-800">{b.name}</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">Plot Assigned: <span className="font-mono font-bold text-indigo-600">#{b.plotNum}</span> &bull; Officer: {b.rep}</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-mono font-extrabold text-slate-800 block">{b.paidAmount}</span>
+                        <span className="px-1.5 py-0.2 rounded-full text-[8px] font-bold bg-rose-50 text-rose-700 border border-rose-100 uppercase inline-block mt-0.5">
+                          {b.status}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Recent Activity Feed */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-xs">
+              <h3 className="text-xs font-bold text-slate-800 tracking-tight flex items-center gap-2 border-b border-slate-100 pb-3 uppercase">
+                <Activity className="w-4 h-4 text-indigo-650" />
+                <span>Project Audit & Activity Log</span>
+              </h3>
+              {projectActivities.length === 0 ? (
+                <div className="text-center py-4 text-slate-400 text-[11px]">
+                  No logged administrative operations on this project workspace.
+                </div>
+              ) : (
+                <div className="space-y-3.5">
+                  {projectActivities.slice(0, 4).map((activity) => (
+                    <div key={activity.id} className="flex gap-2.5 text-xs items-start">
+                      <div className="mt-0.5 w-2 h-2 rounded-full bg-indigo-500 ring-4 ring-indigo-50 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-slate-700 leading-normal break-words">{activity.summary}</p>
+                        <p className="text-[10px] font-mono font-semibold text-slate-400 mt-0.5">
+                          {new Date(activity.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+    );
+  };
+
+  // 2. Sales & Booking Tab
+  const renderSalesTab = () => {
+    if (!selectedProject) return null;
+    const lays = getLayoutsForProject(selectedProject.id);
+    const plts = plots.filter(p => lays.some(l => String(l.id) === String(p.layout_id)));
+    const avail = plts.filter(p => p.status === "AVAILABLE").length;
+    const reserved = plts.filter(p => p.status === "RESERVED" || p.status === "BLOCKED").length;
+    const sold = plts.filter(p => p.status === "SOLD" || p.status === "BOOKED").length;
+    const total = plts.length;
+    
+    return (
+      <div className="space-y-6 animate-fade-in" id="sales-tab-view">
+        {/* Statistics Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div className="bg-white border border-slate-200/85 p-5 rounded-2xl shadow-xs space-y-1">
+            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Total Project Plots</span>
+            <span className="text-xl font-black text-slate-900 block">{total} Units</span>
+          </div>
+          <div className="bg-white border border-slate-200/85 p-5 rounded-2xl shadow-xs space-y-1">
+            <span className="text-[10px] font-extrabold text-emerald-500 uppercase tracking-wider block">Available Plots</span>
+            <span className="text-xl font-black text-emerald-600 block">{avail} Units</span>
+          </div>
+          <div className="bg-white border border-slate-200/85 p-5 rounded-2xl shadow-xs space-y-1">
+            <span className="text-[10px] font-extrabold text-amber-500 uppercase tracking-wider block">Reserved / Blocked</span>
+            <span className="text-xl font-black text-amber-600 block">{reserved} Units</span>
+          </div>
+          <div className="bg-white border border-slate-200/85 p-5 rounded-2xl shadow-xs space-y-1">
+            <span className="text-[10px] font-extrabold text-rose-500 uppercase tracking-wider block">Sold & Booked</span>
+            <span className="text-xl font-black text-rose-600 block">{sold} Units</span>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-3">
+          <div className="flex justify-between items-center text-xs">
+            <span className="font-extrabold text-slate-800 tracking-tight">Project Sales Progress Ratio</span>
+            <span className="font-mono font-extrabold text-indigo-700">{total > 0 ? Math.round((sold / total) * 100) : 0}% Sold</span>
+          </div>
+          <div className="w-full bg-slate-100 rounded-full h-3.5 overflow-hidden flex">
+            <div className="bg-rose-500 h-full" style={{ width: `${total > 0 ? (sold / total) * 100 : 0}%` }}></div>
+            <div className="bg-amber-400 h-full" style={{ width: `${total > 0 ? (reserved / total) * 100 : 0}%` }}></div>
+            <div className="bg-emerald-500 h-full flex-1"></div>
+          </div>
+          <div className="flex gap-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider pt-1">
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-rose-500 rounded-xs"></span> Sold ({sold})</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-amber-400 rounded-xs"></span> Reserved ({reserved})</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-emerald-50 rounded-xs border border-emerald-200"></span> Available ({avail})</span>
+          </div>
+        </div>
+
+        {/* Interactive Visual Map Blueprint Board */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+          <div className="border-b border-slate-100 pb-3">
+            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Interactive Sales Matrix Board</h3>
+            <p className="text-[10px] text-slate-400 mt-1">Select any parcel below to inspect unit status or trigger dimension specs</p>
+          </div>
+          
+          {lays.length === 0 ? (
+            <p className="text-xs text-slate-450 text-center py-6">No active subdivision layouts configured for this project yet.</p>
+          ) : (
+            lays.map(lay => {
+              const layPlots = plots.filter(p => String(p.layout_id) === String(lay.id));
+              return (
+                <div key={lay.id} className="border border-slate-200/50 rounded-xl p-4 bg-slate-50/40 space-y-3">
+                  <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+                    <span className="text-xs font-bold text-slate-800">{lay.name} ({lay.code})</span>
+                    <span className="text-[10px] font-semibold text-slate-400">{layPlots.length} Plots total</span>
+                  </div>
+                  {layPlots.length === 0 ? (
+                    <p className="text-[10.5px] text-slate-400 italic py-2">No individual plots exist for this layout yet.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {layPlots.map(pl => {
+                        let colorClass = "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100";
+                        if (pl.status === "SOLD" || pl.status === "BOOKED") {
+                          colorClass = "bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100";
+                        } else if (pl.status === "RESERVED" || pl.status === "BLOCKED" || pl.status === "HOLD") {
+                          colorClass = "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100";
+                        }
+                        return (
+                          <div
+                            key={pl.id}
+                            onClick={() => {
+                              setSelectedPlot(pl);
+                              setProjectWorkspaceTab("plots");
+                            }}
+                            className={`px-3 py-2 border text-center rounded-xl font-mono text-xs font-bold cursor-pointer transition-all shadow-3xs hover:scale-105 active:scale-95 flex flex-col justify-center min-w-[70px] ${colorClass}`}
+                            title={`Plot No: ${pl.plot_number} - Click to Inspect`}
+                          >
+                            <span>#{pl.plot_number}</span>
+                            <span className="text-[8px] opacity-80 font-sans mt-0.5">{pl.area_value} {getUnitCode(pl.measurement_unit_id)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // 3. Customers CRM Tab
+  const renderCustomersTab = () => {
+    return (
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-6 animate-fade-in" id="customers-tab-view">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-3">
+          <div>
+            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Active Buyer Ledger (ERP CRM)</h3>
+            <p className="text-[10px] text-slate-400 mt-1">Track down-payments, booking progress, and sales representatives</p>
+          </div>
+          <button
+            onClick={() => {
+              const name = prompt("Enter customer full name:");
+              const email = prompt("Enter customer email:");
+              const phone = prompt("Enter customer phone number:");
+              const plotNum = prompt("Enter assigned Plot Number (optional):");
+              if (name && email && phone) {
+                const newLead = {
+                  id: `lead-${Date.now()}`,
+                  name,
+                  email,
+                  phone,
+                  plotNum: plotNum || "N/A",
+                  paidAmount: "₹0",
+                  rep: user?.email || "System Admin",
+                  status: "Lead",
+                  date: new Date().toISOString().split("T")[0]
+                };
+                setProjectLeads(prev => [newLead, ...prev]);
+                dispatchAuditLog("CRM_LEAD_CREATE", "plots", "N/A", `Registered new prospective CRM lead: ${name}`);
+              }
+            }}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-2 px-3 rounded-xl transition-all shadow-sm flex items-center gap-1 cursor-pointer active:scale-95"
+          >
+            <Plus className="w-3.5 h-3.5 stroke-[3px]" />
+            <span>Register Lead</span>
+          </button>
+        </div>
+
+        <div className="overflow-x-auto border border-slate-200 rounded-xl">
+          <table className="w-full text-left text-xs text-slate-500">
+            <thead className="bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-200">
+              <tr>
+                <th className="px-4 py-3">Customer Name</th>
+                <th className="px-4 py-3">Contact Details</th>
+                <th className="px-4 py-3 text-center">Assigned Plot</th>
+                <th className="px-4 py-3 text-right">Booking Amount Paid</th>
+                <th className="px-4 py-3">Sales Officer</th>
+                <th className="px-4 py-3 text-center">Pipeline Status</th>
+                <th className="px-4 py-3 text-right">Registered</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {projectLeads.map((l) => (
+                <tr key={l.id} className="hover:bg-slate-50/40">
+                  <td className="px-4 py-3.5 font-bold text-slate-900">{l.name}</td>
+                  <td className="px-4 py-3.5">
+                    <p className="font-semibold text-slate-600">{l.phone}</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">{l.email}</p>
+                  </td>
+                  <td className="px-4 py-3.5 text-center font-mono font-bold text-indigo-600">#{l.plotNum}</td>
+                  <td className="px-4 py-3.5 text-right font-mono font-bold text-slate-800">{l.paidAmount}</td>
+                  <td className="px-4 py-3.5 font-medium text-slate-600">{l.rep}</td>
+                  <td className="px-4 py-3.5 text-center">
+                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border inline-block ${
+                      l.status === "Booked" ? "bg-rose-50 text-rose-700 border-rose-100" :
+                      l.status === "Reserved" ? "bg-amber-50 text-amber-700 border-amber-100" :
+                      "bg-blue-50 text-blue-700 border-blue-100"
+                    }`}>
+                      {l.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3.5 text-right font-mono font-medium text-slate-400">{l.date}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  // 4. Documents Tab (Drag and drop + manual file upload)
+  const renderDocumentsTab = () => {
+    return (
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-6 animate-fade-in" id="documents-tab-view">
+        <div className="border-b border-slate-100 pb-3">
+          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Project Compliance Documents Vault</h3>
+          <p className="text-[10px] text-slate-400 mt-1">Secure regulatory certificates, surveyor layout blueprint PDFs, and official land deeds</p>
+        </div>
+
+        {/* Drag and Drop File Uploader Zone */}
+        <div
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault();
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+              const file = files[0];
+              const newDoc = {
+                id: `doc-${Date.now()}`,
+                name: file.name,
+                category: "Compliance Document",
+                size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+                status: "Approved",
+                date: new Date().toISOString().split("T")[0]
+              };
+              setProjectDocuments(prev => [newDoc, ...prev]);
+              dispatchAuditLog("DOCUMENT_UPLOAD", "projects", selectedProject.id, `Uploaded document to compliance vault: ${file.name}`);
+              alert(`Successfully uploaded compliant file: ${file.name}`);
+            }
+          }}
+          className="border-2 border-dashed border-slate-200 hover:border-indigo-500 rounded-2xl p-8 text-center bg-slate-50/50 transition-colors cursor-pointer group space-y-3 flex flex-col items-center justify-center"
+        >
+          <div className="p-3 bg-white border border-slate-200 rounded-xl shadow-xs group-hover:scale-110 transition-transform">
+            <Download className="w-6 h-6 text-indigo-500" />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-slate-800">Drag and drop file here, or click to browse</p>
+            <p className="text-[10px] text-slate-400 mt-1">Supports PDF, CAD DXF, JPEG, or PNG up to 50MB</p>
+          </div>
+          <input
+            type="file"
+            id="manual-file-input"
+            className="hidden"
+            onChange={(e) => {
+              const files = e.target.files;
+              if (files && files.length > 0) {
+                const file = files[0];
+                const newDoc = {
+                  id: `doc-${Date.now()}`,
+                  name: file.name,
+                  category: "Compliance Document",
+                  size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+                  status: "Approved",
+                  date: new Date().toISOString().split("T")[0]
+                };
+                setProjectDocuments(prev => [newDoc, ...prev]);
+                dispatchAuditLog("DOCUMENT_UPLOAD", "projects", selectedProject.id, `Uploaded document to compliance vault: ${file.name}`);
+                alert(`Successfully uploaded compliant file: ${file.name}`);
+              }
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => document.getElementById("manual-file-input")?.click()}
+            className="px-3.5 py-1.5 bg-white border border-slate-250 rounded-lg hover:bg-slate-50 transition-colors text-[11px] font-bold text-slate-600 shadow-3xs cursor-pointer active:scale-95"
+          >
+            Select Document File
+          </button>
+        </div>
+
+        {/* Documents list */}
+        <div className="overflow-x-auto border border-slate-200 rounded-xl">
+          <table className="w-full text-left text-xs text-slate-500">
+            <thead className="bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-200">
+              <tr>
+                <th className="px-4 py-3">Document File Name</th>
+                <th className="px-4 py-3">Category Group</th>
+                <th className="px-4 py-3 text-center">File Size</th>
+                <th className="px-4 py-3 text-center">Compliance Status</th>
+                <th className="px-4 py-3 text-right">Upload Date</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {projectDocuments.map((doc) => (
+                <tr key={doc.id} className="hover:bg-slate-50/40">
+                  <td className="px-4 py-3.5">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+                      <span className="font-bold text-slate-800">{doc.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3.5 font-semibold text-slate-600">{doc.category}</td>
+                  <td className="px-4 py-3.5 text-center font-mono font-semibold text-slate-500">{doc.size}</td>
+                  <td className="px-4 py-3.5 text-center">
+                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border inline-block ${
+                      doc.status === "Approved" || doc.status === "Completed" ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
+                      doc.status === "Pending" ? "bg-amber-50 text-amber-700 border-amber-100" :
+                      "bg-slate-100 text-slate-600 border-slate-200"
+                    }`}>
+                      {doc.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3.5 text-right font-mono font-semibold text-slate-400">{doc.date}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  // 5. Reports and Analytics Tab
+  const renderReportsTab = () => {
+    if (!selectedProject) return null;
+    const lays = getLayoutsForProject(selectedProject.id);
+    const plts = plots.filter(p => lays.some(l => String(l.id) === String(p.layout_id)));
+    
+    // Status counts data
+    const statusData = [
+      { name: "Available", value: plts.filter(p => p.status === "AVAILABLE").length, color: "#10B981" },
+      { name: "Booked/Sold", value: plts.filter(p => p.status === "BOOKED" || p.status === "SOLD").length, color: "#EF4444" },
+      { name: "Reserved", value: plts.filter(p => p.status === "RESERVED" || p.status === "BLOCKED").length, color: "#F59E0B" }
+    ].filter(item => item.value > 0);
+
+    // Area data across layouts
+    const areaData = lays.map(l => {
+      const layPlots = plots.filter(p => String(p.layout_id) === String(l.id));
+      const totalArea = layPlots.reduce((acc, curr) => acc + Number(curr.area_value || 0), 0);
+      return {
+        name: l.name.substring(0, 15),
+        "Developed Area": totalArea
+      };
+    });
+
+    return (
+      <div className="space-y-6 animate-fade-in" id="reports-tab-view">
+        <div className="border-b border-slate-100 pb-3">
+          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Subdivision Analytics Dashboard</h3>
+          <p className="text-[10px] text-slate-400 mt-1">Charts tracking developed sectors and sales conversions</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Pie Chart of Sales status */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4 flex flex-col justify-between">
+            <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider block">Plot Inventory Status Distribution</h4>
+            {statusData.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-12">No active plots in layouts to analyze.</p>
+            ) : (
+              <div className="h-64 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={statusData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      {statusData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value) => [`${value} Units`, "Volume"]} />
+                    <Legend verticalAlign="bottom" height={36} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+
+          {/* Bar Chart of layout areas */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4 flex flex-col justify-between">
+            <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider block">Developed Area Distribution (Sq. Yards)</h4>
+            {areaData.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-12">No layouts developed yet.</p>
+            ) : (
+              <div className="h-64 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={areaData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                    <XAxis dataKey="name" stroke="#94A3B8" fontSize={10} tickLine={false} />
+                    <YAxis stroke="#94A3B8" fontSize={10} tickLine={false} />
+                    <Tooltip formatter={(value) => [`${value.toLocaleString()} Sq Yards`, "Developed Area"]} />
+                    <Bar dataKey="Developed Area" fill="#6366F1" radius={[4, 4, 0, 0]} barSize={24} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // 6. Settings Tab
+  const renderSettingsTab = () => {
+    return (
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-6 animate-fade-in" id="settings-tab-view">
+        <div className="border-b border-slate-100 pb-3">
+          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Project Registry Configuration</h3>
+          <p className="text-[10px] text-slate-400 mt-1">Edit administrative details, RERA compliance, and GPS geodetic coordinates</p>
+        </div>
+
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setIsSavingProject(true);
+            try {
+              const payload = {
+                name: formProj.name.trim(),
+                developer_name: formProj.developer_name.trim(),
+                location: formProj.location.trim(),
+                status: formProj.status,
+                rera_number: formProj.rera_number.trim(),
+                approval_status: formProj.approval_status,
+                approval_authority: formProj.approval_authority.trim(),
+                launch_date: formProj.launch_date || null,
+                possession_target_date: formProj.possession_target_date || null,
+                project_type: formProj.project_type,
+                village: formProj.village.trim(),
+                taluk: formProj.taluk.trim(),
+                district: formProj.district.trim(),
+                country: formProj.country,
+                pincode: formProj.pincode.trim(),
+                latitude: formProj.latitude.trim(),
+                longitude: formProj.longitude.trim(),
+                description: formProj.description.trim()
+              };
+              const res = await api.updateProject(selectedProject.id, payload);
+              setSelectedProject(res);
+              // Reload project catalog list
+              const prjRes = await api.fetchProjects({ per_page: 1000 });
+              setLookupProjects(prjRes.data || []);
+              dispatchAuditLog("PROJECT_UPDATE", "projects", selectedProject.id, `Modified project registry specifications for: ${res.name}`);
+              alert("Successfully saved project registry changes!");
+            } catch (err: any) {
+              alert("Failed to save settings: " + (err.message || err));
+            } finally {
+              setIsSavingProject(false);
+            }
+          }}
+          className="space-y-6 text-xs text-slate-600"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div className="space-y-1.5">
+              <label className="font-bold text-slate-500 uppercase tracking-wider block">Project Registry Name</label>
+              <input
+                type="text"
+                required
+                value={formProj.name}
+                onChange={(e) => setFormProj(prev => ({ ...prev, name: e.target.value }))}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="font-bold text-slate-500 uppercase tracking-wider block">Developer Name</label>
+              <input
+                type="text"
+                required
+                value={formProj.developer_name}
+                onChange={(e) => setFormProj(prev => ({ ...prev, developer_name: e.target.value }))}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="font-bold text-slate-500 uppercase tracking-wider block">RERA Registration No</label>
+              <input
+                type="text"
+                value={formProj.rera_number}
+                onChange={(e) => setFormProj(prev => ({ ...prev, rera_number: e.target.value }))}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="font-bold text-slate-500 uppercase tracking-wider block">Village / Settlement</label>
+              <input
+                type="text"
+                value={formProj.village}
+                onChange={(e) => setFormProj(prev => ({ ...prev, village: e.target.value }))}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="font-bold text-slate-500 uppercase tracking-wider block">Taluk / Sub-division</label>
+              <input
+                type="text"
+                value={formProj.taluk}
+                onChange={(e) => setFormProj(prev => ({ ...prev, taluk: e.target.value }))}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="font-bold text-slate-500 uppercase tracking-wider block">District / Region</label>
+              <input
+                type="text"
+                value={formProj.district}
+                onChange={(e) => setFormProj(prev => ({ ...prev, district: e.target.value }))}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="font-bold text-slate-500 uppercase tracking-wider block">Latitude (GPS N)</label>
+              <input
+                type="text"
+                value={formProj.latitude}
+                onChange={(e) => setFormProj(prev => ({ ...prev, latitude: e.target.value }))}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="font-bold text-slate-500 uppercase tracking-wider block">Longitude (GPS E)</label>
+              <input
+                type="text"
+                value={formProj.longitude}
+                onChange={(e) => setFormProj(prev => ({ ...prev, longitude: e.target.value }))}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="font-bold text-slate-500 uppercase tracking-wider block">Project State</label>
+              <select
+                value={formProj.status}
+                onChange={(e) => setFormProj(prev => ({ ...prev, status: e.target.value }))}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              >
+                <option value="PLANNING">PLANNING</option>
+                <option value="ACTIVE">ACTIVE</option>
+                <option value="COMPLETED">COMPLETED</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="font-bold text-slate-500 uppercase tracking-wider block">Description Details</label>
+            <textarea
+              rows={4}
+              value={formProj.description}
+              onChange={(e) => setFormProj(prev => ({ ...prev, description: e.target.value }))}
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            />
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <button
+              type="submit"
+              disabled={isSavingProject}
+              className="bg-indigo-650 hover:bg-indigo-750 text-white font-bold text-xs py-2.5 px-5 rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-40 flex items-center gap-1.5 cursor-pointer"
+            >
+              {isSavingProject ? (
+                <RefreshCw className="w-4 h-4 animate-spin text-white" />
+              ) : (
+                <Check className="w-4 h-4 stroke-[3px]" />
+              )}
+              <span>Save Project Registry Settings</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  };
+
   // Paginated Slices matching Laravel backend datasets
   const displayProj = projects;
   const displayLay = layouts;
@@ -1980,96 +2953,150 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
   return (
     <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden" id="inventory-manager-container">
       {/* 2B Workspace Navigation & Tab Control */}
-      <div className="border-b border-slate-200 bg-slate-50 px-6 py-5 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4" id="inv-header">
-        <div>
-          <h2 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-            <Grid className="w-5 h-5 text-indigo-600" />
-            <span>Inventory Management Core (BhoomiOne ERP)</span>
-          </h2>
-          <p className="text-[11px] text-slate-400 mt-0.5">Maintain physical land holdings, development zones, and custom-attributed plots</p>
-        </div>
+      {selectedProject === null ? (
+        <div className="border-b border-slate-200 bg-slate-50 px-6 py-5 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4" id="inv-header">
+          <div>
+            <h2 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
+              <Grid className="w-5 h-5 text-indigo-600" />
+              <span>Inventory Management Core (BhoomiOne ERP)</span>
+            </h2>
+            <p className="text-[11px] text-slate-400 mt-0.5">Maintain physical land holdings, development zones, and custom-attributed plots</p>
+          </div>
 
-        <div className="flex items-center gap-2 bg-slate-200/50 p-1 rounded-xl w-full lg:w-auto border border-slate-200/60" id="inv-tabs-group">
-          <button
-            onClick={() => { setActiveTab("projects"); setErrorMess(null); }}
-            className={`flex-1 lg:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-              activeTab === "projects" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900"
-            }`}
-            id="tab-projects"
-          >
-            <Building2 className="w-3.5 h-3.5" />
-            <span>Projects ({projects.length})</span>
-          </button>
-          <button
-            onClick={() => { setActiveTab("layouts"); setErrorMess(null); }}
-            disabled={!hasLayView}
-            className={`flex-1 lg:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-              !hasLayView ? "opacity-40" : ""
-            } ${activeTab === "layouts" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900"}`}
-            id="tab-layouts"
-          >
-            <Layers className="w-3.5 h-3.5" />
-            <span>Layouts ({layouts.length})</span>
-          </button>
-          <button
-            onClick={() => { setActiveTab("plots"); setErrorMess(null); }}
-            disabled={!hasPlotView || !enabledFeatures.includes("plot_grid_view")}
-            className={`flex-1 lg:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-              (!hasPlotView || !enabledFeatures.includes("plot_grid_view")) ? "opacity-45 cursor-not-allowed" : ""
-            } ${activeTab === "plots" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900"}`}
-            id="tab-plots"
-          >
-            <Compass className="w-3.5 h-3.5" />
-            <span>Plots ({plots.length}){!enabledFeatures.includes("plot_grid_view") && " 🔒"}</span>
-          </button>
-          {hasLayView && enabledFeatures.includes("gis_maps") && (
+          <div className="flex items-center gap-2 bg-slate-200/50 p-1 rounded-xl w-full lg:w-auto border border-slate-200/60" id="inv-tabs-group">
             <button
-              onClick={() => { setActiveTab("viewer"); setErrorMess(null); }}
+              onClick={() => { setActiveTab("dashboard"); setErrorMess(null); }}
               className={`flex-1 lg:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                activeTab === "viewer" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900"
+                activeTab === "dashboard" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900"
               }`}
-              id="tab-viewer"
+              id="tab-dashboard"
             >
-              <Compass className="w-3.5 h-3.5 text-rose-500" />
-              <span>Interactive Map</span>
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>Dashboard</span>
             </button>
-          )}
-          {hasDxfView && enabledFeatures.includes("dxf_import") && (
             <button
-              onClick={() => { setActiveTab("cad"); setErrorMess(null); }}
+              onClick={() => { setActiveTab("projects"); setErrorMess(null); }}
               className={`flex-1 lg:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                activeTab === "cad" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900"
+                activeTab === "projects" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900"
               }`}
-              id="tab-cad"
+              id="tab-projects"
             >
-              <FileCode2 className="w-3.5 h-3.5" />
-              <span>CAD Imports</span>
+              <Building2 className="w-3.5 h-3.5" />
+              <span>Projects ({projects.length})</span>
             </button>
-          )}
-          {enabledFeatures.includes("marketplace_publish") && (
+            {enabledFeatures.includes("marketplace_publish") && (
+              <button
+                onClick={() => { setActiveTab("marketplace"); setErrorMess(null); }}
+                className={`flex-1 lg:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                  activeTab === "marketplace" ? "bg-white text-indigo-700 border border-indigo-200 shadow-xs font-bold" : "text-slate-500 hover:text-slate-900"
+                }`}
+                id="tab-marketplace"
+              >
+                <Grid className="w-3.5 h-3.5 text-indigo-650" />
+                <span>Marketplace & Leads</span>
+              </button>
+            )}
             <button
-              onClick={() => { setActiveTab("marketplace"); setErrorMess(null); }}
+              onClick={() => { setActiveTab("commercial"); setErrorMess(null); }}
               className={`flex-1 lg:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                activeTab === "marketplace" ? "bg-white text-indigo-700 border border-indigo-200 shadow-xs font-bold" : "text-slate-500 hover:text-slate-900"
+                activeTab === "commercial" ? "bg-white text-emerald-700 border border-emerald-200 shadow-xs font-bold" : "text-slate-500 hover:text-slate-900"
               }`}
-              id="tab-marketplace"
+              id="tab-commercial"
             >
-              <Grid className="w-3.5 h-3.5 text-indigo-650" />
-              <span>Marketplace & Leads</span>
+              <Percent className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Commercial</span>
             </button>
-          )}
-          <button
-            onClick={() => { setActiveTab("commercial"); setErrorMess(null); }}
-            className={`flex-1 lg:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-              activeTab === "commercial" ? "bg-white text-emerald-700 border border-emerald-200 shadow-xs font-bold" : "text-slate-500 hover:text-slate-900"
-            }`}
-            id="tab-commercial"
-          >
-            <Percent className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Commercial</span>
-          </button>
+          </div>
         </div>
-      </div>
+      ) : (
+        /* Render Custom Beautiful ERP Project Workspace Header */
+        <div className="bg-slate-50 border-b border-slate-200 px-6 py-5" id="project-workspace-header">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setSelectedProject(null)}
+                className="p-2.5 bg-white hover:bg-slate-100 border border-slate-250 rounded-xl transition-all cursor-pointer shadow-sm text-slate-600 flex items-center justify-center active:scale-95"
+                title="Back to Projects Catalog Ledger"
+              >
+                <ArrowLeft className="w-4 h-4 text-slate-700 stroke-[3px]" />
+              </button>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-base font-extrabold text-slate-900 tracking-tight">{selectedProject.name}</h2>
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 uppercase">
+                    {selectedProject.code}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${
+                    selectedProject.status === "ACTIVE" ? "bg-emerald-50 text-emerald-800 border-emerald-100" :
+                    selectedProject.status === "PLANNING" ? "bg-blue-50 text-blue-800 border-blue-100" :
+                    "bg-slate-100 text-slate-600 border-slate-200"
+                  }`}>
+                    {selectedProject.status}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Developer: <span className="font-semibold text-slate-600">{selectedProject.developer_name || "Bhoomi Developers"}</span> &bull; 
+                  Location: <span className="font-semibold text-slate-600">{selectedProject.location || "N/A"}</span> &bull; 
+                  RERA: <span className="font-semibold text-slate-600">{selectedProject.rera_number || "N/A"}</span>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5">
+              <button
+                onClick={() => handleStartEditProject(selectedProject)}
+                className="inline-flex items-center gap-1.5 bg-white border border-slate-250 hover:bg-slate-50 text-slate-700 font-bold text-xs px-3 py-2 rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer"
+              >
+                <Edit className="w-3.5 h-3.5" />
+                <span>Edit Project Details</span>
+              </button>
+              {hasProjManage && (
+                <button
+                  onClick={() => { setSelectedProject(null); setCurrModal("create_project"); }}
+                  className="inline-flex items-center gap-1 bg-indigo-650 text-white font-bold text-xs px-3.5 py-2.5 rounded-xl hover:bg-indigo-750 transition-all shadow-md cursor-pointer active:scale-95"
+                >
+                  <Plus className="w-3.5 h-3.5 text-white stroke-[3px]" />
+                  <span>+ New Project</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Sub-tabs list */}
+          <div className="flex flex-wrap items-center gap-1.5 mt-5 bg-slate-200/40 p-1 rounded-xl border border-slate-200/50 w-fit">
+            {[
+              { id: "overview", label: "Overview", icon: Info },
+              { id: "layouts", label: "Layouts", icon: Layers, count: getLayoutsForProject(selectedProject.id).length },
+              { id: "plots", label: "Plots", icon: Compass, count: lookupLayouts.filter(l => l.project_id === selectedProject.id).reduce((acc, curr) => acc + getPlotsForLayout(curr.id).length, 0) },
+              { id: "sales", label: "Sales & Bookings", icon: Percent },
+              { id: "customers", label: "Customers (CRM)", icon: Users },
+              { id: "documents", label: "Documents Vault", icon: FileText },
+              { id: "reports", label: "Reports & Analytics", icon: BarChart3 },
+              { id: "settings", label: "Project Settings", icon: Settings }
+            ].map(tab => {
+              const TabIcon = tab.icon;
+              const isActive = projectWorkspaceTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setProjectWorkspaceTab(tab.id as any)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                    isActive ? "bg-white text-indigo-700 shadow-sm border border-slate-200/30" : "text-slate-500 hover:text-slate-800 hover:bg-white/30"
+                  }`}
+                >
+                  <TabIcon className={`w-3.5 h-3.5 ${isActive ? "text-indigo-600 font-bold" : "text-slate-400"}`} />
+                  <span>{tab.label}</span>
+                  {tab.count !== undefined && (
+                    <span className={`px-1.5 py-0.2 text-[9px] font-bold rounded-full ${isActive ? "bg-indigo-100 text-indigo-700" : "bg-slate-200 text-slate-500"}`}>
+                      {tab.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Real-time Alerts Panel */}
       {errorMess && (
@@ -2086,22 +3113,24 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
       )}
 
       {/* Global Multi-Index Search Bar */}
-      <div className="px-6 py-4 border-b border-slate-100 bg-white/50 flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="relative w-full md:max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Global search by Project Code, Layout Code, or Plot Number..."
-            value={globalSearch}
-            onChange={(e) => { setGlobalSearch(e.target.value); setProjectPage(1); setLayoutPage(1); setPlotPage(1); }}
-            className="w-full bg-slate-50/50 border border-slate-200 pl-10 pr-4 py-2 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 tracking-wide outline-none text-slate-800"
-          />
+      {selectedProject === null && activeTab === "projects" && (
+        <div className="px-6 py-4 border-b border-slate-100 bg-white/50 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="relative w-full md:max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Global search by Project Code, Layout Code, or Plot Number..."
+              value={globalSearch}
+              onChange={(e) => { setGlobalSearch(e.target.value); setProjectPage(1); setLayoutPage(1); setPlotPage(1); }}
+              className="w-full bg-slate-50/50 border border-slate-200 pl-10 pr-4 py-2 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 tracking-wide outline-none text-slate-800"
+            />
+          </div>
+          <div className="flex items-center gap-2 text-[11px] font-mono text-slate-400">
+            <Activity className="w-3.5 h-3.5" />
+            <span>Active Workspace Tenants Guard Validated</span>
+          </div>
         </div>
-        <div className="flex items-center gap-2 text-[11px] font-mono text-slate-400">
-          <Activity className="w-3.5 h-3.5" />
-          <span>Active Workspace Tenants Guard Validated</span>
-        </div>
-      </div>
+      )}
 
       {/* Two-Column split Workspace (Main List Ledger & Technical Spec drawer) */}
       {activeTab !== "cad" && activeTab !== "viewer" && activeTab !== "marketplace" && activeTab !== "commercial" && (
@@ -2110,8 +3139,85 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
         {/* LEFT COMPONENT - GRID & ACTIONS LEDGER */}
         <div className="xl:col-span-8 space-y-6">
 
+          {/* ERP Landing Dashboard (visible when no project is selected and tab is dashboard) */}
+          {selectedProject === null && activeTab === "dashboard" && (
+            <div className="space-y-6 animate-fade-in" id="landing-dashboard">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="bg-slate-50 border border-slate-200/60 p-5 rounded-2xl flex items-center gap-3">
+                  <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
+                    <Building2 className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cataloged Projects</p>
+                    <p className="text-xl font-extrabold text-slate-950 mt-0.5">{lookupProjects.length} Real Estates</p>
+                  </div>
+                </div>
+                <div className="bg-slate-50 border border-slate-200/60 p-5 rounded-2xl flex items-center gap-3">
+                  <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
+                    <Layers className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Subdivision Layouts</p>
+                    <p className="text-xl font-extrabold text-slate-950 mt-0.5">{lookupLayouts.length} Active Plans</p>
+                  </div>
+                </div>
+                <div className="bg-slate-50 border border-slate-200/60 p-5 rounded-2xl flex items-center gap-3">
+                  <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
+                    <Users className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active Customers</p>
+                    <p className="text-xl font-extrabold text-slate-950 mt-0.5">{projectLeads.length} Registered CRM</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Board */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
+                <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-2 pb-3 border-b border-slate-100">
+                  <Activity className="w-4 h-4 text-indigo-600" />
+                  <span>Interactive Real-time ERP Audit Feed</span>
+                </h3>
+                {recentAudits.length === 0 ? (
+                  <p className="text-xs text-slate-400 py-6 text-center italic">No operations recorded yet in active session.</p>
+                ) : (
+                  <div className="space-y-3.5 max-h-[350px] overflow-y-auto pr-2">
+                    {recentAudits.map((log) => (
+                      <div key={log.id} className="flex gap-3 text-xs items-start border-b border-slate-50 pb-3">
+                        <span className={`px-2 py-0.5 font-mono text-[9px] font-bold rounded flex-shrink-0 uppercase ${
+                          log.action === "PROJECT_CREATE" || log.action === "LAYOUT_CREATE" ? "bg-emerald-50 text-emerald-700" :
+                          log.action === "PROJECT_UPDATE" || log.action === "LAYOUT_UPDATE" ? "bg-indigo-50 text-indigo-700" :
+                          log.action === "DOCUMENT_UPLOAD" ? "bg-purple-50 text-purple-700" :
+                          "bg-slate-50 text-slate-700"
+                        }`}>
+                          {log.action}
+                        </span>
+                        <div className="flex-1">
+                          <p className="font-semibold text-slate-800">{log.message}</p>
+                          <p className="text-[9.5px] text-slate-400 mt-0.5">Target ID: {log.targetId} &bull; Timestamp: {log.timestamp}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ERP Project Workspace Custom Sub-Tabs Renderers */}
+          {selectedProject !== null && (
+            <div className="space-y-6">
+              {projectWorkspaceTab === "overview" && renderOverviewTab()}
+              {projectWorkspaceTab === "sales" && renderSalesTab()}
+              {projectWorkspaceTab === "customers" && renderCustomersTab()}
+              {projectWorkspaceTab === "documents" && renderDocumentsTab()}
+              {projectWorkspaceTab === "reports" && renderReportsTab()}
+              {projectWorkspaceTab === "settings" && renderSettingsTab()}
+            </div>
+          )}
+
           {/* 1. PROJECTS TABPANEL */}
-          {activeTab === "projects" && (
+          {selectedProject === null && activeTab === "projects" && (
             <div className="space-y-4" id="projects-view-panel">
               {/* Controls and Header */}
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 pb-3">
@@ -2333,8 +3439,58 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
           )}
 
           {/* 2. LAYOUTS TABPANEL */}
-          {activeTab === "layouts" && (
-            <div className="space-y-4" id="layouts-view-panel">
+          {(activeTab === "layouts" || (selectedProject !== null && projectWorkspaceTab === "layouts")) && (
+            selectedLayout !== null ? (
+              <LayoutWorkspace
+                layout={selectedLayout}
+                project={selectedProject || lookupProjects.find(p => p.id === selectedLayout.project_id)}
+                plots={plots}
+                units={units}
+                user={user}
+                onClose={() => setSelectedLayout(null)}
+                onLaunchStudio={() => {
+                  setActiveTab("viewer");
+                  dispatchAuditLog("STUDIO_LAUNCH", "layouts", selectedLayout.id, `Launched Map Studio drawing engine for layout: ${selectedLayout.code}`);
+                }}
+                onStartEditLayout={handleStartEditLayout}
+                onArchiveLayout={handleArchiveLayout}
+                onDeleteLayout={handleDeleteLayout}
+                onUpdateLayoutStatus={async (id, newStatus) => {
+                  try {
+                    const l = lookupLayouts.find(lay => lay.id === id);
+                    if (!l) return;
+                    const unpacked = unpackApprovalNumber(l.approval_number || "");
+                    const packedStr = packApprovalNumber(
+                      unpacked.approval_number,
+                      unpacked.survey_number,
+                      unpacked.phase,
+                      unpacked.description
+                    );
+                    const payload = {
+                      project_id: l.project_id,
+                      name: l.name,
+                      code: l.code,
+                      layout_type: l.layout_type,
+                      approval_number: packedStr,
+                      approval_date: l.approval_date ? l.approval_date.split("T")[0] : null,
+                      total_area_value: l.total_area_value ? Number(l.total_area_value) : null,
+                      total_area_unit_id: l.total_area_unit_id,
+                      measurement_unit_id: l.measurement_unit_id,
+                      status: newStatus
+                    };
+                    await api.updateLayout(id, payload);
+                    displaySuccess(`Layout '${l.name}' status updated to ${newStatus}.`);
+                    await loadData();
+                    const updatedL = { ...l, status: newStatus };
+                    setSelectedLayout(updatedL);
+                  } catch (err: any) {
+                    setErrorMess(err.message || "Failed to update layout status.");
+                  }
+                }}
+                onAuditLogged={dispatchAuditLog}
+              />
+            ) : (
+              <div className="space-y-4" id="layouts-view-panel">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 pb-3">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">Layout Plans Catalog</h3>
@@ -2374,9 +3530,10 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                 <div>
                   <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Project filter</label>
                   <select
+                    disabled={selectedProject !== null}
                     value={filterLayProject}
                     onChange={(e) => { setFilterLayProject(e.target.value); setLayoutPage(1); }}
-                    className="w-full bg-white border border-slate-200 rounded-lg p-1.5 text-xs text-slate-700 focus:outline-none"
+                    className="w-full bg-white border border-slate-200 rounded-lg p-1.5 text-xs text-slate-700 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400"
                   >
                     <option value="ALL">All Projects</option>
                     {lookupProjects.map(p => (
@@ -2520,6 +3677,13 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                                   <Compass className="w-3.5 h-3.5 text-rose-500 hover:scale-110 transition-transform" />
                                 </button>
                                 <button
+                                  onClick={() => { setSelectedLayout(l); setActiveTab("cad"); }}
+                                  className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"
+                                  title="Import CAD Blueprint"
+                                >
+                                  <FileCode2 className="w-3.5 h-3.5 text-indigo-600 hover:scale-110 transition-transform" />
+                                </button>
+                                <button
                                   onClick={() => handleStartEditLayout(l)}
                                   className="p-1 text-slate-400 hover:text-slate-900 transition-colors"
                                   title="Edit layout details"
@@ -2589,10 +3753,11 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                 </div>
               </div>
             </div>
+            )
           )}
 
           {/* 3. PLOTS TABPANEL */}
-          {activeTab === "plots" && (
+          {(activeTab === "plots" || (selectedProject !== null && projectWorkspaceTab === "plots")) && (
             <div className="space-y-4" id="plots-view-panel">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 pb-3">
                 <div>
@@ -2729,9 +3894,11 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                       className="w-full bg-white border border-slate-200 rounded-lg p-1.5 text-xs text-slate-700 focus:outline-none"
                     >
                       <option value="ALL">All Layouts</option>
-                      {lookupLayouts.map(l => (
-                        <option key={l.id} value={l.id}>[{l.code}] {l.name}</option>
-                      ))}
+                      {lookupLayouts
+                        .filter(l => selectedProject === null || String(l.project_id) === String(selectedProject.id))
+                        .map(l => (
+                          <option key={l.id} value={l.id}>[{l.code}] {l.name}</option>
+                        ))}
                     </select>
                   </div>
                   <div>

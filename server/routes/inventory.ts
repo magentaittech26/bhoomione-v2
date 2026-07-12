@@ -739,6 +739,7 @@ router.get("/plots", requireAuth, async (req: AuthenticatedRequest, res: Respons
       facing,
       corner_plot,
       layout_id,
+      project_id,
       road_width_min,
       area_min,
       area_max,
@@ -752,6 +753,11 @@ router.get("/plots", requireAuth, async (req: AuthenticatedRequest, res: Respons
     // Base clauses
     let whereClauses = ["prj.tenant_id = $1"];
     const params: any[] = [tenantId];
+
+    if (project_id && project_id !== "ALL") {
+      params.push(project_id);
+      whereClauses.push(`l.project_id = $${params.length}`);
+    }
 
     if (layout_id && layout_id !== "ALL") {
       params.push(layout_id);

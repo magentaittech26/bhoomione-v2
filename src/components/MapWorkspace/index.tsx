@@ -663,6 +663,7 @@ interface MapWorkspaceIndexProps {
   layouts?: any[];
   onBackToInventory?: () => void;
   onEditLayoutDetails?: (layoutId: string) => void;
+  onPublishComplete?: (layoutId: string) => void;
 }
 
 export default function MapWorkspaceIndex({ 
@@ -671,7 +672,8 @@ export default function MapWorkspaceIndex({
   projects = [],
   layouts = [],
   onBackToInventory,
-  onEditLayoutDetails
+  onEditLayoutDetails,
+  onPublishComplete
 }: MapWorkspaceIndexProps = {}) {
   // Navigation flow state: "projects" | "layouts" | "workspace"
   const [currentStep, setCurrentStep] = useState<"projects" | "layouts" | "workspace">("projects");
@@ -1418,6 +1420,7 @@ export default function MapWorkspaceIndex({
         // Reload layout list
         const resLayouts = await api.fetchLayouts({ per_page: 1000 });
         setLayoutsList(resLayouts.data || []);
+        onPublishComplete?.(selectedLayoutId);
       } else {
         // Create new layout if none selected
         const payload = {
@@ -1446,6 +1449,7 @@ export default function MapWorkspaceIndex({
         // Reload layout list
         const resLayouts = await api.fetchLayouts({ per_page: 1000 });
         setLayoutsList(resLayouts.data || []);
+        onPublishComplete?.(newLayoutId);
       }
     } catch (err: any) {
       console.error("Failed to save layout publish", err);
