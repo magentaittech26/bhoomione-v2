@@ -4,8 +4,8 @@ import { UserProfile } from "../../types/auth.ts";
 import TenantLogin from "../TenantLogin.tsx";
 import PasswordReset from "../PasswordReset.tsx";
 import Dashboard from "../Dashboard.tsx";
-import MapWorkspaceIndex from "../MapWorkspace/index.tsx";
-import { ShieldCheck, ArrowRight, Building2, HelpCircle, ServerOff, Compass, Layout } from "lucide-react";
+import SettingsBilling from "../SettingsBilling.tsx";
+import { ShieldCheck, ArrowRight, Building2, HelpCircle, ServerOff, Settings, Layout } from "lucide-react";
 
 interface TenantWorkspaceAppProps {
   tenantCode: string | null;
@@ -48,7 +48,7 @@ const TENANT_REGISTRY: Record<string, TenantDetails> = {
 export default function TenantWorkspaceApp({ tenantCode }: TenantWorkspaceAppProps) {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [view, setView] = useState<"login" | "reset">("login");
-  const [activeTab, setActiveTab] = useState<"dashboard" | "map">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "settings">("dashboard");
 
   // Lookup tenant details dynamically
   const code = tenantCode || "bhoomi-alpha";
@@ -127,16 +127,16 @@ export default function TenantWorkspaceApp({ tenantCode }: TenantWorkspaceAppPro
                   <span>ERP Dashboard</span>
                 </button>
                 <button
-                  onClick={() => setActiveTab("map")}
+                  onClick={() => setActiveTab("settings")}
                   className={`px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-                    activeTab === "map"
-                      ? "bg-indigo-600 text-white shadow-sm font-extrabold"
+                    activeTab === "settings"
+                      ? "bg-white text-slate-900 shadow-sm font-extrabold"
                       : "text-slate-500 hover:text-slate-800"
                   }`}
-                  id="tab-map-workspace"
+                  id="tab-settings-billing"
                 >
-                  <Compass className="w-3.5 h-3.5" />
-                  <span>Map Workspace Studio</span>
+                  <Settings className="w-3.5 h-3.5" />
+                  <span>Settings &amp; Billing</span>
                 </button>
               </div>
             </div>
@@ -144,7 +144,7 @@ export default function TenantWorkspaceApp({ tenantCode }: TenantWorkspaceAppPro
             {activeTab === "dashboard" ? (
               <Dashboard user={currentUser} onLogout={handleLogout} />
             ) : (
-              <MapWorkspaceIndex />
+              <SettingsBilling user={currentUser} onLogout={handleLogout} />
             )}
           </div>
         ) : (

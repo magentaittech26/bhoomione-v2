@@ -2984,28 +2984,6 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
               <Building2 className="w-3.5 h-3.5" />
               <span>Projects ({projects.length})</span>
             </button>
-            {enabledFeatures.includes("marketplace_publish") && (
-              <button
-                onClick={() => { setActiveTab("marketplace"); setErrorMess(null); }}
-                className={`flex-1 lg:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                  activeTab === "marketplace" ? "bg-white text-indigo-700 border border-indigo-200 shadow-xs font-bold" : "text-slate-500 hover:text-slate-900"
-                }`}
-                id="tab-marketplace"
-              >
-                <Grid className="w-3.5 h-3.5 text-indigo-650" />
-                <span>Marketplace & Leads</span>
-              </button>
-            )}
-            <button
-              onClick={() => { setActiveTab("commercial"); setErrorMess(null); }}
-              className={`flex-1 lg:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                activeTab === "commercial" ? "bg-white text-emerald-700 border border-emerald-200 shadow-xs font-bold" : "text-slate-500 hover:text-slate-900"
-              }`}
-              id="tab-commercial"
-            >
-              <Percent className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Commercial</span>
-            </button>
           </div>
         </div>
       ) : (
@@ -3141,42 +3119,62 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
 
           {/* ERP Landing Dashboard (visible when no project is selected and tab is dashboard) */}
           {selectedProject === null && activeTab === "dashboard" && (
-            <div className="space-y-6 animate-fade-in" id="landing-dashboard">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="bg-slate-50 border border-slate-200/60 p-5 rounded-2xl flex items-center gap-3">
-                  <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
-                    <Building2 className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cataloged Projects</p>
-                    <p className="text-xl font-extrabold text-slate-950 mt-0.5">{lookupProjects.length} Real Estates</p>
-                  </div>
+            <div className="space-y-6 animate-fade-in font-sans" id="landing-dashboard">
+              {/* Main Welcome & Project Call-To-Action Card */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 lg:p-8 space-y-4" id="welcome-erp-hub">
+                <div className="space-y-1">
+                  <h3 className="text-lg font-bold text-slate-950 font-sans">Real Estate Operations Hub</h3>
+                  <p className="text-xs text-slate-500 leading-relaxed max-w-xl">
+                    Coordinate physical land holdings, development zones, plot bookings, and dynamic document compliance in a project-first workspace workflow.
+                  </p>
                 </div>
-                <div className="bg-slate-50 border border-slate-200/60 p-5 rounded-2xl flex items-center gap-3">
-                  <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
-                    <Layers className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Subdivision Layouts</p>
-                    <p className="text-xl font-extrabold text-slate-950 mt-0.5">{lookupLayouts.length} Active Plans</p>
-                  </div>
+
+                <div className="flex flex-wrap items-center gap-3 pt-2">
+                  <button
+                    onClick={() => { setActiveTab("projects"); setErrorMess(null); }}
+                    className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-5 py-3 rounded-xl transition-all shadow-md active:scale-95 cursor-pointer"
+                    id="btn-goto-projects"
+                  >
+                    <span>Manage Projects &rarr;</span>
+                  </button>
+                  {hasProjManage && (
+                    <button
+                      onClick={() => { setCurrModal("create_project"); }}
+                      className="inline-flex items-center gap-1.5 bg-white border border-slate-250 hover:bg-slate-50 text-slate-800 font-bold text-xs px-4 py-3 rounded-xl transition-all shadow-xs active:scale-95 cursor-pointer"
+                      id="btn-quick-create-project"
+                    >
+                      <Plus className="w-3.5 h-3.5 text-slate-800 stroke-[3px]" />
+                      <span>+ Create Project</span>
+                    </button>
+                  )}
                 </div>
-                <div className="bg-slate-50 border border-slate-200/60 p-5 rounded-2xl flex items-center gap-3">
-                  <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
-                    <Users className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active Customers</p>
-                    <p className="text-xl font-extrabold text-slate-950 mt-0.5">{projectLeads.length} Registered CRM</p>
-                  </div>
+              </div>
+
+              {/* Four-Column Split Operational Status Count Metrics */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" id="erp-hub-metrics">
+                <div className="bg-white border border-slate-150 p-4 rounded-xl shadow-xs">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cataloged Projects</p>
+                  <p className="text-lg font-black text-slate-950 mt-1">{lookupProjects.length} Projects</p>
+                </div>
+                <div className="bg-white border border-slate-150 p-4 rounded-xl shadow-xs">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Subdivision Layouts</p>
+                  <p className="text-lg font-black text-slate-950 mt-1">{lookupLayouts.length} Layout Phases</p>
+                </div>
+                <div className="bg-white border border-slate-150 p-4 rounded-xl shadow-xs">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Development Plots</p>
+                  <p className="text-lg font-black text-slate-950 mt-1">{plots.length} Plots</p>
+                </div>
+                <div className="bg-white border border-slate-150 p-4 rounded-xl shadow-xs">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Leads &amp; CRM Contacts</p>
+                  <p className="text-lg font-black text-slate-950 mt-1">{projectLeads.length} Registered</p>
                 </div>
               </div>
 
               {/* Action Board */}
               <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
-                <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-2 pb-3 border-b border-slate-100">
+                <h3 className="text-xs font-extrabold text-slate-850 uppercase tracking-wider flex items-center gap-2 pb-3 border-b border-slate-100">
                   <Activity className="w-4 h-4 text-indigo-600" />
-                  <span>Interactive Real-time ERP Audit Feed</span>
+                  <span>Recent Activity Feed</span>
                 </h3>
                 {recentAudits.length === 0 ? (
                   <p className="text-xs text-slate-400 py-6 text-center italic">No operations recorded yet in active session.</p>
