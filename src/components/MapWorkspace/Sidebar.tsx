@@ -133,63 +133,63 @@ export default function Sidebar({
 
   return (
     <div 
-      className={`border-r border-slate-200 bg-white flex transition-all duration-300 relative select-none ${
+      className={`border-r border-slate-200/80 bg-white flex transition-all duration-300 relative select-none antialiased ${
         isCollapsed ? "w-12" : "w-80"
       }`}
       id="workspace-left-sidebar"
     >
       {/* A. Vertical Tab Strip */}
-      <div className="w-12 border-r border-slate-100 flex flex-col items-center py-4 gap-4 flex-shrink-0 bg-slate-50/70" id="sidebar-tab-strip">
+      <div className="w-12 border-r border-slate-100 flex flex-col items-center py-4 gap-3.5 flex-shrink-0 bg-slate-50/50" id="sidebar-tab-strip">
         <button
           onClick={() => { setIsCollapsed(false); setActiveTab("explorer"); }}
           className={`p-2 rounded-lg transition-all cursor-pointer ${
-            !isCollapsed && activeTab === "explorer" ? "bg-indigo-50 text-indigo-600 font-extrabold" : "text-slate-400 hover:text-slate-700"
+            !isCollapsed && activeTab === "explorer" ? "bg-indigo-50 text-indigo-650 shadow-sm font-bold" : "text-slate-400 hover:text-slate-700 hover:bg-slate-100"
           }`}
           title="Project Explorer"
           id="btn-tab-explorer"
         >
-          <FolderOpen className="w-5 h-5" />
+          <FolderOpen className="w-4 h-4" />
         </button>
         <button
           onClick={() => { setIsCollapsed(false); setActiveTab("layers"); }}
           className={`p-2 rounded-lg transition-all cursor-pointer ${
-            !isCollapsed && activeTab === "layers" ? "bg-indigo-50 text-indigo-600 font-extrabold" : "text-slate-400 hover:text-slate-700"
+            !isCollapsed && activeTab === "layers" ? "bg-indigo-50 text-indigo-650 shadow-sm font-bold" : "text-slate-400 hover:text-slate-700 hover:bg-slate-100"
           }`}
           title="Layer Configuration"
           id="btn-tab-layers"
         >
-          <Layers className="w-5 h-5" />
+          <Layers className="w-4 h-4" />
         </button>
         <button
           onClick={() => { setIsCollapsed(false); setActiveTab("assets"); }}
           className={`p-2 rounded-lg transition-all cursor-pointer ${
-            !isCollapsed && activeTab === "assets" ? "bg-indigo-50 text-indigo-600 font-extrabold" : "text-slate-400 hover:text-slate-700"
+            !isCollapsed && activeTab === "assets" ? "bg-indigo-50 text-indigo-650 shadow-sm font-bold" : "text-slate-400 hover:text-slate-700 hover:bg-slate-100"
           }`}
           title="Asset Manager"
           id="btn-tab-assets"
         >
-          <FileText className="w-5 h-5" />
+          <FileText className="w-4 h-4" />
         </button>
         <button
           onClick={() => { setIsCollapsed(false); setActiveTab("search"); }}
           className={`p-2 rounded-lg transition-all cursor-pointer ${
-            !isCollapsed && activeTab === "search" ? "bg-indigo-50 text-indigo-600 font-extrabold" : "text-slate-400 hover:text-slate-700"
+            !isCollapsed && activeTab === "search" ? "bg-indigo-50 text-indigo-650 shadow-sm font-bold" : "text-slate-400 hover:text-slate-700 hover:bg-slate-100"
           }`}
           title="Search Objects"
           id="btn-tab-search"
         >
-          <Search className="w-5 h-5" />
+          <Search className="w-4 h-4" />
         </button>
 
         <div className="mt-auto">
           {/* Toggle sidebar collapse handler */}
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="p-1.5 hover:bg-slate-200 text-slate-400 hover:text-slate-700 rounded-lg transition-colors cursor-pointer"
+            className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded-lg transition-all cursor-pointer border border-transparent hover:border-slate-200"
             title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
             id="sidebar-toggle-trigger"
           >
-            <ChevronRight className={`w-4 h-4 transition-transform duration-300 ${isCollapsed ? "" : "rotate-180"}`} />
+            <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-300 ${isCollapsed ? "" : "rotate-180"}`} />
           </button>
         </div>
       </div>
@@ -198,20 +198,20 @@ export default function Sidebar({
       {!isCollapsed && (
         <div className="flex-1 flex flex-col min-w-0 animate-fadeIn" id="sidebar-drawer-panel">
           {/* Header */}
-          <div className="px-4 py-3.5 border-b border-slate-100 flex items-center justify-between">
-            <h3 className="text-xs font-bold text-slate-800 tracking-tight flex items-center gap-2">
-              {activeTab === "explorer" && <FolderOpen className="w-4 h-4 text-indigo-600" />}
-              {activeTab === "layers" && <Layers className="w-4 h-4 text-indigo-600" />}
-              {activeTab === "assets" && <FileText className="w-4 h-4 text-indigo-600" />}
-              {activeTab === "search" && <Search className="w-4 h-4 text-indigo-600" />}
-              <span>
+          <div className="px-4 py-3 border-b border-slate-100/80 flex items-center justify-between">
+            <h3 className="text-xs font-bold text-slate-900 tracking-tight flex items-center gap-2">
+              {activeTab === "explorer" && <FolderOpen className="w-3.5 h-3.5 text-indigo-600" />}
+              {activeTab === "layers" && <Layers className="w-3.5 h-3.5 text-indigo-600" />}
+              {activeTab === "assets" && <FileText className="w-3.5 h-3.5 text-indigo-600" />}
+              {activeTab === "search" && <Search className="w-3.5 h-3.5 text-indigo-600" />}
+              <span className="font-semibold text-slate-800">
                 {activeTab === "explorer" && "Project Explorer"}
                 {activeTab === "layers" && "Geometry Layers"}
                 {activeTab === "assets" && "Layout Assets"}
-                {activeTab === "search" && "Canvas Search Engine"}
+                {activeTab === "search" && "Canvas Search"}
               </span>
             </h3>
-            <span className="text-[9px] font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-mono uppercase">
+            <span className="text-[9px] font-bold bg-slate-50 text-slate-400 px-2 py-0.5 rounded border border-slate-105 font-mono uppercase">
               {activeTab}
             </span>
           </div>

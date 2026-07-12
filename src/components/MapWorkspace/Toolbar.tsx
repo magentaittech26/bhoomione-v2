@@ -99,26 +99,26 @@ export default function Toolbar({
   };
 
   return (
-    <div className="bg-white border-b border-slate-200 px-4 py-2.5 flex flex-wrap md:flex-nowrap items-center justify-between gap-3 shadow-xs select-none" id="workspace-top-toolbar">
+    <div className="bg-white border-b border-slate-200/80 px-5 py-2 flex flex-wrap md:flex-nowrap items-center justify-between gap-3 shadow-[0_1px_2px_rgba(0,0,0,0.03)] select-none antialiased" id="workspace-top-toolbar">
       {/* 1. Left Section: Back link and Project/Layout quick select */}
-      <div className="flex items-center gap-2.5">
+      <div className="flex items-center gap-3">
         <button
           onClick={onBackToLanding}
-          className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-800 transition-colors flex items-center gap-1 cursor-pointer"
+          className="p-1.5 hover:bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-lg text-slate-600 hover:text-slate-900 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
           title="Back to Projects Directory"
           id="toolbar-back-btn"
         >
-          <ChevronLeft className="w-4 h-4" />
-          <span className="text-xs font-semibold">Directory</span>
+          <ChevronLeft className="w-3.5 h-3.5" />
+          <span className="text-[11px] font-semibold tracking-tight">Directory</span>
         </button>
-        <span className="text-slate-300">|</span>
+        <span className="text-slate-200 text-sm">/</span>
 
         {/* Project Selector */}
         <div className="relative">
           <select
             value={selectedProjectId || ""}
             onChange={(e) => onProjectChange(e.target.value)}
-            className="appearance-none bg-slate-50 border border-slate-200 rounded-lg pl-2.5 pr-7 py-1.5 text-[11px] font-semibold text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 cursor-pointer"
+            className="appearance-none bg-slate-50/50 hover:bg-slate-50 border border-slate-200/80 hover:border-slate-300 rounded-lg pl-3 pr-8 py-1.5 text-[11px] font-medium text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/10 cursor-pointer transition-all shadow-xs"
             id="toolbar-project-select"
           >
             <option value="" disabled>Select Project...</option>
@@ -126,7 +126,7 @@ export default function Toolbar({
               <option key={p.id} value={p.id}>[{p.code}] {p.name}</option>
             ))}
           </select>
-          <ChevronDown className="w-3 h-3 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <ChevronDown className="w-3 h-3 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
         </div>
 
         {/* Layout Selector */}
@@ -134,7 +134,7 @@ export default function Toolbar({
           <select
             value={selectedLayoutId || ""}
             onChange={(e) => onLayoutChange(e.target.value)}
-            className="appearance-none bg-slate-50 border border-slate-200 rounded-lg pl-2.5 pr-7 py-1.5 text-[11px] font-semibold text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 cursor-pointer"
+            className="appearance-none bg-slate-50/50 hover:bg-slate-50 border border-slate-200/80 hover:border-slate-300 rounded-lg pl-3 pr-8 py-1.5 text-[11px] font-medium text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/10 cursor-pointer transition-all shadow-xs"
             id="toolbar-layout-select"
             disabled={!selectedProjectId}
           >
@@ -143,20 +143,20 @@ export default function Toolbar({
               <option key={l.id} value={l.id}>[{l.code}] {l.name}</option>
             ))}
           </select>
-          <ChevronDown className="w-3 h-3 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <ChevronDown className="w-3 h-3 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
         </div>
       </div>
 
       {/* 2. Middle Section: Tool Palette + Undo/Redo Stack controls */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
         {/* Tool Palette */}
-        <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200/60" id="toolbar-tool-palette">
+        <div className="flex items-center bg-slate-100/80 p-0.5 rounded-xl border border-slate-200/60 shadow-inner" id="toolbar-tool-palette">
           {/* Navigation Category */}
-          <div className="flex items-center pr-1 mr-1 border-r border-slate-200/85">
+          <div className="flex items-center pr-1 mr-1 border-r border-slate-200/80 gap-0.5">
             <button
               onClick={() => setSelectedTool("select")}
-              className={`p-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                selectedTool === "select" ? "bg-white text-slate-950 shadow-xs font-extrabold" : "text-slate-500 hover:text-slate-800"
+              className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                selectedTool === "select" ? "bg-white text-indigo-650 shadow-sm font-bold ring-1 ring-slate-200/10" : "text-slate-500 hover:text-slate-900"
               }`}
               title="Select object (V)"
               id="tool-select"
@@ -166,8 +166,8 @@ export default function Toolbar({
             </button>
             <button
               onClick={() => setSelectedTool("pan")}
-              className={`p-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                selectedTool === "pan" ? "bg-white text-slate-950 shadow-xs font-extrabold" : "text-slate-500 hover:text-slate-800"
+              className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                selectedTool === "pan" ? "bg-white text-indigo-650 shadow-sm font-bold ring-1 ring-slate-200/10" : "text-slate-500 hover:text-slate-900"
               }`}
               title="Pan Workspace (H) - Hold SPACE for temporary pan"
               id="tool-pan"
@@ -178,11 +178,11 @@ export default function Toolbar({
           </div>
 
           {/* Drawing/Vector Category */}
-          <div className="flex items-center pr-1 mr-1 border-r border-slate-200/85 gap-0.5">
+          <div className="flex items-center pr-1 mr-1 border-r border-slate-200/80 gap-0.5">
             <button
               onClick={() => setSelectedTool("boundary")}
-              className={`p-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                selectedTool === "boundary" ? "bg-white text-slate-950 shadow-xs font-extrabold" : "text-slate-500 hover:text-slate-850"
+              className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                selectedTool === "boundary" ? "bg-white text-indigo-650 shadow-sm font-bold ring-1 ring-slate-200/10" : "text-slate-500 hover:text-slate-900"
               }`}
               title="Boundary Limit Tool (B)"
               id="tool-boundary"
@@ -193,8 +193,8 @@ export default function Toolbar({
 
             <button
               onClick={() => setSelectedTool("road")}
-              className={`p-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                selectedTool === "road" ? "bg-white text-slate-950 shadow-xs font-extrabold" : "text-slate-500 hover:text-slate-850"
+              className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                selectedTool === "road" ? "bg-white text-indigo-650 shadow-sm font-bold ring-1 ring-slate-200/10" : "text-slate-500 hover:text-slate-900"
               }`}
               title="Road Alignment Tool (R)"
               id="tool-road"
@@ -205,8 +205,8 @@ export default function Toolbar({
 
             <button
               onClick={() => setSelectedTool("plot")}
-              className={`p-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                selectedTool === "plot" ? "bg-white text-slate-950 shadow-xs font-extrabold" : "text-slate-500 hover:text-slate-850"
+              className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                selectedTool === "plot" ? "bg-white text-indigo-650 shadow-sm font-bold ring-1 ring-slate-200/10" : "text-slate-500 hover:text-slate-900"
               }`}
               title="Subdivided Plot Tool (P)"
               id="tool-plot"
@@ -217,8 +217,8 @@ export default function Toolbar({
 
             <button
               onClick={() => setSelectedTool("park")}
-              className={`p-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                selectedTool === "park" ? "bg-white text-slate-950 shadow-xs font-extrabold" : "text-slate-500 hover:text-slate-850"
+              className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                selectedTool === "park" ? "bg-white text-indigo-650 shadow-sm font-bold ring-1 ring-slate-200/10" : "text-slate-500 hover:text-slate-900"
               }`}
               title="Parks & Green Zone Tool (G)"
               id="tool-park"
@@ -229,8 +229,8 @@ export default function Toolbar({
 
             <button
               onClick={() => setSelectedTool("amenity")}
-              className={`p-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                selectedTool === "amenity" ? "bg-white text-slate-950 shadow-xs font-extrabold" : "text-slate-500 hover:text-slate-850"
+              className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                selectedTool === "amenity" ? "bg-white text-indigo-650 shadow-sm font-bold ring-1 ring-slate-200/10" : "text-slate-500 hover:text-slate-900"
               }`}
               title="Community Amenity Tool (A)"
               id="tool-amenity"
@@ -241,8 +241,8 @@ export default function Toolbar({
 
             <button
               onClick={() => setSelectedTool("utility")}
-              className={`p-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                selectedTool === "utility" ? "bg-white text-slate-950 shadow-xs font-extrabold" : "text-slate-500 hover:text-slate-850"
+              className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                selectedTool === "utility" ? "bg-white text-indigo-650 shadow-sm font-bold ring-1 ring-slate-200/10" : "text-slate-500 hover:text-slate-900"
               }`}
               title="Utility Line Alignment Tool (U)"
               id="tool-utility"
@@ -253,8 +253,8 @@ export default function Toolbar({
 
             <button
               onClick={() => setSelectedTool("label")}
-              className={`p-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                selectedTool === "label" ? "bg-white text-slate-950 shadow-xs font-extrabold" : "text-slate-500 hover:text-slate-850"
+              className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                selectedTool === "label" ? "bg-white text-indigo-650 shadow-sm font-bold ring-1 ring-slate-200/10" : "text-slate-500 hover:text-slate-900"
               }`}
               title="Geometric Text Label Cursor (L)"
               id="tool-label"
@@ -267,8 +267,8 @@ export default function Toolbar({
           {/* Analytics Category */}
           <button
             onClick={() => setSelectedTool("measure")}
-            className={`p-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
-              selectedTool === "measure" ? "bg-white text-slate-950 shadow-xs font-extrabold" : "text-slate-500 hover:text-slate-800"
+            className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+              selectedTool === "measure" ? "bg-white text-indigo-650 shadow-sm font-bold ring-1 ring-slate-200/10" : "text-slate-500 hover:text-slate-900"
             }`}
             title="CAD Scale Measure (M)"
             id="tool-measure"
@@ -279,12 +279,12 @@ export default function Toolbar({
         </div>
 
         {/* Command Pattern History Controls */}
-        <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200/60" id="toolbar-history-stack">
+        <div className="flex items-center bg-slate-100/85 p-0.5 rounded-xl border border-slate-200/60 shadow-inner" id="toolbar-history-stack">
           <button
             onClick={onUndo}
             disabled={!canUndo}
-            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-              canUndo ? "text-slate-700 hover:bg-white hover:text-slate-900 hover:shadow-xs" : "text-slate-300 cursor-not-allowed opacity-50"
+            className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+              canUndo ? "text-slate-700 hover:bg-white hover:text-slate-900 hover:shadow-sm" : "text-slate-300 cursor-not-allowed opacity-50"
             }`}
             title="Undo action (Ctrl+Z)"
             id="btn-undo-history"
@@ -294,8 +294,8 @@ export default function Toolbar({
           <button
             onClick={onRedo}
             disabled={!canRedo}
-            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-              canRedo ? "text-slate-700 hover:bg-white hover:text-slate-900 hover:shadow-xs" : "text-slate-300 cursor-not-allowed opacity-50"
+            className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+              canRedo ? "text-slate-700 hover:bg-white hover:text-slate-900 hover:shadow-sm" : "text-slate-300 cursor-not-allowed opacity-50"
             }`}
             title="Redo action (Ctrl+Y)"
             id="btn-redo-history"
