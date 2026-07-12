@@ -80,46 +80,66 @@ export default function TenantWorkspaceApp({ tenantCode }: TenantWorkspaceAppPro
   return (
     <div className="w-full min-h-[85vh] bg-slate-50 flex flex-col" id="tenant-workspace-app">
       {/* Dynamic Tenant Resolver Banner (Horizontal status ribbon) */}
-      <div className="bg-slate-100 border-b border-slate-200/80 px-6 py-2.5">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-          <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-            <Building2 className="w-4 h-4 text-indigo-650" />
-            <span>Tenant Namespace Resolved:</span>
-            <span className="font-mono text-[11px] bg-slate-200/70 text-indigo-700 px-1.5 py-0.5 rounded">
+      <div className="bg-white border-b border-slate-200/60 px-6 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.02)]" id="tenant-workspace-header-ribbon">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div className="flex items-center gap-2.5 text-xs font-medium text-slate-800">
+            <div className="p-1.5 bg-indigo-50/60 rounded-lg text-indigo-650">
+              <Building2 className="w-4 h-4" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[10px] text-slate-400 font-medium tracking-wide uppercase">Workspace Tenant</span>
+              <span className="font-semibold text-slate-900 leading-tight">
+                {resolvedTenant.name}
+              </span>
+            </div>
+            <span className="font-mono text-[10px] bg-slate-100/80 text-slate-600 border border-slate-200/50 px-2 py-0.5 rounded-md ml-2">
               {code}
             </span>
           </div>
 
-          <div className="flex items-center gap-3 font-mono text-[10px] text-slate-550">
-            <span>Primary Schema: <strong className="text-slate-700 font-bold">{resolvedTenant.database}</strong></span>
+          <div className="flex items-center gap-4 font-mono text-[11px] text-slate-500">
+            <div className="flex items-center gap-1">
+              <span className="text-slate-400">Schema:</span>
+              <span className="font-semibold text-slate-700 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-150">{resolvedTenant.database}</span>
+            </div>
             <span className="text-slate-300">•</span>
-            <span>License: <strong className="text-emerald-700 font-bold">{resolvedTenant.plan}</strong></span>
+            <div className="flex items-center gap-1">
+              <span className="text-slate-400">Tier:</span>
+              <span className="font-semibold text-emerald-700 bg-emerald-50/60 px-1.5 py-0.5 rounded border border-emerald-100/55">{resolvedTenant.plan}</span>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 max-w-7xl w-full mx-auto p-6 flex flex-col justify-start">
+      <div className="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8 flex flex-col justify-start">
         {currentUser ? (
           // Authenticated Protected Tenant Dashboard Layout
           // We wrap the Dashboard in a tenant layout with explicit brand title injection
-          <div className="space-y-4 w-full">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white border border-slate-200 rounded-xl p-4 shadow-sm mb-2">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-800">
-                <ShieldCheck className="w-4.5 h-4.5 text-emerald-600 animate-pulse" />
-                <span>Session Active on {resolvedTenant.name}</span>
-                <span className="font-mono text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-100 py-0.5 px-2 rounded ml-2">
-                  {currentUser.role}
-                </span>
+          <div className="space-y-6 w-full">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm mb-2" id="tenant-session-bar">
+              <div className="flex items-center gap-3 text-xs font-medium text-slate-700">
+                <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
+                  <ShieldCheck className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-slate-900 text-sm">Session Active</span>
+                    <span className="font-mono text-[9px] font-extrabold uppercase tracking-widest bg-emerald-100/70 text-emerald-800 border border-emerald-200/40 py-0.5 px-2 rounded-md">
+                      {currentUser.role}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Role-based access controls fully enforced</p>
+                </div>
               </div>
 
               {/* Navigation Tabs Switcher */}
-              <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/40">
+              <div className="flex items-center bg-slate-100/80 p-1 rounded-xl border border-slate-200/60 shadow-inner">
                 <button
                   onClick={() => setActiveTab("dashboard")}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                  className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
                     activeTab === "dashboard"
-                      ? "bg-white text-slate-900 shadow-sm font-extrabold"
-                      : "text-slate-500 hover:text-slate-800"
+                      ? "bg-white text-slate-900 shadow-sm font-bold border border-slate-200/20"
+                      : "text-slate-500 hover:text-slate-900"
                   }`}
                   id="tab-erp-dashboard"
                 >
@@ -128,10 +148,10 @@ export default function TenantWorkspaceApp({ tenantCode }: TenantWorkspaceAppPro
                 </button>
                 <button
                   onClick={() => setActiveTab("settings")}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                  className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
                     activeTab === "settings"
-                      ? "bg-white text-slate-900 shadow-sm font-extrabold"
-                      : "text-slate-500 hover:text-slate-800"
+                      ? "bg-white text-slate-900 shadow-sm font-bold border border-slate-200/20"
+                      : "text-slate-500 hover:text-slate-900"
                   }`}
                   id="tab-settings-billing"
                 >
