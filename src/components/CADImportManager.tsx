@@ -26,6 +26,8 @@ interface CADImportManagerProps {
   lookupLayouts: any[];
   displaySuccess: (msg: string) => void;
   displayError: (msg: string) => void;
+  initialProjectId?: string;
+  initialLayoutId?: string;
 }
 
 export const CADImportManager: React.FC<CADImportManagerProps> = ({
@@ -33,7 +35,9 @@ export const CADImportManager: React.FC<CADImportManagerProps> = ({
   lookupProjects,
   lookupLayouts,
   displaySuccess,
-  displayError
+  displayError,
+  initialProjectId = "",
+  initialLayoutId = ""
 }) => {
   // DXF State Hooks
   const [dxfFiles, setDxfFiles] = useState<any[]>([]);
@@ -45,8 +49,20 @@ export const CADImportManager: React.FC<CADImportManagerProps> = ({
   const [processingId, setProcessingId] = useState<string | null>(null);
 
   // Form State Hooks
-  const [selectedProjectId, setSelectedProjectId] = useState("");
-  const [selectedLayoutId, setSelectedLayoutId] = useState("");
+  const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId);
+  const [selectedLayoutId, setSelectedLayoutId] = useState(initialLayoutId);
+
+  useEffect(() => {
+    if (initialProjectId) {
+      setSelectedProjectId(initialProjectId);
+    }
+  }, [initialProjectId]);
+
+  useEffect(() => {
+    if (initialLayoutId) {
+      setSelectedLayoutId(initialLayoutId);
+    }
+  }, [initialLayoutId]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   
   // Active selected entities for mapping and logs review

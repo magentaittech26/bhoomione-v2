@@ -50,7 +50,8 @@ import {
   Users,
   BarChart3,
   FolderOpen,
-  Settings
+  Settings,
+  X
 } from "lucide-react";
 
 interface InventoryManagerProps {
@@ -354,6 +355,96 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
   const [selectedLayout, setSelectedLayout] = useState<any | null>(null);
   const [selectedPlot, setSelectedPlot] = useState<any | null>(null);
   const [returnToViewerAfterSave, setReturnToViewerAfterSave] = useState(false);
+
+  // Sync selectedProject and selectedLayout state changes back to URL parameters
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    let changed = false;
+
+    const currentProjId = selectedProject ? String(selectedProject.id) : null;
+    const currentLayId = selectedLayout ? String(selectedLayout.id) : null;
+
+    if (url.searchParams.get("projectId") !== currentProjId) {
+      if (currentProjId) {
+        url.searchParams.set("projectId", currentProjId);
+      } else {
+        url.searchParams.delete("projectId");
+        url.searchParams.delete("layoutId");
+      }
+      changed = true;
+    }
+
+    if (url.searchParams.get("layoutId") !== currentLayId) {
+      if (currentLayId) {
+        url.searchParams.set("layoutId", currentLayId);
+      } else {
+        url.searchParams.delete("layoutId");
+      }
+      changed = true;
+    }
+
+    if (changed) {
+      window.history.pushState(null, "", url.pathname + url.search);
+    }
+  }, [selectedProject, selectedLayout]);
+
+  // Sync state from URL parameters when lookup lists are populated
+  useEffect(() => {
+    if (lookupProjects.length > 0) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const projIdFromUrl = urlParams.get("projectId");
+      const layIdFromUrl = urlParams.get("layoutId");
+
+      if (projIdFromUrl) {
+        const matchedProj = lookupProjects.find(p => String(p.id) === String(projIdFromUrl));
+        if (matchedProj && (!selectedProject || String(selectedProject.id) !== String(projIdFromUrl))) {
+          setSelectedProject(matchedProj);
+        }
+      }
+      if (layIdFromUrl && lookupLayouts.length > 0) {
+        const matchedLay = lookupLayouts.find(l => String(l.id) === String(layIdFromUrl));
+        if (matchedLay && (!selectedLayout || String(selectedLayout.id) !== String(layIdFromUrl))) {
+          setSelectedLayout(matchedLay);
+        }
+      }
+    }
+  }, [lookupProjects, lookupLayouts]);
+
+  // Handle popstate events to keep URL and selection state in perfect sync
+  useEffect(() => {
+    const handlePopState = () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const projId = urlParams.get("projectId");
+      const layId = urlParams.get("layoutId");
+
+      if (projId) {
+        const proj = lookupProjects.find(p => String(p.id) === String(projId));
+        if (proj) setSelectedProject(proj);
+      } else {
+        setSelectedProject(null);
+      }
+
+      if (layId) {
+        const lay = lookupLayouts.find(l => String(l.id) === String(layId));
+        if (lay) setSelectedLayout(lay);
+      } else {
+        setSelectedLayout(null);
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [lookupProjects, lookupLayouts]);
+
+  // Sync parent project context when a layout is selected directly (e.g. from global Layouts catalog)
+  useEffect(() => {
+    if (selectedLayout && (!selectedProject || selectedProject.id !== selectedLayout.project_id)) {
+      const parentProj = lookupProjects.find(p => p.id === selectedLayout.project_id);
+      if (parentProj) {
+        setSelectedProject(parentProj);
+      }
+    }
+  }, [selectedLayout, lookupProjects, selectedProject]);
 
   // Derived safe metadata for plot details panel to prevent rendering crashes
   const plotMeta = selectedPlot ? tryParseJSON(selectedPlot.dimensions_metadata, {}) : {};
@@ -2952,72 +3043,108 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
 
   return (
     <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden" id="inventory-manager-container">
-      {/* 2B Workspace Navigation & Tab Control */}
-      {selectedProject === null ? (
-        <div className="border-b border-slate-200 bg-slate-50 px-6 py-5 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4" id="inv-header">
-          <div>
-            <h2 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              <Grid className="w-5 h-5 text-indigo-600" />
-              <span>Inventory Management Core (BhoomiOne ERP)</span>
-            </h2>
-            <p className="text-[11px] text-slate-400 mt-0.5">Maintain physical land holdings, development zones, and custom-attributed plots</p>
-          </div>
-
-          <div className="flex items-center gap-2 bg-slate-200/50 p-1 rounded-xl w-full lg:w-auto border border-slate-200/60" id="inv-tabs-group">
-            <button
-              onClick={() => { setActiveTab("dashboard"); setErrorMess(null); }}
-              className={`flex-1 lg:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                activeTab === "dashboard" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900"
-              }`}
-              id="tab-dashboard"
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-              <span>Dashboard</span>
-            </button>
-            <button
-              onClick={() => { setActiveTab("projects"); setErrorMess(null); }}
-              className={`flex-1 lg:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                activeTab === "projects" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900"
-              }`}
-              id="tab-projects"
-            >
-              <Building2 className="w-3.5 h-3.5" />
-              <span>Projects ({projects.length})</span>
-            </button>
-          </div>
+      {/* Unified Persistent Navigation & Tab Control Header */}
+      <div className="border-b border-slate-200 bg-slate-50 px-6 py-5 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4" id="inv-header">
+        <div>
+          <h2 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
+            <Compass className="w-5 h-5 text-indigo-600 animate-spin-slow" />
+            <span>BhoomiOne V3 Tenant ERP Workspace</span>
+          </h2>
+          <p className="text-[11px] text-slate-400 mt-0.5">Map-first land subdivision development, CAD uploads, and automated plot ledgers</p>
         </div>
-      ) : (
-        /* Render Custom Beautiful ERP Project Workspace Header */
+
+        <div className="flex flex-wrap items-center gap-1.5 bg-slate-200/50 p-1 rounded-xl w-full xl:w-auto border border-slate-200/60" id="inv-tabs-group">
+          {[
+            { id: "dashboard", label: "Dashboard", icon: LayoutGrid },
+            { id: "projects", label: "Projects", icon: Building2, count: projects.length },
+            { id: "layouts", label: "Layouts", icon: Layers, count: layouts.length },
+            { id: "plots", label: "Plots", icon: Grid, count: plots.length },
+            { id: "viewer", label: "Interactive Map", icon: Compass },
+            { id: "cad", label: "Imports", icon: FileCode2 },
+            { id: "commercial", label: "Commercial", icon: Percent }
+          ].map(tab => {
+            const TabIcon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => { setActiveTab(tab.id as any); setErrorMess(null); }}
+                className={`flex-1 xl:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                  isActive ? "bg-white text-slate-900 shadow-sm font-bold border border-slate-200/35" : "text-slate-500 hover:text-slate-900"
+                }`}
+                id={`tab-${tab.id}`}
+              >
+                <TabIcon className="w-3.5 h-3.5" />
+                <span>{tab.label}</span>
+                {tab.count !== undefined && (
+                  <span className={`px-1.5 py-0.2 text-[9px] font-bold rounded-full ml-1 ${isActive ? "bg-indigo-50 text-indigo-700" : "bg-slate-250 text-slate-500"}`}>
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Dynamic Context-Aware Breadcrumb / Context Bar */}
+      {selectedProject !== null && (
+        <div className="bg-indigo-50/45 border-b border-indigo-100/50 px-6 py-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 animate-fade-in" id="project-active-context-bar">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <span className="text-[9px] font-extrabold text-indigo-700 uppercase tracking-wider bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-md">
+              Active Project Context
+            </span>
+            <span className="font-bold text-slate-900 text-xs">
+              {selectedProject.name} ({selectedProject.code})
+            </span>
+            {selectedLayout && (
+              <>
+                <span className="text-slate-300 font-bold text-xs">/</span>
+                <span className="text-[9px] font-extrabold text-teal-700 uppercase tracking-wider bg-teal-100 border border-teal-200 px-2 py-0.5 rounded-md">
+                  Active Layout
+                </span>
+                <span className="font-bold text-slate-800 text-xs">
+                  {selectedLayout.name} ({selectedLayout.code})
+                </span>
+              </>
+            )}
+          </div>
+          <button
+            onClick={() => {
+              setSelectedProject(null);
+              setSelectedLayout(null);
+            }}
+            className="text-[10px] font-bold text-rose-600 hover:text-rose-700 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-100 px-2.5 py-1 rounded-lg shadow-3xs transition-all active:scale-95 cursor-pointer flex items-center gap-1"
+          >
+            <X className="w-3 h-3 stroke-[3px]" />
+            <span>Clear Context</span>
+          </button>
+        </div>
+      )}
+
+      {/* Project Workspace Secondary Control Header (only rendered when project is active AND viewing Projects tab) */}
+      {selectedProject !== null && activeTab === "projects" && (
         <div className="bg-slate-50 border-b border-slate-200 px-6 py-5" id="project-workspace-header">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setSelectedProject(null)}
-                className="p-2.5 bg-white hover:bg-slate-100 border border-slate-250 rounded-xl transition-all cursor-pointer shadow-sm text-slate-600 flex items-center justify-center active:scale-95"
-                title="Back to Projects Catalog Ledger"
-              >
-                <ArrowLeft className="w-4 h-4 text-slate-700 stroke-[3px]" />
-              </button>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="text-base font-extrabold text-slate-900 tracking-tight">{selectedProject.name}</h2>
-                  <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 uppercase">
-                    {selectedProject.code}
-                  </span>
-                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${
-                    selectedProject.status === "ACTIVE" ? "bg-emerald-50 text-emerald-800 border-emerald-100" :
-                    selectedProject.status === "PLANNING" ? "bg-blue-50 text-blue-800 border-blue-100" :
-                    "bg-slate-100 text-slate-600 border-slate-200"
-                  }`}>
-                    {selectedProject.status}
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-400 mt-1">
-                  Developer: <span className="font-semibold text-slate-600">{selectedProject.developer_name || "Bhoomi Developers"}</span> &bull; 
-                  Location: <span className="font-semibold text-slate-600">{selectedProject.location || "N/A"}</span> &bull; 
-                  RERA: <span className="font-semibold text-slate-600">{selectedProject.rera_number || "N/A"}</span>
-                </p>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base font-extrabold text-slate-900 tracking-tight">{selectedProject.name}</h2>
+                <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 uppercase">
+                  {selectedProject.code}
+                </span>
+                <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${
+                  selectedProject.status === "ACTIVE" ? "bg-emerald-50 text-emerald-800 border-emerald-100" :
+                  selectedProject.status === "PLANNING" ? "bg-blue-50 text-blue-800 border-blue-100" :
+                  "bg-slate-100 text-slate-600 border-slate-200"
+                }`}>
+                  {selectedProject.status}
+                </span>
               </div>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Developer: <span className="font-semibold text-slate-600">{selectedProject.developer_name || "Bhoomi Developers"}</span> &bull; 
+                Location: <span className="font-semibold text-slate-600">{selectedProject.location || "N/A"}</span> &bull; 
+                RERA: <span className="font-semibold text-slate-600">{selectedProject.rera_number || "N/A"}</span>
+              </p>
             </div>
 
             <div className="flex items-center gap-2.5">
@@ -4813,6 +4940,22 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                   handleStartEditLayout(layoutObj);
                 }
               }}
+              onSelectProject={(projectId) => {
+                if (projectId) {
+                  const proj = lookupProjects.find(p => String(p.id) === String(projectId));
+                  if (proj) setSelectedProject(proj);
+                } else {
+                  setSelectedProject(null);
+                }
+              }}
+              onSelectLayout={(layoutId) => {
+                if (layoutId) {
+                  const lay = lookupLayouts.find(l => String(l.id) === String(layoutId));
+                  if (lay) setSelectedLayout(lay);
+                } else {
+                  setSelectedLayout(null);
+                }
+              }}
             />
           </div>
         );
@@ -4827,6 +4970,8 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
             lookupLayouts={lookupLayouts}
             displaySuccess={(msg) => setSuccessMess(msg)}
             displayError={(msg) => setErrorMess(msg)}
+            initialProjectId={selectedProject ? String(selectedProject.id) : ""}
+            initialLayoutId={selectedLayout ? String(selectedLayout.id) : ""}
           />
         </div>
       )}

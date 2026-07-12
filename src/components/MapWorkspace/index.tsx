@@ -664,6 +664,8 @@ interface MapWorkspaceIndexProps {
   onBackToInventory?: () => void;
   onEditLayoutDetails?: (layoutId: string) => void;
   onPublishComplete?: (layoutId: string) => void;
+  onSelectProject?: (projectId: string | null) => void;
+  onSelectLayout?: (layoutId: string | null) => void;
 }
 
 export default function MapWorkspaceIndex({ 
@@ -673,7 +675,9 @@ export default function MapWorkspaceIndex({
   layouts = [],
   onBackToInventory,
   onEditLayoutDetails,
-  onPublishComplete
+  onPublishComplete,
+  onSelectProject,
+  onSelectLayout
 }: MapWorkspaceIndexProps = {}) {
   // Navigation flow state: "projects" | "layouts" | "workspace"
   const [currentStep, setCurrentStep] = useState<"projects" | "layouts" | "workspace">("projects");
@@ -683,6 +687,19 @@ export default function MapWorkspaceIndex({
   const [layoutsList, setLayoutsList] = useState<any[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedLayoutId, setSelectedLayoutId] = useState<string | null>(null);
+
+  // Sync selected project and layout back to parent state
+  useEffect(() => {
+    if (onSelectProject) {
+      onSelectProject(selectedProjectId);
+    }
+  }, [selectedProjectId, onSelectProject]);
+
+  useEffect(() => {
+    if (onSelectLayout) {
+      onSelectLayout(selectedLayoutId);
+    }
+  }, [selectedLayoutId, onSelectLayout]);
 
   // Sync projects and layouts from props if available
   useEffect(() => {
