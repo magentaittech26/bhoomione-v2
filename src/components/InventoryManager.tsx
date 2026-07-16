@@ -7,7 +7,9 @@ import LayoutWorkspace from "./LayoutWorkspace.tsx";
 import InteractiveLayoutViewer from "./InteractiveLayoutViewer.tsx";
 import MapWorkspaceIndex from "./MapWorkspace/index.tsx";
 import { EnterpriseTaxConsole } from "./saas/EnterpriseTaxConsole.tsx";
+import UsageGuideDrawer from "./UsageGuideDrawer.tsx";
 import {
+  BookOpen,
   Building2,
   FileCode2,
   Layers,
@@ -135,6 +137,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
   const [isSavingProject, setIsSavingProject] = useState<boolean>(false);
   const [errorMess, setErrorMess] = useState<string | null>(null);
   const [successMess, setSuccessMess] = useState<string | null>(null);
+  const [guideOpen, setGuideOpen] = useState<boolean>(false);
 
   const handleStateChange = async (stateIdOrOther: string) => {
     if (stateIdOrOther === "OTHER" || !stateIdOrOther) {
@@ -3053,37 +3056,48 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
           <p className="text-[11px] text-slate-400 mt-0.5">Map-first land subdivision development, CAD uploads, and automated plot ledgers</p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5 bg-slate-200/50 p-1 rounded-xl w-full xl:w-auto border border-slate-200/60" id="inv-tabs-group">
-          {[
-            { id: "dashboard", label: "Dashboard", icon: LayoutGrid },
-            { id: "projects", label: "Projects", icon: Building2, count: projects.length },
-            { id: "layouts", label: "Layouts", icon: Layers, count: layouts.length },
-            { id: "plots", label: "Plots", icon: Grid, count: plots.length },
-            { id: "viewer", label: "Interactive Map", icon: Compass },
-            { id: "cad", label: "Imports", icon: FileCode2 },
-            { id: "commercial", label: "Commercial", icon: Percent }
-          ].map(tab => {
-            const TabIcon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => { setActiveTab(tab.id as any); setErrorMess(null); }}
-                className={`flex-1 xl:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                  isActive ? "bg-white text-slate-900 shadow-sm font-bold border border-slate-200/35" : "text-slate-500 hover:text-slate-900"
-                }`}
-                id={`tab-${tab.id}`}
-              >
-                <TabIcon className="w-3.5 h-3.5" />
-                <span>{tab.label}</span>
-                {tab.count !== undefined && (
-                  <span className={`px-1.5 py-0.2 text-[9px] font-bold rounded-full ml-1 ${isActive ? "bg-indigo-50 text-indigo-700" : "bg-slate-250 text-slate-500"}`}>
-                    {tab.count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+        <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto" id="inv-header-controls">
+          <div className="flex flex-wrap items-center gap-1.5 bg-slate-200/50 p-1 rounded-xl flex-1 xl:flex-none border border-slate-200/60" id="inv-tabs-group">
+            {[
+              { id: "dashboard", label: "Dashboard", icon: LayoutGrid },
+              { id: "projects", label: "Projects", icon: Building2, count: projects.length },
+              { id: "layouts", label: "Layouts", icon: Layers, count: layouts.length },
+              { id: "cad", label: "Imports", icon: FileCode2 },
+              { id: "viewer", label: "Interactive Map", icon: Compass },
+              { id: "plots", label: "Plots", icon: Grid, count: plots.length },
+              { id: "commercial", label: "Commercial", icon: Percent }
+            ].map(tab => {
+              const TabIcon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => { setActiveTab(tab.id as any); setErrorMess(null); }}
+                  className={`flex-1 xl:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                    isActive ? "bg-white text-slate-900 shadow-sm font-bold border border-slate-200/35" : "text-slate-500 hover:text-slate-900"
+                  }`}
+                  id={`tab-${tab.id}`}
+                >
+                  <TabIcon className="w-3.5 h-3.5" />
+                  <span>{tab.label}</span>
+                  {tab.count !== undefined && (
+                    <span className={`px-1.5 py-0.2 text-[9px] font-bold rounded-full ml-1 ${isActive ? "bg-indigo-50 text-indigo-700" : "bg-slate-250 text-slate-500"}`}>
+                      {tab.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            onClick={() => setGuideOpen(true)}
+            className="inline-flex items-center gap-1.5 bg-indigo-55 px-3 py-2.5 rounded-xl border border-indigo-150 text-indigo-700 font-bold text-xs hover:bg-indigo-100 transition-all cursor-pointer shadow-3xs"
+            id="open-usage-guide-btn"
+          >
+            <BookOpen className="w-4 h-4 text-indigo-600 animate-pulse" />
+            <span>Usage Guide</span>
+          </button>
         </div>
       </div>
 
@@ -3700,7 +3714,52 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
 
           {/* 2. LAYOUTS TABPANEL */}
           {(activeTab === "layouts" || (selectedProject !== null && projectWorkspaceTab === "layouts")) && (
-            selectedLayout !== null ? (
+            lookupProjects.length === 0 ? (
+              <div className="flex-1 p-8 flex items-center justify-center min-h-[50vh]" id="no-projects-for-layouts-fallback">
+                <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-md w-full shadow-md text-center space-y-6">
+                  <div className="mx-auto bg-indigo-50 text-indigo-650 w-12 h-12 rounded-full flex items-center justify-center">
+                    <Building2 className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-base font-extrabold text-slate-900 tracking-tight">No Project Available</h3>
+                    <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                      Create or select a Project before creating a Layout.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setActiveTab("projects");
+                      setEditId(null);
+                      setFormProj({
+                        name: "",
+                        code: "",
+                        developer_name: "",
+                        rera_number: "",
+                        state: "",
+                        district: "",
+                        taluk: "",
+                        location: "",
+                        village: "",
+                        pincode: "",
+                        latitude: "",
+                        longitude: "",
+                        description: "",
+                        status: "PLANNING",
+                        approval_status: "PENDING",
+                        approval_authority: "",
+                        launch_date: "",
+                        possession_target_date: ""
+                      });
+                      setCurrModal("create_project");
+                    }}
+                    className="mx-auto bg-indigo-650 hover:bg-indigo-750 text-white font-bold text-xs py-2.5 px-5 rounded-xl shadow-sm transition-colors cursor-pointer border-0 flex items-center justify-center gap-1.5"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Create Project</span>
+                  </button>
+                </div>
+              </div>
+            ) : selectedLayout !== null ? (
               <LayoutWorkspace
                 layout={selectedLayout}
                 project={selectedProject || lookupProjects.find(p => p.id === selectedLayout.project_id)}
@@ -4018,6 +4077,30 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
 
           {/* 3. PLOTS TABPANEL */}
           {(activeTab === "plots" || (selectedProject !== null && projectWorkspaceTab === "plots")) && (
+            plots.length === 0 ? (
+              <div className="flex-1 p-8 flex items-center justify-center min-h-[50vh]" id="no-plot-geometry-fallback">
+                <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-md w-full shadow-md text-center space-y-6">
+                  <div className="mx-auto bg-indigo-50 text-indigo-650 w-12 h-12 rounded-full flex items-center justify-center">
+                    <Grid className="w-6 h-6 animate-pulse text-indigo-600" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-base font-extrabold text-slate-900 tracking-tight">No Plot Geometry Available</h3>
+                    <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                      Prepare the Layout in Interactive Map before managing Plot inventory.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setActiveTab("viewer");
+                    }}
+                    className="mx-auto bg-indigo-650 hover:bg-indigo-750 text-white font-bold text-xs py-2.5 px-5 rounded-xl shadow-sm transition-colors cursor-pointer border-0 flex items-center justify-center gap-1.5"
+                  >
+                    <Compass className="w-4 h-4" />
+                    <span>Open Interactive Map</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
             <div className="space-y-4" id="plots-view-panel">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 pb-3">
                 <div>
@@ -4509,7 +4592,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                 </div>
               </div>
             </div>
-          )}
+          ))}
 
         </div>
 
@@ -5079,10 +5162,63 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
           );
         }
 
-        // If layouts exist but selectedLayout is null or from a different project, auto-load first layout
-        const activeLayoutObj = (selectedLayout && selectedLayout.project_id === selectedProject.id) 
-          ? selectedLayout 
-          : projectLayouts[0];
+        // If layouts exist but selectedLayout is null or from a different project, show the layout selection empty state
+        if (!selectedLayout || selectedLayout.project_id !== selectedProject.id) {
+          return (
+            <div className="flex-1 p-8 overflow-y-auto flex items-center justify-center min-h-[60vh]" id="no-layout-selected-map-view">
+              <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-md w-full shadow-md text-center space-y-6">
+                <div className="mx-auto bg-indigo-50 text-indigo-650 w-12 h-12 rounded-full flex items-center justify-center">
+                  <Compass className="w-6 h-6 animate-spin-slow text-indigo-600" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
+                    Select a Layout to Open the Map
+                  </h3>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                    A layout must be selected to view and edit interactive map details.
+                  </p>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+                  <button
+                    onClick={() => {
+                      setActiveTab("layouts");
+                    }}
+                    className="bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs py-2.5 px-4 rounded-xl border border-slate-250 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <span>View Layouts</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setActiveTab("layouts");
+                      setEditId(null);
+                      setFormLay({
+                        project_id: selectedProject.id,
+                        name: "",
+                        code: "",
+                        layout_type: "RESIDENTIAL",
+                        approval_number: "",
+                        survey_number: "",
+                        approval_date: "",
+                        total_area_value: "",
+                        total_area_unit_id: units[0]?.id || "",
+                        measurement_unit_id: units[0]?.id || "",
+                        status: "DRAFT",
+                        phase: "",
+                        description: ""
+                      });
+                      setCurrModal("create_layout");
+                    }}
+                    className="bg-indigo-650 hover:bg-indigo-750 text-white font-bold text-xs py-2.5 px-4 rounded-xl shadow-sm transition-colors cursor-pointer border border-indigo-700 flex items-center justify-center gap-1.5"
+                  >
+                    <span>Create Layout</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        const activeLayoutObj = selectedLayout;
 
         return (
           <div className="p-0">
@@ -5124,19 +5260,74 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
       })()}
 
       {/* CAD Imports Full Workspace Integration */}
-      {activeTab === "cad" && (
-        <div className="p-6">
-          <CADImportManager 
-            user={user}
-            lookupProjects={lookupProjects}
-            lookupLayouts={lookupLayouts}
-            displaySuccess={(msg) => setSuccessMess(msg)}
-            displayError={(msg) => setErrorMess(msg)}
-            initialProjectId={selectedProject ? String(selectedProject.id) : ""}
-            initialLayoutId={selectedLayout ? String(selectedLayout.id) : ""}
-          />
-        </div>
-      )}
+      {activeTab === "cad" && (() => {
+        if (!selectedLayout) {
+          return (
+            <div className="flex-1 p-8 flex items-center justify-center min-h-[50vh]" id="no-layout-for-imports-fallback">
+              <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-md w-full shadow-md text-center space-y-6">
+                <div className="mx-auto bg-indigo-50 text-indigo-650 w-12 h-12 rounded-full flex items-center justify-center">
+                  <FileCode2 className="w-6 h-6 animate-pulse text-indigo-600" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-base font-extrabold text-slate-900 tracking-tight">No Layout Selected</h3>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                    Imports must belong to a specific Layout.
+                  </p>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+                  <button
+                    onClick={() => {
+                      setActiveTab("layouts");
+                    }}
+                    className="bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs py-2.5 px-4 rounded-xl border border-slate-250 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <span>Select Layout</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setActiveTab("layouts");
+                      setEditId(null);
+                      setFormLay({
+                        project_id: lookupProjects[0]?.id || "",
+                        name: "",
+                        code: "",
+                        layout_type: "RESIDENTIAL",
+                        approval_number: "",
+                        survey_number: "",
+                        approval_date: "",
+                        total_area_value: "",
+                        total_area_unit_id: units[0]?.id || "",
+                        measurement_unit_id: units[0]?.id || "",
+                        status: "DRAFT",
+                        phase: "",
+                        description: ""
+                      });
+                      setCurrModal("create_layout");
+                    }}
+                    className="bg-indigo-650 hover:bg-indigo-750 text-white font-bold text-xs py-2.5 px-4 rounded-xl shadow-sm transition-colors cursor-pointer border border-indigo-700 flex items-center justify-center gap-1.5"
+                  >
+                    <span>Create Layout</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <div className="p-6">
+            <CADImportManager 
+              user={user}
+              lookupProjects={lookupProjects}
+              lookupLayouts={lookupLayouts}
+              displaySuccess={(msg) => setSuccessMess(msg)}
+              displayError={(msg) => setErrorMess(msg)}
+              initialProjectId={selectedProject ? String(selectedProject.id) : ""}
+              initialLayoutId={selectedLayout ? String(selectedLayout.id) : ""}
+            />
+          </div>
+        );
+      })()}
 
       {/* Commercial & Tax Engine Integration */}
       {activeTab === "commercial" && (
@@ -6148,6 +6339,17 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
           </div>
         </div>
       )}
+
+      {/* Usage Guide Contextual Onboarding Drawer */}
+      <UsageGuideDrawer
+        isOpen={guideOpen}
+        onClose={() => setGuideOpen(false)}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        projects={projects}
+        layouts={layouts}
+        plots={plots}
+      />
 
     </div>
   );
