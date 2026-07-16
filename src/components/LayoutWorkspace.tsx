@@ -291,65 +291,66 @@ export default function LayoutWorkspace({
   return (
     <div className="space-y-6 animate-fade-in" id="layout-workspace-root">
       
-      {/* BREADCRUMB / MINI NAVIGATION CONTROL */}
-      <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
-        <button 
-          onClick={onClose} 
-          className="hover:text-indigo-600 transition-colors flex items-center gap-1 font-semibold"
-          id="breadcrumb-project"
-        >
-          {project?.name || "Project"}
-        </button>
-        <ChevronRight className="w-3 h-3 text-slate-300" />
-        <span className="text-slate-500 font-bold">Layouts</span>
-        <ChevronRight className="w-3 h-3 text-slate-300" />
-        <span className="text-indigo-650 font-bold">{layout.name}</span>
-      </div>
-
-      {/* 1. LAYOUT WORKSPACE HEADER */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm" id="layout-workspace-header">
+      {/* Dynamic Context-Aware Premium Header & Progress Engine */}
+      <div className="bg-indigo-50/30 border border-indigo-150/40 rounded-2xl p-6 space-y-4 shadow-sm" id="layout-workspace-header">
+        {/* Row 1: Breadcrumbs and Primary Action / Context Actions */}
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
-          <div className="flex items-start gap-4">
-            <button
-              onClick={onClose}
-              className="p-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all cursor-pointer shadow-xs text-slate-600 flex items-center justify-center active:scale-95"
-              title="Back to Layouts Index"
-              id="layout-back-btn"
-            >
-              <ArrowLeft className="w-4 h-4 text-slate-700 stroke-[3px]" />
-            </button>
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="bg-amber-50 border border-amber-150 text-amber-800 font-mono text-[9px] font-bold px-2 py-0.5 rounded uppercase">
-                  {layout.layout_type}
-                </span>
-                <h2 className="text-lg font-extrabold text-slate-900 tracking-tight">{layout.name}</h2>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 uppercase">
-                  {layout.code}
-                </span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
-                  layout.status === "LAUNCHED" || layout.status === "PUBLISHED" ? "bg-emerald-50 text-emerald-800 border-emerald-100" :
-                  layout.status === "APPROVED" ? "bg-blue-50 text-blue-800 border-blue-100" :
-                  layout.status === "ARCHIVED" ? "bg-rose-50 text-rose-800 border-rose-100" :
-                  "bg-slate-100 text-slate-600 border-slate-200"
-                }`}>
-                  {layout.status}
-                </span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-1 text-[11px] text-slate-500 font-medium">
-                <p>Parent Project: <span className="text-slate-800 font-semibold">{project?.name || "N/A"}</span></p>
-                <p>Developer: <span className="text-slate-800 font-semibold">{project?.developer_name || "Bhoomi Developers"}</span></p>
-                <p>Development Phase: <span className="text-slate-800 font-semibold font-mono">{unpacked.phase || layout.phase || "Phase 1"}</span></p>
-                <p>Total Area: <span className="text-indigo-700 font-bold font-mono">{layout.total_area_value ? Number(layout.total_area_value).toLocaleString() : "N/A"} SQFT</span></p>
-                <p>Survey Numbers: <span className="text-slate-700 font-mono font-bold bg-slate-100 px-1 py-0.2 rounded">{unpacked.survey_number || "N/A"}</span></p>
-                <p>Created By: <span className="text-slate-800 font-semibold">Authority Agent</span></p>
-                <p>Last Modified: <span className="text-slate-800 font-mono font-semibold">{layout.updated_at ? new Date(layout.updated_at).toLocaleDateString() : "N/A"}</span></p>
-              </div>
+          <div className="space-y-2">
+            {/* Breadcrumb Trail */}
+            <div className="flex items-center gap-1.5 text-[11px] font-mono text-slate-400 font-bold flex-wrap">
+              <button onClick={onClose} className="hover:text-indigo-650 transition-colors">Dashboard</button>
+              <ChevronRight className="w-3 h-3 text-slate-300" />
+              <button onClick={onClose} className="hover:text-indigo-650 transition-colors">Projects</button>
+              <ChevronRight className="w-3 h-3 text-slate-300" />
+              <span className="text-slate-500 hover:text-slate-800 cursor-pointer" onClick={onClose}>{project?.name || "Project"}</span>
+              <ChevronRight className="w-3 h-3 text-slate-300" />
+              <span className="text-slate-500">Layouts</span>
+              <ChevronRight className="w-3 h-3 text-slate-300" />
+              <span className="text-indigo-700 font-extrabold bg-indigo-100/60 px-2 py-0.5 rounded-md">{layout.name}</span>
+            </div>
+
+            {/* Context Header Title */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                onClick={onClose}
+                className="p-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-all cursor-pointer shadow-xs text-slate-600 flex items-center justify-center active:scale-95"
+                title="Back to Layouts Index"
+                id="layout-back-btn"
+              >
+                <ArrowLeft className="w-3.5 h-3.5 text-slate-700 stroke-[3px]" />
+              </button>
+              <span className="bg-amber-50 border border-amber-150 text-amber-800 font-mono text-[9px] font-bold px-2 py-0.5 rounded uppercase">
+                {layout.layout_type}
+              </span>
+              <h2 className="text-lg font-extrabold text-slate-900 tracking-tight">{layout.name}</h2>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 uppercase">
+                {layout.code}
+              </span>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase ${
+                layout.status === "LAUNCHED" || layout.status === "PUBLISHED" ? "bg-emerald-50 text-emerald-800 border-emerald-100" :
+                layout.status === "APPROVED" ? "bg-blue-50 text-blue-800 border-blue-100" :
+                layout.status === "ARCHIVED" ? "bg-rose-50 text-rose-800 border-rose-100" :
+                "bg-slate-100 text-slate-600 border-slate-200"
+              }`}>
+                {layout.status === "LAUNCHED" || layout.status === "PUBLISHED" ? "Published" : layout.status === "APPROVED" ? "Ready" : layout.status}
+              </span>
+            </div>
+
+            {/* Context Details */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-1 text-[11px] text-slate-500 font-medium">
+              <p>Project: <span className="text-slate-800 font-semibold">{project?.name || "N/A"}</span></p>
+              <p>Layout: <span className="text-slate-800 font-semibold">{layout.name}</span></p>
+              <p>Developer: <span className="text-slate-800 font-semibold">{project?.developer_name || "Bhoomi Developers"}</span></p>
+              <p>Development Phase: <span className="text-slate-800 font-semibold font-mono">{unpacked.phase || layout.phase || "Phase 1"}</span></p>
+              <p>Total Area: <span className="text-indigo-700 font-bold font-mono">{layout.total_area_value ? Number(layout.total_area_value).toLocaleString() : "N/A"} SQFT</span></p>
+              <p>Survey Numbers: <span className="text-slate-700 font-mono font-bold bg-slate-100 px-1.5 py-0.2 rounded">{unpacked.survey_number || "N/A"}</span></p>
+              <p>Status Badge: <span className="font-bold text-slate-800">{layout.status === "LAUNCHED" || layout.status === "PUBLISHED" ? "Published" : layout.status === "APPROVED" ? "Ready" : "Draft"}</span></p>
+              <p>Current Stage: <span className="text-indigo-600 font-extrabold">{layout.status === "LAUNCHED" || layout.status === "PUBLISHED" ? "Publishing Completed" : "Geometry Subdivision In-Progress"}</span></p>
             </div>
           </div>
 
           {/* Action buttons suite */}
-          <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto" id="layout-actions-group">
+          <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto shrink-0" id="layout-actions-group">
             <button
               onClick={() => onStartEditLayout(layout)}
               className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs px-3.5 py-2.5 rounded-xl transition-all shadow-xs cursor-pointer active:scale-95"
@@ -389,6 +390,37 @@ export default function LayoutWorkspace({
           </div>
         </div>
 
+        {/* Row 2: Horizontal Stepper Progress Indicator */}
+        <div className="border-t border-indigo-150/45 pt-4" id="layout-workspace-progress">
+          <div className="flex flex-wrap items-center gap-y-3 gap-x-2 text-[11px] font-semibold text-slate-500">
+            {[
+              { label: "Project Created", active: true },
+              { label: "Layout Created", active: true },
+              { label: "PDF Uploaded", active: documents.length > 0 },
+              { label: "Calibration", active: true },
+              { label: "Boundary", active: geometryStages.boundary === "COMPLETED" },
+              { label: "Roads", active: geometryStages.roads === "COMPLETED" },
+              { label: "Plots", active: layoutPlots.length > 0 },
+              { label: "Validation", active: scanResult.status === "VALID" },
+              { label: "Publish", active: layout.status === "LAUNCHED" || layout.status === "PUBLISHED" }
+            ].map((step, idx) => (
+              <React.Fragment key={idx}>
+                {idx > 0 && <ChevronRight className="w-3.5 h-3.5 text-slate-300 shrink-0" />}
+                <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${
+                  step.active 
+                    ? "bg-indigo-50 text-indigo-700 border-indigo-200/80 font-bold" 
+                    : "bg-slate-50 text-slate-400 border-slate-150"
+                }`}>
+                  <span className="font-mono text-[9.5px] font-extrabold">{idx + 1}</span>
+                  <span>{step.label}</span>
+                  {step.active && <Check className="w-3.5 h-3.5 text-indigo-600 stroke-[3px]" />}
+                </div>
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+      </div>
+
         {/* 2. LAYOUT WORKSPACE SUB-TABS */}
         <div className="flex flex-wrap items-center gap-1.5 mt-6 bg-slate-100 p-1 rounded-xl border border-slate-200/50 w-fit">
           {[
@@ -422,7 +454,6 @@ export default function LayoutWorkspace({
             );
           })}
         </div>
-      </div>
 
       {/* 3. LAYOUT WORKSPACE BODY VIEWS */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
@@ -527,6 +558,47 @@ export default function LayoutWorkspace({
                 </div>
 
               </div>
+
+              {/* Guided Warnings for Workflow Obstacles */}
+              {geometryStages.boundary !== "COMPLETED" && (
+                <div className="bg-amber-50/55 border border-amber-200/80 rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-3xs" id="guided-no-boundary-state">
+                  <div className="flex items-center gap-4 text-left">
+                    <div className="p-3 bg-amber-100 rounded-xl text-amber-800 shrink-0">
+                      <AlertTriangle className="w-6 h-6 animate-pulse" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900">No Boundary</h4>
+                      <p className="text-[11px] text-slate-500 mt-1 max-w-lg">Begin by drawing the outer perimeter boundary loop in the Layout Studio map engine to calibrate and register coordinates.</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={onLaunchStudio}
+                    className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-750 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer shrink-0"
+                  >
+                    Start Boundary Drawing
+                  </button>
+                </div>
+              )}
+
+              {documents.length === 0 && (
+                <div className="bg-indigo-50/40 border border-indigo-150/50 rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-3xs" id="guided-no-pdf-state">
+                  <div className="flex items-center gap-4 text-left">
+                    <div className="p-3 bg-indigo-100/60 rounded-xl text-indigo-700 shrink-0">
+                      <Upload className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900">No PDF Uploaded</h4>
+                      <p className="text-[11px] text-slate-500 mt-1 max-w-lg">Upload a municipal site plan layout blueprint or surveyor drawing image to overlay on the spatial calibration workspace.</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setActiveTab("documents")}
+                    className="w-full sm:w-auto bg-indigo-650 hover:bg-indigo-750 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer shrink-0"
+                  >
+                    Upload Drawing
+                  </button>
+                </div>
+              )}
 
               {/* Geometrical Layer Checklist Cards */}
               <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
@@ -1103,6 +1175,68 @@ export default function LayoutWorkspace({
             >
               Review Validation Report
             </button>
+          </div>
+
+          {/* Next Steps / Dynamic Guided Workflow Card */}
+          <div className="bg-white border border-indigo-100 rounded-2xl p-5 shadow-sm space-y-4">
+            <h3 className="text-xs font-bold text-indigo-900 tracking-tight flex items-center gap-2 border-b border-indigo-50 pb-3 uppercase">
+              <Compass className="w-4 h-4 text-indigo-650" />
+              <span>Workspace Next Steps</span>
+            </h3>
+            <div className="space-y-3">
+              {[
+                { label: "Project Created", done: true },
+                { label: "Layout Created", done: true },
+                { label: "Upload PDF / DXF Map", done: documents.length > 0 },
+                { label: "Calibrate Coordinate Scale", done: true },
+                { label: "Draw GPS Outer Boundary", done: geometryStages.boundary === "COMPLETED" },
+                { label: "Draft Road Networks", done: geometryStages.roads === "COMPLETED" },
+                { label: "Subdivide & Name Plots", done: layoutPlots.length > 0 },
+                { label: "Run Validation Checklist", done: scanResult.status === "VALID" },
+                { label: "Publish Approved Subdivision", done: layout.status === "LAUNCHED" || layout.status === "PUBLISHED" }
+              ].map((step, idx) => (
+                <div key={idx} className="flex items-center justify-between text-xs font-medium">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-1.5 h-1.5 rounded-full ${step.done ? "bg-emerald-500" : "bg-slate-300"}`} />
+                    <span className={step.done ? "text-slate-400 line-through text-[11px]" : "text-slate-700 text-[11px]"}>{step.label}</span>
+                  </div>
+                  {step.done ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-500 font-extrabold shrink-0" />
+                  ) : (
+                    <span className="text-[9.5px] text-slate-400">Pending</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Help System Card */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3.5">
+            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-tight flex items-center gap-1.5 pb-2 border-b border-slate-150">
+              <Info className="w-4 h-4 text-indigo-650" />
+              <span>Contextual Guidance</span>
+            </h4>
+            <div className="space-y-3 text-xs leading-relaxed text-slate-600">
+              <div>
+                <p className="font-bold text-slate-700 text-[11px]">Step Goal</p>
+                <p className="text-slate-500 mt-0.5 text-[10.5px]">Verify boundary loops, generate individual subplots, and certify compliant layout metrics.</p>
+              </div>
+              <div>
+                <p className="font-bold text-slate-700 text-[11px]">Why it matters</p>
+                <p className="text-slate-500 mt-0.5 text-[10.5px]">Ensures no spatial overlaps and establishes a legal subdivision blueprint ready for real estate registry.</p>
+              </div>
+              <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200/60 font-semibold text-[11px]">
+                <span className="text-slate-400">Estimated Duration</span>
+                <span className="text-indigo-650 font-mono font-bold">15 Mins</span>
+              </div>
+              <div>
+                <p className="font-bold text-slate-700 text-[11px]">Pro-Tips</p>
+                <ul className="list-disc list-inside space-y-1 text-slate-500 text-[10.5px] mt-1">
+                  <li>Keep vertices count minimal during boundary drafts for cleaner CAD file outputs.</li>
+                  <li>Perform validation checks frequently to resolve overlaps early.</li>
+                </ul>
+              </div>
+            </div>
           </div>
 
         </div>

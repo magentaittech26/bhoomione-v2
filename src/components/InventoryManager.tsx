@@ -3087,40 +3087,116 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
         </div>
       </div>
 
-      {/* Dynamic Context-Aware Breadcrumb / Context Bar */}
-      {selectedProject !== null && (
-        <div className="bg-indigo-50/45 border-b border-indigo-100/50 px-6 py-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 animate-fade-in" id="project-active-context-bar">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <span className="text-[9px] font-extrabold text-indigo-700 uppercase tracking-wider bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-md">
-              Active Project Context
-            </span>
-            <span className="font-bold text-slate-900 text-xs">
-              {selectedProject.name} ({selectedProject.code})
-            </span>
-            {selectedLayout && (
-              <>
-                <span className="text-slate-300 font-bold text-xs">/</span>
-                <span className="text-[9px] font-extrabold text-teal-700 uppercase tracking-wider bg-teal-100 border border-teal-200 px-2 py-0.5 rounded-md">
-                  Active Layout
+      {/* Dynamic Context-Aware Premium Header & Progress Engine */}
+      <div className="bg-indigo-50/20 border-b border-indigo-150/40 p-6 space-y-4 animate-fade-in" id="project-active-context-bar">
+        {/* Row 1: Breadcrumbs and Primary Action / Context Actions */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="space-y-1.5">
+            {/* Breadcrumb Trail */}
+            <div className="flex items-center gap-1.5 text-[11px] font-mono text-slate-400 font-bold flex-wrap">
+              <span className="hover:text-indigo-650 transition-colors cursor-pointer" onClick={() => { setSelectedProject(null); setSelectedLayout(null); }}>Dashboard</span>
+              <ChevronRight className="w-3 h-3 text-slate-300" />
+              <span className="hover:text-indigo-650 transition-colors cursor-pointer" onClick={() => { setSelectedLayout(null); }}>ERP Workspace</span>
+              {selectedProject && (
+                <>
+                  <ChevronRight className="w-3 h-3 text-slate-300" />
+                  <span className="text-indigo-650 hover:underline cursor-pointer" onClick={() => setSelectedLayout(null)}>{selectedProject.name}</span>
+                </>
+              )}
+              {selectedLayout && (
+                <>
+                  <ChevronRight className="w-3 h-3 text-slate-300" />
+                  <span className="text-teal-600 font-extrabold">{selectedLayout.name}</span>
+                </>
+              )}
+              <ChevronRight className="w-3 h-3 text-slate-300" />
+              <span className="text-indigo-700 capitalize font-extrabold bg-indigo-100/60 px-2 py-0.5 rounded-md">
+                {activeTab === "projects" && selectedProject ? (projectWorkspaceTab) : activeTab}
+              </span>
+            </div>
+
+            {/* Context Header */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <h2 className="text-base font-extrabold text-slate-900 tracking-tight">
+                {selectedProject ? selectedProject.name : "System Operations Catalog"}
+              </h2>
+              {selectedProject && (
+                <span className="text-xs text-slate-400 font-semibold font-mono bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">
+                  ID: {selectedProject.code}
                 </span>
-                <span className="font-bold text-slate-800 text-xs">
-                  {selectedLayout.name} ({selectedLayout.code})
+              )}
+              {selectedLayout && (
+                <span className="text-xs text-teal-800 font-semibold font-mono bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-md">
+                  Layout: {selectedLayout.code}
                 </span>
-              </>
-            )}
+              )}
+            </div>
+
+            {/* Context Details */}
+            <div className="flex items-center gap-x-4 gap-y-1 text-[11px] text-slate-500 font-medium flex-wrap">
+              <p>Project: <span className="text-slate-800 font-semibold">{selectedProject ? selectedProject.name : "N/A"}</span></p>
+              <p>Layout: <span className="text-slate-800 font-semibold">{selectedLayout ? selectedLayout.name : "N/A"}</span></p>
+              <p>Developer: <span className="text-slate-800 font-semibold">{selectedProject ? (selectedProject.developer_name || "Bhoomi Developers") : "N/A"}</span></p>
+              <p>Status: <span className={`font-bold uppercase text-[10px] px-2 py-0.2 rounded ${
+                selectedLayout ? (
+                  selectedLayout.status === "LAUNCHED" || selectedLayout.status === "PUBLISHED" ? "bg-emerald-50 text-emerald-800 border border-emerald-100" :
+                  selectedLayout.status === "APPROVED" ? "bg-blue-50 text-blue-800 border border-blue-100" :
+                  "bg-slate-100 text-slate-600 border border-slate-200"
+                ) : selectedProject ? "bg-indigo-50 text-indigo-700 border border-indigo-100" : "bg-slate-100 text-slate-600"
+              }`}>{selectedLayout ? selectedLayout.status : (selectedProject ? "ACTIVE" : "N/A")}</span></p>
+              <p>Current Stage: <span className="text-indigo-600 font-extrabold">{
+                selectedLayout ? (
+                  selectedLayout.status === "LAUNCHED" || selectedLayout.status === "PUBLISHED" ? "Publishing Completed" : "Geometry Subdivision In-Progress"
+                ) : selectedProject ? "Register Layout Phase Plan" : "Select Active Project Context"
+              }</span></p>
+            </div>
           </div>
-          <button
-            onClick={() => {
-              setSelectedProject(null);
-              setSelectedLayout(null);
-            }}
-            className="text-[10px] font-bold text-rose-600 hover:text-rose-700 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-100 px-2.5 py-1 rounded-lg shadow-3xs transition-all active:scale-95 cursor-pointer flex items-center gap-1"
-          >
-            <X className="w-3 h-3 stroke-[3px]" />
-            <span>Clear Context</span>
-          </button>
+
+          {/* Context Actions / Clear */}
+          {selectedProject && (
+            <button
+              onClick={() => {
+                setSelectedProject(null);
+                setSelectedLayout(null);
+              }}
+              className="text-[10px] font-bold text-rose-600 hover:text-rose-700 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-100 px-3 py-1.5 rounded-xl shadow-3xs transition-all active:scale-95 cursor-pointer flex items-center gap-1 shrink-0 font-sans"
+            >
+              <X className="w-3.5 h-3.5 stroke-[3px]" />
+              <span>Exit Active Context</span>
+            </button>
+          )}
         </div>
-      )}
+
+        {/* Row 2: Horizontal Stepper Progress Indicator */}
+        <div className="border-t border-indigo-100/50 pt-4" id="project-workspace-progress">
+          <div className="flex flex-wrap items-center gap-y-3 gap-x-2 text-[11px] font-semibold text-slate-500">
+            {[
+              { label: "Project Created", active: !!selectedProject },
+              { label: "Layout Created", active: !!selectedLayout || (selectedProject && layouts.filter(l => l.project_id === selectedProject.id).length > 0) },
+              { label: "PDF Uploaded", active: !!selectedLayout },
+              { label: "Calibration", active: !!selectedLayout },
+              { label: "Boundary", active: !!selectedLayout && activeTab === "viewer" },
+              { label: "Roads", active: false },
+              { label: "Plots", active: !!selectedLayout && plots.filter(p => p.layout_id === selectedLayout.id).length > 0 },
+              { label: "Validation", active: false },
+              { label: "Publish", active: selectedLayout?.status === "LAUNCHED" || selectedLayout?.status === "PUBLISHED" }
+            ].map((step, idx) => (
+              <React.Fragment key={idx}>
+                {idx > 0 && <ChevronRight className="w-3.5 h-3.5 text-slate-300 shrink-0" />}
+                <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${
+                  step.active 
+                    ? "bg-indigo-50 text-indigo-700 border-indigo-200/80 font-bold" 
+                    : "bg-slate-50 text-slate-400 border-slate-150"
+                }`}>
+                  <span className="font-mono text-[9.5px] font-extrabold">{idx + 1}</span>
+                  <span>{step.label}</span>
+                  {step.active && <Check className="w-3.5 h-3.5 text-indigo-600 stroke-[3px]" />}
+                </div>
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+      </div>
 
       {/* Project Workspace Secondary Control Header (only rendered when project is active AND viewing Projects tab) */}
       {selectedProject !== null && activeTab === "projects" && (
@@ -3246,83 +3322,116 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
 
           {/* ERP Landing Dashboard (visible when no project is selected and tab is dashboard) */}
           {selectedProject === null && activeTab === "dashboard" && (
-            <div className="space-y-6 animate-fade-in font-sans" id="landing-dashboard">
+            <div className="space-y-8 animate-fade-in font-sans" id="landing-dashboard">
               {/* Main Welcome & Project Call-To-Action Card */}
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 lg:p-8 space-y-4" id="welcome-erp-hub">
-                <div className="space-y-1">
-                  <h3 className="text-lg font-bold text-slate-950 font-sans">Real Estate Operations Hub</h3>
-                  <p className="text-xs text-slate-500 leading-relaxed max-w-xl">
-                    Coordinate physical land holdings, development zones, plot bookings, and dynamic document compliance in a project-first workspace workflow.
+              <div className="bg-gradient-to-br from-slate-900 via-slate-850 to-slate-900 text-white rounded-2xl p-6 lg:p-8 space-y-6 relative overflow-hidden shadow-md border border-slate-850 antialiased" id="welcome-erp-hub">
+                {/* Subtle graphic accent background */}
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_right,rgba(99,102,241,0.12),transparent_60%)] pointer-events-none" />
+                <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
+                
+                <div className="space-y-2 relative z-10">
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/10 text-slate-200 border border-white/5 text-[9px] font-mono uppercase tracking-wider font-semibold">
+                    <Compass className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                    <span>Real Estate Command Center</span>
+                  </div>
+                  <h3 className="text-xl md:text-2xl font-bold tracking-tight text-white font-sans">Real Estate Operations Hub</h3>
+                  <p className="text-xs text-slate-300 leading-relaxed max-w-xl">
+                    Coordinate physical land holdings, development zones, plot bookings, and dynamic document compliance in a project-first workspace workflow. Built for senior planning.
                   </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3 pt-2">
+                <div className="flex flex-wrap items-center gap-3 pt-2 relative z-10">
                   <button
                     onClick={() => { setActiveTab("projects"); setErrorMess(null); }}
-                    className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-5 py-3 rounded-xl transition-all shadow-md active:scale-95 cursor-pointer"
+                    className="inline-flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-950 font-bold text-xs px-5 py-3 rounded-xl transition-all shadow-md active:scale-95 cursor-pointer border-0"
                     id="btn-goto-projects"
                   >
-                    <span>Manage Projects &rarr;</span>
+                    <span>Manage Projects</span>
+                    <ArrowRight className="w-3.5 h-3.5 text-slate-950" />
                   </button>
                   {hasProjManage && (
                     <button
-                      onClick={() => { setCurrModal("create_project"); }}
-                      className="inline-flex items-center gap-1.5 bg-white border border-slate-250 hover:bg-slate-50 text-slate-800 font-bold text-xs px-4 py-3 rounded-xl transition-all shadow-xs active:scale-95 cursor-pointer"
+                      onClick={() => { setFormProj({ name: "", code: "", developer_name: "", location: "", status: "PLANNING", rera_number: "", approval_status: "PENDING", approval_authority: "", launch_date: "", possession_target_date: "", approvals_metadata: "{}", project_type: "RESIDENTIAL", state: "", description: "", village: "", taluk: "", district: "", country: "INDIA", pincode: "", latitude: "", longitude: "" }); setCurrModal("create_project"); }}
+                      className="inline-flex items-center gap-1.5 bg-slate-800/80 border border-slate-700/60 hover:bg-slate-800 text-white font-bold text-xs px-4 py-3 rounded-xl transition-all shadow-xs active:scale-95 cursor-pointer"
                       id="btn-quick-create-project"
                     >
-                      <Plus className="w-3.5 h-3.5 text-slate-800 stroke-[3px]" />
-                      <span>+ Create Project</span>
+                      <Plus className="w-3.5 h-3.5 text-slate-300 stroke-[3px]" />
+                      <span>+ Register New Project</span>
                     </button>
                   )}
                 </div>
               </div>
 
               {/* Four-Column Split Operational Status Count Metrics */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" id="erp-hub-metrics">
-                <div className="bg-white border border-slate-150 p-4 rounded-xl shadow-xs">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cataloged Projects</p>
-                  <p className="text-lg font-black text-slate-950 mt-1">{lookupProjects.length} Projects</p>
-                </div>
-                <div className="bg-white border border-slate-150 p-4 rounded-xl shadow-xs">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Subdivision Layouts</p>
-                  <p className="text-lg font-black text-slate-950 mt-1">{lookupLayouts.length} Layout Phases</p>
-                </div>
-                <div className="bg-white border border-slate-150 p-4 rounded-xl shadow-xs">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Development Plots</p>
-                  <p className="text-lg font-black text-slate-950 mt-1">{plots.length} Plots</p>
-                </div>
-                <div className="bg-white border border-slate-150 p-4 rounded-xl shadow-xs">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Leads &amp; CRM Contacts</p>
-                  <p className="text-lg font-black text-slate-950 mt-1">{projectLeads.length} Registered</p>
-                </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5" id="erp-hub-metrics">
+                {[
+                  { label: "Cataloged Projects", value: `${lookupProjects.length} Active`, icon: Building2, color: "text-indigo-650 bg-indigo-50 border-indigo-100/50" },
+                  { label: "Subdivision Layouts", value: `${lookupLayouts.length} Phases`, icon: Layers, color: "text-emerald-600 bg-emerald-50 border-emerald-100/50" },
+                  { label: "Development Plots", value: `${plots.length} Lots`, icon: Grid, color: "text-amber-650 bg-amber-50 border-amber-100/50" },
+                  { label: "Leads & CRM Contacts", value: `${projectLeads.length} Leads`, icon: Users, color: "text-sky-600 bg-sky-50 border-sky-100/50" }
+                ].map((stat, i) => {
+                  const IconComp = stat.icon;
+                  return (
+                    <div key={i} className="bg-white border border-slate-150 p-5 rounded-2xl shadow-sm hover:shadow-md transition-all flex items-center justify-between group">
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{stat.label}</p>
+                        <p className="text-xl font-extrabold text-slate-900 tracking-tight mt-0.5">{stat.value}</p>
+                      </div>
+                      <div className={`p-2.5 rounded-xl border ${stat.color} transition-transform group-hover:scale-105`}>
+                        <IconComp className="w-5 h-5" />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
 
               {/* Action Board */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
-                <h3 className="text-xs font-extrabold text-slate-850 uppercase tracking-wider flex items-center gap-2 pb-3 border-b border-slate-100">
-                  <Activity className="w-4 h-4 text-indigo-600" />
-                  <span>Recent Activity Feed</span>
-                </h3>
+              <div className="bg-white border border-slate-200/85 rounded-2xl p-6 space-y-4 shadow-sm">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <h3 className="text-xs font-extrabold text-slate-850 uppercase tracking-wider flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-indigo-650" />
+                    <span>Real-Time Operations &amp; Audit Feed</span>
+                  </h3>
+                  <span className="text-[10px] bg-slate-100 text-slate-500 font-mono px-2 py-0.5 rounded-md border border-slate-150 font-bold">
+                    System Verified
+                  </span>
+                </div>
                 {recentAudits.length === 0 ? (
-                  <p className="text-xs text-slate-400 py-6 text-center italic">No operations recorded yet in active session.</p>
+                  <div className="py-12 flex flex-col items-center justify-center text-center space-y-2">
+                    <Activity className="w-8 h-8 text-slate-300 stroke-[1.5]" />
+                    <p className="text-xs text-slate-400 italic">No operations recorded yet in this session.</p>
+                  </div>
                 ) : (
-                  <div className="space-y-3.5 max-h-[350px] overflow-y-auto pr-2">
-                    {recentAudits.map((log) => (
-                      <div key={log.id} className="flex gap-3 text-xs items-start border-b border-slate-50 pb-3">
-                        <span className={`px-2 py-0.5 font-mono text-[9px] font-bold rounded flex-shrink-0 uppercase ${
-                          log.action === "PROJECT_CREATE" || log.action === "LAYOUT_CREATE" ? "bg-emerald-50 text-emerald-700" :
-                          log.action === "PROJECT_UPDATE" || log.action === "LAYOUT_UPDATE" ? "bg-indigo-50 text-indigo-700" :
-                          log.action === "DOCUMENT_UPLOAD" ? "bg-purple-50 text-purple-700" :
-                          "bg-slate-50 text-slate-700"
-                        }`}>
-                          {log.action}
-                        </span>
-                        <div className="flex-1">
-                          <p className="font-semibold text-slate-800">{log.message}</p>
-                          <p className="text-[9.5px] text-slate-400 mt-0.5">Target ID: {log.targetId} &bull; Timestamp: {log.timestamp}</p>
+                  <div className="space-y-1 max-h-[350px] overflow-y-auto pr-1">
+                    {recentAudits.map((log) => {
+                      const isCreate = log.action === "PROJECT_CREATE" || log.action === "LAYOUT_CREATE" || log.action === "PLOT_CREATE";
+                      const isUpdate = log.action === "PROJECT_UPDATE" || log.action === "LAYOUT_UPDATE" || log.action === "PLOT_UPDATE";
+                      const isDoc = log.action === "DOCUMENT_UPLOAD" || log.action === "DOCUMENT_DELETE";
+                      
+                      const badgeColor = isCreate 
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-100/50" 
+                        : isUpdate 
+                        ? "bg-indigo-50 text-indigo-700 border-indigo-100/50" 
+                        : isDoc 
+                        ? "bg-purple-50 text-purple-700 border-purple-100/50" 
+                        : "bg-slate-100 text-slate-700 border-slate-200";
+
+                      return (
+                        <div key={log.id} className="flex gap-4 text-xs items-start border-b border-slate-50 last:border-0 py-3 hover:bg-slate-50/40 px-2 rounded-xl transition-colors">
+                          <span className={`px-2 py-0.5 font-mono text-[9px] font-bold rounded border shrink-0 uppercase tracking-wide ${badgeColor}`}>
+                            {log.action.replace("_", " ")}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-slate-800 leading-normal truncate">{log.message}</p>
+                            <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-1 font-mono">
+                              <span>Target ID: {log.targetId}</span>
+                              <span>•</span>
+                              <span>{log.timestamp}</span>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -3343,33 +3452,33 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
 
           {/* 1. PROJECTS TABPANEL */}
           {selectedProject === null && activeTab === "projects" && (
-            <div className="space-y-4" id="projects-view-panel">
+            <div className="space-y-6 animate-fade-in" id="projects-view-panel">
               {/* Controls and Header */}
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 pb-3">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900">Projects Master Ledger</h3>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Multi-tenant approved construction projects directory</p>
+                  <h3 className="text-base font-bold text-slate-950 tracking-tight">Projects Master Ledger</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">Multi-tenant approved construction projects directory</p>
                 </div>
                 {hasProjManage && (
                   <button
                     id="btn-new-project"
                     onClick={() => { setEditId(null); setFormProj({ name: "", code: "", developer_name: "", location: "", status: "PLANNING", rera_number: "", approval_status: "PENDING", approval_authority: "", launch_date: "", possession_target_date: "", approvals_metadata: "{}", project_type: "RESIDENTIAL", state: "", description: "", village: "", taluk: "", district: "", country: "INDIA", pincode: "", latitude: "", longitude: "" }); setCurrModal("create_project"); }}
-                    className="inline-flex items-center gap-1 bg-indigo-600 text-white font-bold text-xs px-3.5 py-2.5 rounded-xl hover:bg-indigo-700 active:scale-95 transition-all shadow-md cursor-pointer"
+                    className="inline-flex items-center gap-2 bg-indigo-600 text-white font-bold text-xs px-4 py-2.5 rounded-xl hover:bg-indigo-750 transition-all shadow-md active:scale-95 cursor-pointer border-0"
                   >
                     <Plus className="w-4 h-4 text-white stroke-[3px]" />
-                    <span>+ New Project</span>
+                    <span>+ Register Project</span>
                   </button>
                 )}
               </div>
 
               {/* Filtering Suite */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100/50">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50/70 p-4 rounded-xl border border-slate-200/50">
                 <div>
-                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Location Filter</label>
+                  <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Location Area</label>
                   <select
                     value={filterProjLocation}
                     onChange={(e) => { setFilterProjLocation(e.target.value); setProjectPage(1); }}
-                    className="w-full bg-white border border-slate-200 rounded-lg p-1.5 text-xs text-slate-700 focus:outline-none"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-colors"
                   >
                     <option value="ALL">All Locations</option>
                     {Array.from(new Set(lookupProjects.map(p => p.location))).filter(Boolean).map(loc => (
@@ -3378,11 +3487,11 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                   </select>
                 </div>
                 <div>
-                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Approval status</label>
+                  <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Approval Status</label>
                   <select
                     value={filterProjAppr}
                     onChange={(e) => { setFilterProjAppr(e.target.value); setProjectPage(1); }}
-                    className="w-full bg-white border border-slate-200 rounded-lg p-1.5 text-xs text-slate-700 focus:outline-none"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-colors"
                   >
                     <option value="ALL">All Approvals</option>
                     <option value="APPROVED">APPROVED</option>
@@ -3391,11 +3500,11 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                   </select>
                 </div>
                 <div>
-                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Status</label>
+                  <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1.5">Project Status</label>
                   <select
                     value={filterProjStatus}
                     onChange={(e) => { setFilterProjStatus(e.target.value); setProjectPage(1); }}
-                    className="w-full bg-white border border-slate-200 rounded-lg p-1.5 text-xs text-slate-700 focus:outline-none"
+                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-colors"
                   >
                     <option value="ALL">All Statuses</option>
                     <option value="ACTIVE">ACTIVE</option>
@@ -3406,38 +3515,37 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
               </div>
 
               {/* Ledger Grid */}
-              <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs">
-                <table className="w-full text-left text-xs text-slate-500">
-                  <thead className="bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-200">
+              <div className="overflow-x-auto border border-slate-200/80 rounded-2xl bg-white shadow-sm">
+                <table className="w-full text-left text-xs text-slate-500 border-collapse">
+                  <thead className="bg-slate-50 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider border-b border-slate-200">
                     <tr>
-                      <th className="px-4 py-3">Project Name</th>
-                      <th className="px-4 py-3">Code</th>
-                      <th className="px-4 py-3">Location</th>
-                      <th className="px-4 py-3">RERA No.</th>
-                      <th className="px-4 py-3 text-center">Approval</th>
-                      <th className="px-4 py-3 text-center">Layouts</th>
-                      <th className="px-4 py-3 text-center">Plots</th>
-                      <th className="px-4 py-3 text-center">Status</th>
-                      <th className="px-4 py-3 text-right">Actions</th>
+                      <th className="px-5 py-4">Project Details</th>
+                      <th className="px-5 py-4">Code</th>
+                      <th className="px-5 py-4">Location</th>
+                      <th className="px-5 py-4">RERA Number</th>
+                      <th className="px-5 py-4 text-center">Government Approval</th>
+                      <th className="px-5 py-4 text-center">Layouts / Plots</th>
+                      <th className="px-5 py-4 text-center">Lifecycle Status</th>
+                      <th className="px-5 py-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-sans">
                     {loading ? (
                       <tr>
-                        <td colSpan={9} className="py-12 text-center">
-                          <div className="flex flex-col items-center justify-center gap-2 text-slate-500">
-                            <RefreshCw className="w-6 h-6 animate-spin text-indigo-600 mb-1" />
-                            <span className="font-semibold text-xs text-slate-700">Loading cataloged projects...</span>
+                        <td colSpan={8} className="py-16 text-center">
+                          <div className="flex flex-col items-center justify-center gap-2.5">
+                            <RefreshCw className="w-6 h-6 animate-spin text-indigo-650" />
+                            <span className="font-semibold text-xs text-slate-800">Loading cataloged projects...</span>
                             <span className="text-[10px] text-slate-400">Querying database engine records</span>
                           </div>
                         </td>
                       </tr>
                     ) : errorMess && projects.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="py-12 text-center text-rose-600">
-                          <AlertCircle className="w-8 h-8 text-rose-500 mx-auto mb-2" />
+                        <td colSpan={8} className="py-16 text-center text-rose-600 px-6">
+                          <AlertCircle className="w-8 h-8 text-rose-500 mx-auto mb-2.5" />
                           <span className="font-bold text-xs block mb-1">Failed to query project database</span>
-                          <span className="text-[10px] text-slate-500 max-w-sm mx-auto block leading-normal px-4 mb-3">{errorMess}</span>
+                          <span className="text-[10px] text-slate-500 max-w-sm mx-auto block leading-relaxed mb-4">{errorMess}</span>
                           <button
                             type="button"
                             onClick={() => fetchProjectsPage()}
@@ -3450,38 +3558,65 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                       </tr>
                     ) : displayProj.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="py-12 text-center text-slate-400">
+                        <td colSpan={8} className="py-16 text-center text-slate-400">
                           <Building2 className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                          <span>No projects cataloged matching the selected parameters.</span>
+                          <span className="text-xs">No projects cataloged matching the selected parameters.</span>
                         </td>
                       </tr>
                     ) : (
                       displayProj.map((p) => {
                         const nestedLays = getLayoutsForProject(p.id);
                         const nestedPlts = getPlotsForProject(p.id);
+                        const isSelected = selectedProject?.id === p.id;
+                        
                         return (
                           <tr
                             key={p.id}
-                            className={`hover:bg-slate-50/50 cursor-pointer transition-colors ${selectedProject?.id === p.id ? "bg-slate-55/70" : ""}`}
+                            className={`hover:bg-slate-50/60 cursor-pointer transition-colors ${isSelected ? "bg-indigo-50/20" : ""}`}
                             onClick={() => setSelectedProject(p)}
                           >
-                            <td className="px-4 py-3.5 font-semibold text-slate-900">{p.name}</td>
-                            <td className="px-4 py-3.5 font-mono font-bold text-indigo-600">{p.code}</td>
-                            <td className="px-4 py-3.5">{p.location}</td>
-                            <td className="px-4 py-3.5 font-mono text-[11px] font-medium">{p.rera_number || "N/A"}</td>
-                            <td className="px-4 py-3.5 text-center">
-                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold inline-block border ${
+                            <td className="px-5 py-4">
+                              <div className="space-y-0.5">
+                                <span className="font-bold text-slate-900 text-xs sm:text-[13px] hover:text-indigo-650 transition-colors block">
+                                  {p.name}
+                                </span>
+                                <span className="text-[10px] text-slate-400 block font-medium">Developer: {p.developer_name || "Bhoomi Developers"}</span>
+                              </div>
+                            </td>
+                            <td className="px-5 py-4">
+                              <span className="font-mono font-bold text-xs text-indigo-650 bg-indigo-50 border border-indigo-150 px-2 py-0.5 rounded-md">
+                                {p.code}
+                              </span>
+                            </td>
+                            <td className="px-5 py-4">
+                              <span className="text-slate-600 font-medium">{p.location}</span>
+                            </td>
+                            <td className="px-5 py-4">
+                              <span className="font-mono text-slate-700 font-semibold">{p.rera_number || "N/A"}</span>
+                            </td>
+                            <td className="px-5 py-4 text-center">
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
                                 p.approval_status === "APPROVED" ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
                                 p.approval_status === "REJECTED" ? "bg-rose-50 text-rose-700 border-rose-100" :
                                 "bg-amber-50 text-amber-700 border-amber-100"
                               }`}>
-                                {p.approval_status}
+                                <span className={`w-1.5 h-1.5 rounded-full ${
+                                  p.approval_status === "APPROVED" ? "bg-emerald-500" :
+                                  p.approval_status === "REJECTED" ? "bg-rose-500" :
+                                  "bg-amber-500"
+                                }`} />
+                                <span>{p.approval_status}</span>
                               </span>
                             </td>
-                            <td className="px-4 py-3.5 text-center font-bold text-slate-700">{nestedLays.length}</td>
-                            <td className="px-4 py-3.5 text-center font-bold text-slate-700">{nestedPlts.length}</td>
-                            <td className="px-4 py-3 text-center">
-                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${
+                            <td className="px-5 py-4 text-center">
+                              <div className="flex items-center justify-center gap-2 font-mono text-xs text-slate-600">
+                                <span className="font-bold text-slate-800">{nestedLays.length}</span>
+                                <span className="text-slate-300">/</span>
+                                <span className="font-semibold text-slate-500">{nestedPlts.length}</span>
+                              </div>
+                            </td>
+                            <td className="px-5 py-4 text-center">
+                              <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold border ${
                                 p.status === "ACTIVE" ? "bg-emerald-50 text-emerald-800 border-emerald-100" :
                                 p.status === "PLANNING" ? "bg-blue-50 text-blue-800 border-blue-100" :
                                 "bg-slate-100 text-slate-600 border-slate-200"
@@ -3489,11 +3624,11 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                                 {p.status}
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                            <td className="px-5 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                               <div className="flex justify-end gap-1.5">
                                 <button
                                   onClick={() => handleStartEditProject(p)}
-                                  className="p-1 text-slate-400 hover:text-slate-900 transition-colors"
+                                  className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-all"
                                   title="Edit properties"
                                 >
                                   <Edit className="w-3.5 h-3.5" />
@@ -3501,7 +3636,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                                 {p.status === "ARCHIVED" ? (
                                   <button
                                     onClick={() => handleRestoreProject(p.id)}
-                                    className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"
+                                    className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
                                     title="Restore Project"
                                   >
                                     <RotateCcw className="w-3.5 h-3.5" />
@@ -3509,7 +3644,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                                 ) : (
                                   <button
                                     onClick={() => handleArchiveProject(p.id, p.status)}
-                                    className="p-1 text-slate-400 hover:text-amber-600 transition-colors"
+                                    className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
                                     title="Archive Project"
                                   >
                                     <Archive className="w-3.5 h-3.5" />
@@ -3517,14 +3652,14 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                                 )}
                                 <button
                                   onClick={() => handleDuplicateProject(p.id)}
-                                  className="p-1 text-slate-400 hover:text-teal-600 transition-colors"
+                                  className="p-1.5 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-all"
                                   title="Duplicate Project"
                                 >
                                   <Copy className="w-3.5 h-3.5" />
                                 </button>
                                 <button
                                   onClick={() => handleDeleteProject(p.id, p.code)}
-                                  className="p-1 text-slate-400 hover:text-rose-600 transition-colors"
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
                                   title="Delete record"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -4387,7 +4522,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
           </div>
 
           {/* PROJECT DETAIL SCREEN */}
-          {activeTab === "projects" && selectedProject ? (
+          {selectedProject && !selectedLayout && !selectedPlot ? (
             (() => {
               const meta = tryParseJSON(selectedProject.approvals_metadata, {});
               const village = meta.village || "N/A";
@@ -4500,7 +4635,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
             </div>
               );
             })()
-          ) : activeTab === "layouts" && selectedLayout ? (
+          ) : selectedLayout && !selectedPlot ? (
             (() => {
               // Unpack approval and survey metadata safely using helper
               const unpacked = unpackApprovalNumber(selectedLayout.approval_number);
@@ -4587,7 +4722,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                 </div>
               );
             })()
-          ) : activeTab === "plots" && selectedPlot ? (
+          ) : selectedPlot ? (
             <div className="space-y-4" id="plot-inspector">
               <div className="flex justify-between items-start">
                 <div>
@@ -4816,11 +4951,38 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
               </div>
             </div>
           ) : (
-            <div className="py-12 text-center text-slate-400 space-y-2" id="empty-inspector">
-              <Info className="w-7 h-7 text-slate-300 mx-auto" />
-              <div>
-                <p className="font-semibold text-slate-500 text-[11px]">Inspector Panel Offline</p>
-                <p className="text-[10px] leading-normal max-w-xs mx-auto">Click on any record row in the Left inventory charts to load specs dynamic inspectors.</p>
+            <div className="space-y-4" id="empty-inspector">
+              <div className="bg-white p-4 rounded-xl border border-indigo-100 shadow-sm space-y-3">
+                <div className="flex items-center gap-1.5 text-indigo-700">
+                  <Compass className="w-4 h-4 animate-spin-slow" />
+                  <span className="text-[11px] font-extrabold uppercase tracking-wider">BhoomiOne Help System</span>
+                </div>
+                <div className="space-y-3.5 text-xs">
+                  <div>
+                    <h5 className="font-bold text-slate-800 text-[11.5px]">Step Goal</h5>
+                    <p className="text-slate-500 mt-0.5 leading-relaxed text-[11px]">Register real estate construction project bounds and draft a compliant cadastral layout subdivision.</p>
+                  </div>
+                  <div>
+                    <h5 className="font-bold text-slate-800 text-[11.5px]">Why it matters</h5>
+                    <p className="text-slate-500 mt-0.5 leading-relaxed text-[11px]">Establishes a legally verified, GPS-calibrated land plot database conforming to local municipal planning authorities and RERA standards.</p>
+                  </div>
+                  <div className="flex justify-between items-center bg-slate-50 p-2.5 rounded-lg border border-slate-100 font-medium text-[11px]">
+                    <span className="text-slate-400 font-semibold">Estimated Time</span>
+                    <span className="text-indigo-650 font-bold font-mono">10 Minutes</span>
+                  </div>
+                  <div className="space-y-1">
+                    <h5 className="font-bold text-slate-800 text-[11.5px]">Tips & Next Steps</h5>
+                    <ul className="list-disc list-inside space-y-1 text-slate-500 text-[11px]">
+                      <li>First, register a primary Project from the <strong>Projects</strong> tab.</li>
+                      <li>Create a subdivision Layout, then go to the Layout Workspace.</li>
+                      <li>Launch <strong>Layout Studio</strong> to draw boundary vectors.</li>
+                      <li>Subdivide land areas and generate marketable Plots.</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-slate-50 border border-slate-200/50 p-4 rounded-xl text-center space-y-2">
+                <p className="text-[10px] text-slate-400">No specific project, layout, or plot row is currently selected for deep technical analysis.</p>
               </div>
             </div>
           )}
