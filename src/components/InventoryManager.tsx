@@ -53,7 +53,10 @@ import {
   BarChart3,
   FolderOpen,
   Settings,
-  X
+  X,
+  Sliders,
+  Cpu,
+  ShieldCheck
 } from "lucide-react";
 
 interface InventoryManagerProps {
@@ -3050,7 +3053,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
       {/* Left Collapsible Sidebar */}
       <div 
         className={`bg-[#0F172A] text-slate-100 flex flex-col justify-between transition-all duration-300 ease-in-out shrink-0 select-none border-r border-slate-800 ${
-          sidebarExpanded ? "w-64" : "w-16"
+          sidebarExpanded ? "w-[260px]" : "w-[72px]"
         }`} 
         id="inv-sidebar"
       >
@@ -3058,7 +3061,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
           {/* Logo Section */}
           <div className="h-16 flex items-center px-4 border-b border-slate-800/60 justify-between">
             {sidebarExpanded ? (
-              <div className="flex items-center gap-2.5 min-w-0 animate-fade-in">
+              <div className="flex items-center gap-2.5 min-w-0 animate-fade-in px-1">
                 <div className="w-8 h-8 bg-indigo-600 text-white rounded-lg flex items-center justify-center font-bold text-sm shadow-md shrink-0">
                   BO
                 </div>
@@ -3074,77 +3077,134 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
             )}
           </div>
 
-          {/* Navigation Links */}
-          <div className="p-3 space-y-1.5 flex-1 overflow-y-auto">
-            {[
-              { id: "dashboard", label: "Dashboard", icon: LayoutGrid },
-              { id: "projects", label: "Projects", icon: Building2, count: projects.length },
-              { id: "layouts", label: "Layouts", icon: Layers, count: layouts.length },
-              { id: "cad", label: "Imports", icon: FileCode2 },
-              { id: "viewer", label: "Interactive Map", icon: Compass },
-              { id: "plots", label: "Plots", icon: Grid, count: plots.length },
-              { id: "commercial", label: "Commercial", icon: Percent }
-            ].map(tab => {
-              const TabIcon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => { setActiveTab(tab.id as any); setErrorMess(null); }}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 text-xs font-semibold rounded-lg transition-all duration-150 cursor-pointer text-left relative group ${
-                    isActive 
-                      ? "bg-indigo-600 text-white shadow-sm font-bold" 
-                      : "text-slate-400 hover:text-white hover:bg-slate-800/50"
-                  }`}
-                  id={`sidebar-tab-${tab.id}`}
-                  title={!sidebarExpanded ? tab.label : undefined}
-                >
-                  <TabIcon className={`w-4 h-4 shrink-0 transition-colors ${isActive ? "text-white" : "text-slate-400 group-hover:text-white"}`} />
-                  {sidebarExpanded && (
-                    <span className="truncate flex-1">{tab.label}</span>
-                  )}
-                  {sidebarExpanded && tab.count !== undefined && (
-                    <span className={`px-1.5 py-0.2 text-[9px] font-bold rounded-full ml-auto ${
-                      isActive ? "bg-white/20 text-white" : "bg-slate-800 text-slate-400"
-                    }`}>
-                      {tab.count}
-                    </span>
-                  )}
-                  {!sidebarExpanded && (
-                    <div className="absolute left-16 bg-slate-950 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
-                      {tab.label} {tab.count !== undefined ? `(${tab.count})` : ""}
-                    </div>
-                  )}
-                </button>
-              );
-            })}
+          {/* Navigation Links Grouped into Workspace and Support */}
+          <div className="flex-1 overflow-y-auto py-4 space-y-6">
+            {/* WORKSPACE group */}
+            <div className="px-3 space-y-1">
+              {sidebarExpanded && (
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-3.5 mb-2.5 animate-fade-in select-none">
+                  Workspace
+                </p>
+              )}
+              {[
+                { id: "dashboard", label: "Dashboard", icon: LayoutGrid },
+                { id: "projects", label: "Projects", icon: Building2, count: projects.length },
+                { id: "layouts", label: "Layouts", icon: Layers, count: layouts.length },
+                { id: "cad", label: "Imports", icon: FileCode2 },
+                { id: "viewer", label: "Interactive Map", icon: Compass },
+                { id: "plots", label: "Plots", icon: Grid, count: plots.length },
+                { id: "commercial", label: "Commercial", icon: Percent }
+              ].map(tab => {
+                const TabIcon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => { setActiveTab(tab.id as any); setErrorMess(null); }}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-xs font-semibold rounded-xl transition-all duration-150 cursor-pointer text-left relative group ${
+                      isActive 
+                        ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/20 font-bold" 
+                        : "text-slate-450 hover:text-white hover:bg-slate-800/50"
+                    }`}
+                    id={`sidebar-tab-${tab.id}`}
+                    title={!sidebarExpanded ? tab.label : undefined}
+                  >
+                    {/* Left Active Indicator */}
+                    {isActive && (
+                      <div className="absolute left-0 top-1.5 bottom-1.5 w-1 bg-white rounded-r-full" />
+                    )}
+                    <TabIcon className={`w-4 h-4 shrink-0 transition-colors ${isActive ? "text-white" : "text-slate-400 group-hover:text-slate-200"}`} />
+                    {sidebarExpanded && (
+                      <span className="truncate flex-1">{tab.label}</span>
+                    )}
+                    {sidebarExpanded && tab.count !== undefined && (
+                      <span className={`px-1.5 py-0.2 text-[9px] font-bold rounded-full ml-auto ${
+                        isActive ? "bg-white/20 text-white" : "bg-slate-800 text-slate-400"
+                      }`}>
+                        {tab.count}
+                      </span>
+                    )}
+                    {!sidebarExpanded && (
+                      <div className="absolute left-16 bg-slate-950 text-white text-[10px] font-bold px-3 py-2 rounded-lg shadow-xl opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 border border-slate-800/80">
+                        {tab.label} {tab.count !== undefined ? `(${tab.count})` : ""}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Divider Line */}
+            <div className="mx-3 border-t border-slate-800/40" />
+
+            {/* SUPPORT group */}
+            <div className="px-3 space-y-1">
+              {sidebarExpanded && (
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-3.5 mb-2.5 animate-fade-in select-none">
+                  Support
+                </p>
+              )}
+              {[
+                { id: "guide", label: "Usage Guide", icon: BookOpen, action: () => setGuideOpen(true), isGuide: true },
+                { id: "marketplace", label: "Settings", icon: Settings }
+              ].map(tab => {
+                const TabIcon = tab.icon;
+                const isActive = tab.isGuide ? false : activeTab === tab.id;
+                const onClickHandler = tab.action 
+                  ? tab.action 
+                  : () => { setActiveTab(tab.id as any); setErrorMess(null); };
+
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={onClickHandler}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-xs font-semibold rounded-xl transition-all duration-150 cursor-pointer text-left relative group ${
+                      isActive 
+                        ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/20 font-bold" 
+                        : "text-slate-450 hover:text-white hover:bg-slate-800/50"
+                    }`}
+                    id={`sidebar-tab-${tab.id}`}
+                    title={!sidebarExpanded ? tab.label : undefined}
+                  >
+                    {/* Left Active Indicator */}
+                    {isActive && (
+                      <div className="absolute left-0 top-1.5 bottom-1.5 w-1 bg-white rounded-r-full" />
+                    )}
+                    <TabIcon className={`w-4 h-4 shrink-0 transition-colors ${
+                      tab.isGuide 
+                        ? "text-indigo-400 animate-pulse" 
+                        : isActive 
+                          ? "text-white" 
+                          : "text-slate-400 group-hover:text-slate-200"
+                    }`} />
+                    {sidebarExpanded && (
+                      <span className="truncate flex-1">{tab.label}</span>
+                    )}
+                    {!sidebarExpanded && (
+                      <div className="absolute left-16 bg-slate-950 text-white text-[10px] font-bold px-3 py-2 rounded-lg shadow-xl opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 border border-slate-800/80">
+                        {tab.label}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
-        {/* Sidebar Footer */}
+        {/* Sidebar Collapse Toggle Footer */}
         <div className="p-3 border-t border-slate-800/60 space-y-1.5 shrink-0 bg-slate-950/40">
           <button
-            onClick={() => setGuideOpen(true)}
-            className={`w-full flex items-center gap-3 px-3 py-2 text-xs font-semibold rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/50 cursor-pointer ${
-              !sidebarExpanded ? "justify-center" : ""
-            }`}
-            title="Usage Guide"
-          >
-            <BookOpen className="w-4 h-4 text-indigo-400 animate-pulse shrink-0" />
-            {sidebarExpanded && <span>Usage Guide</span>}
-          </button>
-
-          <button
             onClick={() => setSidebarExpanded(!sidebarExpanded)}
-            className="w-full flex items-center justify-center py-2 text-slate-500 hover:text-white cursor-pointer bg-slate-850/50 hover:bg-slate-850 rounded-lg transition-colors border-0"
+            className="w-full flex items-center justify-center py-2.5 text-slate-500 hover:text-white cursor-pointer bg-slate-850/40 hover:bg-slate-850/80 rounded-xl transition-all border-0 shadow-inner active:scale-95"
           >
             {sidebarExpanded ? (
-              <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-slate-300">
+              <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-200">
                 <span>Collapse Menu</span>
                 <ChevronRight className="w-3.5 h-3.5 rotate-180" />
               </div>
             ) : (
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-4 h-4 text-slate-400 hover:text-white" />
             )}
           </button>
         </div>
@@ -3448,19 +3508,22 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
               {/* Four-Column Split Operational Status Count Metrics */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5" id="erp-hub-metrics">
                 {[
-                  { label: "Cataloged Projects", value: `${lookupProjects.length} Active`, icon: Building2, color: "text-indigo-650 bg-indigo-50 border-indigo-100/50" },
-                  { label: "Subdivision Layouts", value: `${lookupLayouts.length} Phases`, icon: Layers, color: "text-emerald-600 bg-emerald-50 border-emerald-100/50" },
-                  { label: "Development Plots", value: `${plots.length} Lots`, icon: Grid, color: "text-amber-650 bg-amber-50 border-amber-100/50" },
-                  { label: "Leads & CRM Contacts", value: `${projectLeads.length} Leads`, icon: Users, color: "text-sky-600 bg-sky-50 border-sky-100/50" }
+                  { label: "Cataloged Projects", value: lookupProjects.length, sub: "Active", icon: Building2, color: "text-indigo-600 bg-indigo-50/50 border-indigo-100/80" },
+                  { label: "Subdivision Layouts", value: lookupLayouts.length, sub: "Phases", icon: Layers, color: "text-emerald-600 bg-emerald-50/50 border-emerald-100/80" },
+                  { label: "Development Plots", value: plots.length, sub: "Lots", icon: Grid, color: "text-amber-600 bg-amber-50/50 border-amber-100/80" },
+                  { label: "Leads & CRM Contacts", value: projectLeads.length, sub: "Leads", icon: Users, color: "text-sky-600 bg-sky-50/50 border-sky-100/80" }
                 ].map((stat, i) => {
                   const IconComp = stat.icon;
                   return (
-                    <div key={i} className="bg-white border border-slate-150 p-5 rounded-2xl shadow-sm hover:shadow-md transition-all flex items-center justify-between group">
-                      <div className="space-y-1">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{stat.label}</p>
-                        <p className="text-xl font-extrabold text-slate-900 tracking-tight mt-0.5">{stat.value}</p>
+                    <div key={i} className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex items-center justify-between group h-24">
+                      <div className="space-y-0.5">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{stat.label}</p>
+                        <div className="flex items-baseline gap-1.5">
+                          <p className="text-3xl font-extrabold text-slate-900 tracking-tight">{stat.value}</p>
+                          <p className="text-[11px] font-semibold text-slate-500">{stat.sub}</p>
+                        </div>
                       </div>
-                      <div className={`p-2.5 rounded-xl border ${stat.color} transition-transform group-hover:scale-105`}>
+                      <div className={`p-3 rounded-2xl border ${stat.color} transition-transform group-hover:scale-105 duration-200`}>
                         <IconComp className="w-5 h-5" />
                       </div>
                     </div>
@@ -5513,6 +5576,142 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                     }
                   }} 
                 />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Settings (Marketplace Profile Tab) */}
+      {activeTab === "marketplace" && (
+        <div className="p-6 space-y-6" id="settings-tab-panel">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-sm">
+            <div className="space-y-1">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-800 border border-indigo-100 text-xs font-semibold">
+                <Settings className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Tenant Profile &amp; Developer Settings</span>
+              </div>
+              <h2 className="text-xl font-bold text-slate-900 tracking-tight font-sans">Enterprise Settings Console</h2>
+              <p className="text-xs text-slate-500">
+                Manage developer profiles, GST details, API integrations, and RERA compliance settings.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Sidebar Sub-Navigation */}
+            <div className="lg:col-span-3 space-y-2">
+              <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm space-y-1">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-3 py-1">SETTINGS MENU</p>
+                <button className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg bg-indigo-50 text-indigo-900 border border-indigo-100">
+                  <Sliders className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Developer Profile</span>
+                </button>
+                <button className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-400 hover:bg-slate-50 hover:text-slate-900 transition-all cursor-not-allowed" disabled>
+                  <Cpu className="w-3.5 h-3.5" />
+                  <span>API Integration (🔒)</span>
+                </button>
+                <button className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-400 hover:bg-slate-50 hover:text-slate-900 transition-all cursor-not-allowed" disabled>
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>Team &amp; Security (🔒)</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Main Console Content */}
+            <div className="lg:col-span-9">
+              <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
+                <div className="border-b border-slate-100 pb-4">
+                  <h3 className="text-sm font-bold text-slate-900">Developer Profile Information</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">Customize default parameters published to the customer marketplace.</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Company Registered Name</label>
+                    <input 
+                      type="text" 
+                      value="Bhoomi Developers Ltd" 
+                      disabled
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 font-semibold text-slate-600 cursor-not-allowed"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Corporate GSTIN / Tax ID</label>
+                    <input 
+                      type="text" 
+                      value="29AAAAA1111A1Z1" 
+                      disabled
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 font-semibold text-slate-600 cursor-not-allowed"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Primary RERA License Number</label>
+                    <input 
+                      type="text" 
+                      value="PRM/KA/RERA/1251/310/PR/180516/001745" 
+                      disabled
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 font-semibold text-slate-600 cursor-not-allowed font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Primary Contact Email</label>
+                    <input 
+                      type="text" 
+                      value={user?.email || "billing@bhoomi-developers.com"} 
+                      disabled
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 font-semibold text-slate-600 cursor-not-allowed"
+                    />
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-100 pt-6 space-y-4">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900">ERP &amp; Calibration System Parameters</h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Control base math and coordinate conversions.</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                    <div className="p-4 border border-slate-150 rounded-xl bg-slate-50/50 space-y-2">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Default Measurement Unit</p>
+                      <p className="text-xs font-semibold text-slate-800">SQUARE FEET (sft)</p>
+                      <span className="inline-block bg-indigo-50 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded-full">System Standard</span>
+                    </div>
+                    <div className="p-4 border border-slate-150 rounded-xl bg-slate-50/50 space-y-2">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Geo Reference Datum</p>
+                      <p className="text-xs font-semibold text-slate-800">WGS 84 (EPSG:4326)</p>
+                      <span className="inline-block bg-blue-50 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full">GPS Standards</span>
+                    </div>
+                    <div className="p-4 border border-slate-150 rounded-xl bg-slate-50/50 space-y-2">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Gemini API Service Node</p>
+                      <p className="text-xs font-semibold text-emerald-700 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-ping" />
+                        <span>Connected</span>
+                      </p>
+                      <span className="inline-block bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-full">AI Agent Active</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 flex gap-3 text-xs leading-relaxed text-amber-900">
+                  <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold">Managed SaaS Active Subscription:</span> Since this node is part of the enterprise tenant pool, profile modifications are handled by the Organization Owner's billing cockpit. To unlock custom modifications, submit a change request.
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2 border-t border-slate-100">
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      setSuccessMess("Settings draft verified. Organizational locks are currently active.");
+                      setTimeout(() => setSuccessMess(null), 4000);
+                    }}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm transition-all cursor-pointer"
+                  >
+                    Apply Parameter Handshakes
+                  </button>
+                </div>
               </div>
             </div>
           </div>
