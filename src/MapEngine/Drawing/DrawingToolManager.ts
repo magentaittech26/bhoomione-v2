@@ -1,6 +1,6 @@
 import { MockGeometry, WorkspaceTool } from "../../components/MapWorkspace/types.ts";
 import { GeometryLayer, GeometryObject } from "../Contracts/models.ts";
-import { calculatePlotMetrics, detectPlotFacing, detectPlotCornerType } from "../../lib/plotEngine.ts";
+import { calculatePlotMetrics, detectPlotFacing, detectPlotCornerType, calculateCenterlineLength, generateCarriagewayPolygon, calculateRoadDirection } from "../../lib/plotEngine.ts";
 
 /**
  * Define the comprehensive workspace tool list requested.
@@ -498,6 +498,17 @@ export class ModifyGeometryCommand implements Command {
             facing,
             corner_type: cornerType
           };
+        } else if (obj.layerName === "ROADS") {
+          const width = obj.properties.road_width || 12;
+          const len = calculateCenterlineLength(this.newCoords);
+          updatedProperties = {
+            ...updatedProperties,
+            center_line: this.newCoords,
+            boundary: generateCarriagewayPolygon(this.newCoords, width),
+            length: parseFloat(len.toFixed(2)),
+            direction: calculateRoadDirection(this.newCoords),
+            area_value: parseFloat((len * width).toFixed(2))
+          };
         }
         return {
           ...obj,
@@ -533,6 +544,17 @@ export class ModifyGeometryCommand implements Command {
             area_value: Math.round(metrics.sqft),
             facing,
             corner_type: cornerType
+          };
+        } else if (obj.layerName === "ROADS") {
+          const width = obj.properties.road_width || 12;
+          const len = calculateCenterlineLength(this.oldCoords);
+          updatedProperties = {
+            ...updatedProperties,
+            center_line: this.oldCoords,
+            boundary: generateCarriagewayPolygon(this.oldCoords, width),
+            length: parseFloat(len.toFixed(2)),
+            direction: calculateRoadDirection(this.oldCoords),
+            area_value: parseFloat((len * width).toFixed(2))
           };
         }
         return {
