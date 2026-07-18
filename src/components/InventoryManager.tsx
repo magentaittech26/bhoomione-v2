@@ -367,6 +367,9 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
   const [selectedPlot, setSelectedPlot] = useState<any | null>(null);
   const [returnToViewerAfterSave, setReturnToViewerAfterSave] = useState(false);
 
+  const hasRestoredSession = React.useRef(false);
+  const prevProjectIdRef = React.useRef<string | null>(null);
+
   // Sync selectedProject and selectedLayout state changes back to URL parameters
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -399,27 +402,117 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
     }
   }, [selectedProject, selectedLayout]);
 
-  // Sync state from URL parameters when lookup lists are populated
+  // Sync state from URL parameters or restore session when lookup lists are populated
   useEffect(() => {
-    if (lookupProjects.length > 0) {
+    if (lookupProjects.length > 0 && !hasRestoredSession.current) {
       const urlParams = new URLSearchParams(window.location.search);
       const projIdFromUrl = urlParams.get("projectId");
       const layIdFromUrl = urlParams.get("layoutId");
 
       if (projIdFromUrl) {
+        // URL takes precedence over stored session
         const matchedProj = lookupProjects.find(p => String(p.id) === String(projIdFromUrl));
         if (matchedProj && (!selectedProject || String(selectedProject.id) !== String(projIdFromUrl))) {
           setSelectedProject(matchedProj);
         }
-      }
-      if (layIdFromUrl && lookupLayouts.length > 0) {
-        const matchedLay = lookupLayouts.find(l => String(l.id) === String(layIdFromUrl));
-        if (matchedLay && (!selectedLayout || String(selectedLayout.id) !== String(layIdFromUrl))) {
-          setSelectedLayout(matchedLay);
+        if (layIdFromUrl && lookupLayouts.length > 0) {
+          const matchedLay = lookupLayouts.find(l => String(l.id) === String(layIdFromUrl));
+          if (matchedLay && (!selectedLayout || String(selectedLayout.id) !== String(layIdFromUrl))) {
+            setSelectedLayout(matchedLay);
+          }
+        }
+      } else {
+        // Restore from stored session
+        const lastProjId = localStorage.getItem("bhoomi_last_project_id");
+        const lastActiveTab = localStorage.getItem("bhoomi_last_active_tab") as any;
+        const lastProjWorkspaceTab = localStorage.getItem("bhoomi_last_project_workspace_tab") as any;
+
+        if (lastProjId) {
+          const matchedProj = lookupProjects.find(p => String(p.id) === String(lastProjId));
+          if (matchedProj) {
+            setSelectedProject(matchedProj);
+            
+            if (lastActiveTab) {
+              setActiveTab(lastActiveTab);
+            }
+            if (lastProjWorkspaceTab) {
+              setProjectWorkspaceTab(lastProjWorkspaceTab);
+            }
+
+            const lastLayoutId = localStorage.getItem("bhoomi_last_layout_id");
+            if (lastLayoutId && lookupLayouts.length > 0) {
+              const matchedLay = lookupLayouts.find(l => String(l.id) === String(lastLayoutId));
+              if (matchedLay) {
+                setSelectedLayout(matchedLay);
+              }
+            }
+          }
+        } else if (lastActiveTab) {
+          setActiveTab(lastActiveTab);
         }
       }
+      hasRestoredSession.current = true;
     }
   }, [lookupProjects, lookupLayouts]);
+
+  // Restore project-specific module session when project selection changes
+  useEffect(() => {
+    if (selectedProject) {
+      if (prevProjectIdRef.current !== String(selectedProject.id)) {
+        prevProjectIdRef.current = String(selectedProject.id);
+        const savedProjState = localStorage.getItem(`bhoomi_project_module_${selectedProject.id}`);
+        if (savedProjState) {
+          try {
+            const restored = JSON.parse(savedProjState);
+            if (restored.activeTab) {
+              setActiveTab(restored.activeTab);
+            }
+            if (restored.projectWorkspaceTab) {
+              setProjectWorkspaceTab(restored.projectWorkspaceTab);
+            }
+            if (restored.layoutId && lookupLayouts.length > 0) {
+              const matchedLay = lookupLayouts.find(l => String(l.id) === String(restored.layoutId));
+              if (matchedLay) {
+                setSelectedLayout(matchedLay);
+              }
+            }
+          } catch (e) {
+            console.error("Failed to restore project module state", e);
+          }
+        }
+      }
+    } else {
+      prevProjectIdRef.current = null;
+    }
+  }, [selectedProject, lookupLayouts]);
+
+  // Continuously save session state to localStorage
+  useEffect(() => {
+    if (hasRestoredSession.current) {
+      if (selectedProject) {
+        localStorage.setItem("bhoomi_last_project_id", String(selectedProject.id));
+        
+        // Save project-specific module context
+        const projState = {
+          activeTab,
+          projectWorkspaceTab,
+          layoutId: selectedLayout ? String(selectedLayout.id) : null
+        };
+        localStorage.setItem(`bhoomi_project_module_${selectedProject.id}`, JSON.stringify(projState));
+      } else {
+        localStorage.removeItem("bhoomi_last_project_id");
+      }
+
+      if (selectedLayout) {
+        localStorage.setItem("bhoomi_last_layout_id", String(selectedLayout.id));
+      } else {
+        localStorage.removeItem("bhoomi_last_layout_id");
+      }
+
+      localStorage.setItem("bhoomi_last_active_tab", activeTab);
+      localStorage.setItem("bhoomi_last_project_workspace_tab", projectWorkspaceTab);
+    }
+  }, [selectedProject, selectedLayout, activeTab, projectWorkspaceTab]);
 
   // Handle popstate events to keep URL and selection state in perfect sync
   useEffect(() => {
@@ -872,17 +965,14 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
           
           setEnabledFeatures(expandedFeats);
 
-          // Menu adapts automatically based on resolved commercial feature engine:
+          // Menu adapts automatically based on resolved commercial feature engine, but session restoration takes precedence
           if (!hasSetInitialTab.current) {
-            const hasMaps = expandedFeats.includes("gis_maps") || expandedFeats.includes("interactive_map.view");
-            const hasDxf = expandedFeats.includes("dxf_import") || expandedFeats.includes("layout_viewer");
-            
-            if (hasMaps) {
-              setActiveTab("viewer"); // Professional / Enterprise (Map-focused)
-            } else if (hasDxf) {
-              setActiveTab("layouts"); // Growth (Layout-focused)
+            const lastActiveTab = localStorage.getItem("bhoomi_last_active_tab");
+            if (lastActiveTab) {
+              setActiveTab(lastActiveTab as any);
             } else {
-              setActiveTab("plots"); // Starter (Grid-focused)
+              // FIRST LOGIN: Open Dashboard
+              setActiveTab("dashboard");
             }
             hasSetInitialTab.current = true;
           }

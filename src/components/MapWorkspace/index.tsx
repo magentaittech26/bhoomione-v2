@@ -806,6 +806,7 @@ export default function MapWorkspaceIndex({
   const drawingManagerRef = useRef<DrawingToolManager>(new DrawingToolManager());
   const [zoomLevel, setZoomLevel] = useState(100);
   const [pan, setPan] = useState({ x: 200, y: 150 });
+  const hasRestoredMapState = useRef<string | null>(null);
   
   // Sidebar state collapses
   const [isLeftCollapsed, setIsLeftCollapsed] = useState(false);
@@ -823,6 +824,7 @@ export default function MapWorkspaceIndex({
   // LAYOUT CREATION STUDIO WIZARD STATES
   // ========================================================
   const [isWizardMode, setIsWizardMode] = useState(false);
+  const [showDraftPromptModal, setShowDraftPromptModal] = useState(false);
   const [wizardStep, setWizardStep] = useState<WizardStep>("info");
 
   // Synchronized drawing state variables for wizard mode
@@ -1193,6 +1195,69 @@ export default function MapWorkspaceIndex({
     }
   }, [objects, selectedLayoutId]);
 
+  // Auto-restore Map state (zoom, pan, layers visibility/lock state, selectedTool, selectedObjectId)
+  useEffect(() => {
+    if (selectedLayoutId) {
+      const saved = localStorage.getItem(`bhoomi_map_restore_${selectedLayoutId}`);
+      if (saved) {
+        try {
+          const restored = JSON.parse(saved);
+          if (restored.zoomLevel !== undefined) {
+            setZoomLevel(restored.zoomLevel);
+          }
+          if (restored.pan !== undefined) {
+            setPan(restored.pan);
+          }
+          if (restored.selectedTool !== undefined) {
+            setSelectedTool(restored.selectedTool);
+          }
+          if (restored.selectedObjectId !== undefined) {
+            setSelectedObjectId(restored.selectedObjectId);
+          }
+          if (restored.layersConfig !== undefined) {
+            setLayers(prev => 
+              prev.map(l => {
+                const matched = restored.layersConfig.find((rc: any) => rc.layer_name === l.layer_name || rc.id === l.id);
+                if (matched) {
+                  return {
+                    ...l,
+                    is_visible: matched.is_visible,
+                    is_locked: matched.is_locked
+                  };
+                }
+                return l;
+              })
+            );
+          }
+        } catch (e) {
+          console.error("Failed to restore Map state from localStorage", e);
+        }
+      }
+      hasRestoredMapState.current = selectedLayoutId;
+    } else {
+      hasRestoredMapState.current = null;
+    }
+  }, [selectedLayoutId]);
+
+  // Auto-save Map state (zoom, pan, layers visibility/lock state, selectedTool, selectedObjectId)
+  useEffect(() => {
+    if (selectedLayoutId && hasRestoredMapState.current === selectedLayoutId) {
+      const stateToSave = {
+        zoomLevel,
+        pan,
+        selectedTool,
+        selectedObjectId,
+        layersConfig: layers.map(l => ({
+          id: l.id,
+          layer_name: l.layer_name,
+          is_visible: l.is_visible,
+          is_locked: l.is_locked
+        }))
+      };
+      localStorage.setItem(`bhoomi_map_restore_${selectedLayoutId}`, JSON.stringify(stateToSave));
+    }
+  }, [selectedLayoutId, zoomLevel, pan, selectedTool, selectedObjectId, layers]);
+
   // Handle auto-switching the active canvas drawing tool depending on active wizard step
   useEffect(() => {
     if (!isWizardMode) return;
@@ -1236,6 +1301,18 @@ export default function MapWorkspaceIndex({
 
   // Handlers
   const handleStartNewLayoutWizard = () => {
+    if (draftLayoutData) {
+      setShowDraftPromptModal(true);
+    } else {
+      executeStartNewLayoutWizard();
+    }
+  };
+
+  const executeStartNewLayoutWizard = () => {
+    if (selectedProjectId) {
+      localStorage.removeItem(`bhoomi_wizard_draft_${selectedProjectId}`);
+      setDraftLayoutData(null);
+    }
     setIsWizardMode(true);
     setWizardStep("info");
     setWizardLayoutName("");
@@ -1249,6 +1326,7 @@ export default function MapWorkspaceIndex({
     setSelectedObjectId(null);
     setCurrentStep("workspace");
     setStatusLog("Layout Creation Studio initialized. Step 1: Collect Layout Plan Information.");
+    setShowDraftPromptModal(false);
   };
 
   const handleResumeWizardDraft = () => {
@@ -5012,6 +5090,72 @@ export default function MapWorkspaceIndex({
             >
               Acknowledge Checks
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Draft Resume Prompt Modal */}
+      {showDraftPromptModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4" id="draft-resume-modal">
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="bg-slate-50 border-b border-slate-100 px-6 py-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-650 shrink-0">
+                <Database className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 font-sans">Active Session Draft Found</h3>
+                <p className="text-[11px] text-slate-500 font-sans font-medium">BhoomiOne Workspace Session Continuity</p>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-5">
+              <p className="text-xs text-slate-650 leading-relaxed">
+                An auto-saved drafting session layout draft exists for this project. Would you like to resume your previous work exactly where you left off, or start a new session?
+              </p>
+              {draftLayoutData && (
+                <div className="mt-4 p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-1.5 text-[11px] font-mono text-slate-700">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Layout Name:</span>
+                    <span className="font-bold text-slate-800">{draftLayoutData.wizardLayoutName || "Untitled Layout"}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Last Active Step:</span>
+                    <span className="font-bold text-indigo-700 uppercase">{draftLayoutData.wizardStep || "info"}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Elements Saved:</span>
+                    <span className="font-bold text-emerald-700">{(draftLayoutData.objects || []).length} items</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="bg-slate-50 border-t border-slate-100 px-6 py-4 flex flex-col sm:flex-row gap-2 justify-end">
+              <button
+                onClick={() => setShowDraftPromptModal(false)}
+                className="order-3 sm:order-1 text-xs font-bold text-slate-500 hover:text-slate-850 hover:bg-slate-150 px-4 py-2 rounded-xl transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={executeStartNewLayoutWizard}
+                className="order-2 sm:order-2 text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-4 py-2 rounded-xl border border-rose-200 transition-all"
+              >
+                Start New Session
+              </button>
+              <button
+                onClick={() => {
+                  handleResumeWizardDraft();
+                  setShowDraftPromptModal(false);
+                }}
+                className="order-1 sm:order-3 bg-indigo-650 hover:bg-indigo-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-md shadow-indigo-650/10 transition-all flex items-center justify-center gap-1.5"
+              >
+                <span>Resume Previous Draft</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
