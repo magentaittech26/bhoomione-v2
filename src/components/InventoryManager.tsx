@@ -81,6 +81,7 @@ const tryParseJSON = (val: any, fallback: any = {}) => {
 
 export default function InventoryManager({ user, onAuditLogged }: InventoryManagerProps) {
   const [activeTab, setActiveTab] = useState<"dashboard" | "projects" | "layouts" | "plots" | "cad" | "viewer" | "marketplace" | "commercial">("dashboard");
+  const [sidebarExpanded, setSidebarExpanded] = useState(true);
   const [projectWorkspaceTab, setProjectWorkspaceTab] = useState<"overview" | "layouts" | "plots" | "sales" | "customers" | "documents" | "reports" | "settings">("overview");
   const [plotDisplayMode, setPlotDisplayMode] = useState<"spreadsheet" | "card">("spreadsheet");
   const hasSetInitialTab = React.useRef(false);
@@ -3045,19 +3046,36 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
   };
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden" id="inventory-manager-container">
-      {/* Unified Persistent Navigation & Tab Control Header */}
-      <div className="border-b border-slate-200 bg-slate-50 px-6 py-5 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4" id="inv-header">
-        <div>
-          <h2 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-            <Compass className="w-5 h-5 text-indigo-600 animate-spin-slow" />
-            <span>BhoomiOne V3 Tenant ERP Workspace</span>
-          </h2>
-          <p className="text-[11px] text-slate-400 mt-0.5">Map-first land subdivision development, CAD uploads, and automated plot ledgers</p>
-        </div>
+    <div className="flex bg-[#F8FAFC] border border-slate-200/80 rounded-2xl shadow-sm overflow-hidden min-h-[750px] w-full" id="inventory-manager-container">
+      {/* Left Collapsible Sidebar */}
+      <div 
+        className={`bg-[#0F172A] text-slate-100 flex flex-col justify-between transition-all duration-300 ease-in-out shrink-0 select-none border-r border-slate-800 ${
+          sidebarExpanded ? "w-64" : "w-16"
+        }`} 
+        id="inv-sidebar"
+      >
+        <div className="flex flex-col flex-1 min-w-0">
+          {/* Logo Section */}
+          <div className="h-16 flex items-center px-4 border-b border-slate-800/60 justify-between">
+            {sidebarExpanded ? (
+              <div className="flex items-center gap-2.5 min-w-0 animate-fade-in">
+                <div className="w-8 h-8 bg-indigo-600 text-white rounded-lg flex items-center justify-center font-bold text-sm shadow-md shrink-0">
+                  BO
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-xs font-extrabold text-slate-100 tracking-wider uppercase truncate">BhoomiOne V3</span>
+                  <span className="text-[9px] text-slate-450 tracking-wide uppercase font-semibold">Tenant ERP</span>
+                </div>
+              </div>
+            ) : (
+              <div className="mx-auto w-8 h-8 bg-indigo-600 text-white rounded-lg flex items-center justify-center font-bold text-sm shadow-md">
+                BO
+              </div>
+            )}
+          </div>
 
-        <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto" id="inv-header-controls">
-          <div className="flex flex-wrap items-center gap-1.5 bg-slate-200/50 p-1 rounded-xl flex-1 xl:flex-none border border-slate-200/60" id="inv-tabs-group">
+          {/* Navigation Links */}
+          <div className="p-3 space-y-1.5 flex-1 overflow-y-auto">
             {[
               { id: "dashboard", label: "Dashboard", icon: LayoutGrid },
               { id: "projects", label: "Projects", icon: Building2, count: projects.length },
@@ -3073,33 +3091,84 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                 <button
                   key={tab.id}
                   onClick={() => { setActiveTab(tab.id as any); setErrorMess(null); }}
-                  className={`flex-1 xl:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                    isActive ? "bg-white text-slate-900 shadow-sm font-bold border border-slate-200/35" : "text-slate-500 hover:text-slate-900"
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 text-xs font-semibold rounded-lg transition-all duration-150 cursor-pointer text-left relative group ${
+                    isActive 
+                      ? "bg-indigo-600 text-white shadow-sm font-bold" 
+                      : "text-slate-400 hover:text-white hover:bg-slate-800/50"
                   }`}
-                  id={`tab-${tab.id}`}
+                  id={`sidebar-tab-${tab.id}`}
+                  title={!sidebarExpanded ? tab.label : undefined}
                 >
-                  <TabIcon className="w-3.5 h-3.5" />
-                  <span>{tab.label}</span>
-                  {tab.count !== undefined && (
-                    <span className={`px-1.5 py-0.2 text-[9px] font-bold rounded-full ml-1 ${isActive ? "bg-indigo-50 text-indigo-700" : "bg-slate-250 text-slate-500"}`}>
+                  <TabIcon className={`w-4 h-4 shrink-0 transition-colors ${isActive ? "text-white" : "text-slate-400 group-hover:text-white"}`} />
+                  {sidebarExpanded && (
+                    <span className="truncate flex-1">{tab.label}</span>
+                  )}
+                  {sidebarExpanded && tab.count !== undefined && (
+                    <span className={`px-1.5 py-0.2 text-[9px] font-bold rounded-full ml-auto ${
+                      isActive ? "bg-white/20 text-white" : "bg-slate-800 text-slate-400"
+                    }`}>
                       {tab.count}
                     </span>
+                  )}
+                  {!sidebarExpanded && (
+                    <div className="absolute left-16 bg-slate-950 text-white text-[10px] font-bold px-2 py-1 rounded shadow-md opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
+                      {tab.label} {tab.count !== undefined ? `(${tab.count})` : ""}
+                    </div>
                   )}
                 </button>
               );
             })}
           </div>
+        </div>
 
+        {/* Sidebar Footer */}
+        <div className="p-3 border-t border-slate-800/60 space-y-1.5 shrink-0 bg-slate-950/40">
           <button
             onClick={() => setGuideOpen(true)}
-            className="inline-flex items-center gap-1.5 bg-indigo-55 px-3 py-2.5 rounded-xl border border-indigo-150 text-indigo-700 font-bold text-xs hover:bg-indigo-100 transition-all cursor-pointer shadow-3xs"
-            id="open-usage-guide-btn"
+            className={`w-full flex items-center gap-3 px-3 py-2 text-xs font-semibold rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/50 cursor-pointer ${
+              !sidebarExpanded ? "justify-center" : ""
+            }`}
+            title="Usage Guide"
           >
-            <BookOpen className="w-4 h-4 text-indigo-600 animate-pulse" />
-            <span>Usage Guide</span>
+            <BookOpen className="w-4 h-4 text-indigo-400 animate-pulse shrink-0" />
+            {sidebarExpanded && <span>Usage Guide</span>}
+          </button>
+
+          <button
+            onClick={() => setSidebarExpanded(!sidebarExpanded)}
+            className="w-full flex items-center justify-center py-2 text-slate-500 hover:text-white cursor-pointer bg-slate-850/50 hover:bg-slate-850 rounded-lg transition-colors border-0"
+          >
+            {sidebarExpanded ? (
+              <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-slate-300">
+                <span>Collapse Menu</span>
+                <ChevronRight className="w-3.5 h-3.5 rotate-180" />
+              </div>
+            ) : (
+              <ChevronRight className="w-4 h-4" />
+            )}
           </button>
         </div>
       </div>
+
+      {/* Main Content Area */}
+      <div className="flex-1 bg-[#F8FAFC] flex flex-col min-w-0" id="inv-main-content">
+        {/* Workspace Top Header */}
+        <div className="border-b border-slate-200 bg-white px-8 py-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-sm" id="inv-header">
+          <div>
+            <div className="flex items-center gap-2 text-[10px] font-mono tracking-wider text-indigo-600 uppercase font-bold bg-indigo-50/50 border border-indigo-100/50 px-2 py-0.5 rounded-md w-fit">
+              <Activity className="w-3 h-3 text-indigo-500" />
+              <span>BHOOMIONE V3 CORE</span>
+            </div>
+            <h2 className="text-base font-extrabold text-slate-900 tracking-tight mt-1.5 flex items-center gap-2">
+              <span>Tenant ERP Workspace</span>
+            </h2>
+            <p className="text-xs text-slate-450 mt-0.5">Map-first land subdivision development, CAD uploads, and automated plot ledgers</p>
+          </div>
+
+          <div className="flex items-center gap-3 font-mono text-[10px] text-slate-400">
+            <span>Server Latency: <span className="font-bold text-emerald-600">Stable</span></span>
+          </div>
+        </div>
 
       {/* Dynamic Context-Aware Premium Header & Progress Engine */}
       <div className="bg-indigo-50/20 border-b border-indigo-150/40 p-6 space-y-4 animate-fade-in" id="project-active-context-bar">
@@ -6434,6 +6503,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
         }}
       />
 
+      </div>
     </div>
   );
 }
