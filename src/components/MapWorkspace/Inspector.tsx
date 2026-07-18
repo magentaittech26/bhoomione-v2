@@ -27,7 +27,10 @@ import {
   scalePoints, 
   detectPlotFacing,
   detectPlotCornerType,
-  runValidationSuite 
+  runValidationSuite,
+  calculateCenterlineLength,
+  generateCarriagewayPolygon,
+  calculateRoadDirection
 } from "../../lib/plotEngine.ts";
 import { 
   ModifyGeometryCommand, 
@@ -67,12 +70,54 @@ export default function Inspector({
   // Update simple direct properties
   const handlePropertyChange = (key: string, value: any) => {
     if (!selectedObject) return;
+    
+    let updatedProperties = {
+      ...selectedObject.properties,
+      [key]: value
+    };
+
+    let updatedName = selectedObject.name;
+
+    if (selectedObject.layerName === "ROADS") {
+      // If changing road type, update width automatically
+      if (key === "road_type") {
+        let defaultWidth = 12;
+        if (value === "Primary Road") defaultWidth = 15;
+        else if (value === "Secondary Road") defaultWidth = 12;
+        else if (value === "Internal Road") defaultWidth = 9;
+        else if (value === "Service Road") defaultWidth = 6;
+        else if (value === "Pedestrian Path") defaultWidth = 3;
+        
+        updatedProperties.road_width = defaultWidth;
+      }
+
+      if (key === "road_name") {
+        updatedName = value;
+      }
+
+      // Recalculate centerline, length, boundary, direction, status
+      const coords = selectedObject.geometry_data.coordinates as Array<[number, number]>;
+      const width = updatedProperties.road_width || 12;
+      const lenVal = calculateCenterlineLength(coords);
+      
+      updatedProperties = {
+        ...updatedProperties,
+        center_line: coords,
+        boundary: generateCarriagewayPolygon(coords, width),
+        length: parseFloat(lenVal.toFixed(2)),
+        direction: calculateRoadDirection(coords),
+        area_value: parseFloat((lenVal * width).toFixed(2))
+      };
+      
+      if (!updatedProperties.status) {
+        updatedProperties.status = "Draft";
+      }
+    }
+
     onUpdateObject({
       ...selectedObject,
-      properties: {
-        ...selectedObject.properties,
-        [key]: value
-      }
+      name: updatedName,
+      properties: updatedProperties
     });
   };
 
@@ -533,15 +578,90 @@ export default function Inspector({
 
                     {/* Roads specific controls */}
                     {selectedObject.layerName === "ROADS" && (
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Road Width (Meters)</label>
-                        <input
-                          type="number"
-                          value={selectedObject.properties.road_width || ""}
-                          onChange={(e) => handlePropertyChange("road_width", Number(e.target.value))}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500"
-                          id="attr-road-width"
-                        />
+                      <div className="space-y-4 border-b border-slate-100 pb-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Road Name</label>
+                          <input
+                            type="text"
+                            value={selectedObject.properties.road_name || selectedObject.name || ""}
+                            onChange={(e) => handlePropertyChange("road_name", e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500 font-medium text-xs"
+                            placeholder="Enter road name..."
+                            id="attr-road-name"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Road Classification</label>
+                          <select
+                            value={selectedObject.properties.road_type || "Secondary Road"}
+                            onChange={(e) => handlePropertyChange("road_type", e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500 text-xs font-medium cursor-pointer"
+                            id="attr-road-classification"
+                          >
+                            <option value="Primary Road">Primary Road (15m)</option>
+                            <option value="Secondary Road">Secondary Road (12m)</option>
+                            <option value="Internal Road">Internal Road (9m)</option>
+                            <option value="Service Road">Service Road (6m)</option>
+                            <option value="Pedestrian Path">Pedestrian Path (3m)</option>
+                          </select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Road Width (Meters)</label>
+                          <input
+                            type="number"
+                            value={selectedObject.properties.road_width || ""}
+                            onChange={(e) => handlePropertyChange("road_width", Number(e.target.value))}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500 font-semibold text-xs"
+                            min="1"
+                            max="50"
+                            id="attr-road-width"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Approval Status</label>
+                          <select
+                            value={selectedObject.properties.status || "Draft"}
+                            onChange={(e) => handlePropertyChange("status", e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500 text-xs font-medium cursor-pointer"
+                            id="attr-road-status"
+                          >
+                            <option value="Draft">Draft</option>
+                            <option value="Validated">Validated</option>
+                            <option value="Approved">Approved</option>
+                          </select>
+                        </div>
+
+                        {/* Real-time calculated spatial metadata */}
+                        <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 space-y-2">
+                          <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">Calculated Spatial Metrics</span>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div className="bg-white p-2 rounded-lg border border-slate-100">
+                              <span className="text-[9px] text-slate-400 block font-medium">Bearing / Heading</span>
+                              <span className="font-semibold text-slate-700 block">
+                                {selectedObject.properties.direction || calculateRoadDirection(selectedObject.geometry_data.coordinates as Array<[number, number]>)}
+                              </span>
+                            </div>
+                            <div className="bg-white p-2 rounded-lg border border-slate-100">
+                              <span className="text-[9px] text-slate-400 block font-medium">Segment Length</span>
+                              <span className="font-semibold text-slate-700 block">
+                                {(selectedObject.properties.length || calculateCenterlineLength(selectedObject.geometry_data.coordinates as Array<[number, number]>)).toFixed(1)} m
+                              </span>
+                            </div>
+                            <div className="bg-white p-2 rounded-lg border border-slate-100">
+                              <span className="text-[9px] text-slate-400 block font-medium">Total Carriageway Area</span>
+                              <span className="font-semibold text-slate-700 block">
+                                {((selectedObject.properties.length || calculateCenterlineLength(selectedObject.geometry_data.coordinates as Array<[number, number]>)) * (selectedObject.properties.road_width || 12)).toFixed(1)} sqm
+                              </span>
+                            </div>
+                            <div className="bg-white p-2 rounded-lg border border-slate-100">
+                              <span className="text-[9px] text-slate-400 block font-medium">GIS Standard</span>
+                              <span className="font-bold text-indigo-650 block">IRC Class A</span>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     )}
 

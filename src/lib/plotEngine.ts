@@ -360,6 +360,299 @@ export function runValidationSuite(objects: MockGeometry[]): string[] {
     }
   }
 
+  // 7. Roads Validation
+  const roads = objects.filter(o => o.layerName === "ROADS");
+  roads.forEach((road) => {
+    const roadWarnings = validateRoad(road, objects);
+    warnings.push(...roadWarnings);
+  });
+
+  return warnings;
+}
+
+/**
+ * Calculates centerline total length in physical meters.
+ * Scale: 1 pixel = 0.5 meters
+ */
+export function calculateCenterlineLength(pts: Array<[number, number]>): number {
+  if (pts.length < 2) return 0;
+  let lenPx = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const dx = pts[i + 1][0] - pts[i][0];
+    const dy = pts[i + 1][1] - pts[i][1];
+    lenPx += Math.sqrt(dx * dx + dy * dy);
+  }
+  return lenPx * 0.5;
+}
+
+/**
+ * Calculates road bearing direction mapped to compass directions
+ */
+export function calculateRoadDirection(pts: Array<[number, number]>): string {
+  if (pts.length < 2) return "N";
+  const start = pts[0];
+  const end = pts[pts.length - 1];
+  const dx = end[0] - start[0];
+  const dy = end[1] - start[1];
+  const angleRad = Math.atan2(dy, dx);
+  const angleDeg = (angleRad * 180) / Math.PI;
+  
+  let compass = "N";
+  const normalizedDeg = (angleDeg + 360) % 360;
+  if (normalizedDeg >= 337.5 || normalizedDeg < 22.5) compass = "E";
+  else if (normalizedDeg >= 22.5 && normalizedDeg < 67.5) compass = "SE";
+  else if (normalizedDeg >= 67.5 && normalizedDeg < 112.5) compass = "S";
+  else if (normalizedDeg >= 112.5 && normalizedDeg < 157.5) compass = "SW";
+  else if (normalizedDeg >= 157.5 && normalizedDeg < 202.5) compass = "W";
+  else if (normalizedDeg >= 202.5 && normalizedDeg < 247.5) compass = "NW";
+  else if (normalizedDeg >= 247.5 && normalizedDeg < 292.5) compass = "N";
+  else compass = "NE";
+  
+  return `${compass} (${normalizedDeg.toFixed(0)}°)`;
+}
+
+/**
+ * Generates outer carriageway polygon boundaries based on center line coordinates and width in meters.
+ * Scale: 1 pixel = 0.5 meters (so a meter of offset is widthInMeters world units on both sides of the center line)
+ */
+export function generateCarriagewayPolygon(pts: Array<[number, number]>, widthInMeters: number): Array<[number, number]> {
+  if (pts.length < 2) return [];
+  const leftPoints: Array<[number, number]> = [];
+  const rightPoints: Array<[number, number]> = [];
+
+  for (let i = 0; i < pts.length; i++) {
+    let dx = 0;
+    let dy = 0;
+
+    if (i === 0) {
+      dx = pts[1][0] - pts[0][0];
+      dy = pts[1][1] - pts[0][1];
+    } else if (i === pts.length - 1) {
+      dx = pts[pts.length - 1][0] - pts[pts.length - 2][0];
+      dy = pts[pts.length - 1][1] - pts[pts.length - 2][1];
+    } else {
+      const dx1 = pts[i][0] - pts[i - 1][0];
+      const dy1 = pts[i][1] - pts[i - 1][1];
+      const len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1) || 1;
+
+      const dx2 = pts[i + 1][0] - pts[i][0];
+      const dy2 = pts[i + 1][1] - pts[i][1];
+      const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2) || 1;
+
+      dx = (dx1 / len1) + (dx2 / len2);
+      dy = (dy1 / len1) + (dy2 / len2);
+    }
+
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len === 0) continue;
+
+    const nx = -dy / len;
+    const ny = dx / len;
+
+    // 1 pixel = 0.5 meters.
+    // For a physical offset of widthInMeters / 2 on each side, we want:
+    // (widthInMeters / 2) / 0.5 = widthInMeters world units.
+    const offsetUnits = widthInMeters;
+
+    leftPoints.push([pts[i][0] + nx * offsetUnits, pts[i][1] + ny * offsetUnits]);
+    rightPoints.push([pts[i][0] - nx * offsetUnits, pts[i][1] - ny * offsetUnits]);
+  }
+
+  return [...leftPoints, ...rightPoints.reverse()];
+}
+
+/**
+ * Performs intersection calculations for line segments
+ */
+export function lineSegmentsIntersect(
+  p1: [number, number],
+  q1: [number, number],
+  p2: [number, number],
+  q2: [number, number]
+): boolean {
+  const orientation = (p: [number, number], q: [number, number], r: [number, number]): number => {
+    const val = (q[1] - p[1]) * (r[0] - q[0]) - (q[0] - p[0]) * (r[1] - q[1]);
+    if (Math.abs(val) < 1e-9) return 0;
+    return (val > 0) ? 1 : 2;
+  };
+
+  const onSegment = (p: [number, number], q: [number, number], r: [number, number]): boolean => {
+    return q[0] <= Math.max(p[0], r[0]) && q[0] >= Math.min(p[0], r[0]) &&
+           q[1] <= Math.max(p[1], r[1]) && q[1] >= Math.min(p[1], r[1]);
+  };
+
+  const o1 = orientation(p1, q1, p2);
+  const o2 = orientation(p1, q1, q2);
+  const o3 = orientation(p2, q2, p1);
+  const o4 = orientation(p2, q2, q1);
+
+  if (o1 !== o2 && o3 !== o4) return true;
+
+  if (o1 === 0 && onSegment(p1, p2, q1)) return true;
+  if (o2 === 0 && onSegment(p1, q2, q1)) return true;
+  if (o3 === 0 && onSegment(p2, p1, q2)) return true;
+  if (o4 === 0 && onSegment(p2, q1, q2)) return true;
+
+  return false;
+}
+
+/**
+ * Validates a single road spatial object for Connectivity, Boundaries, Crossings, Dead-ends, and Minimum Width.
+ */
+export function validateRoad(road: MockGeometry, objects: MockGeometry[]): string[] {
+  const warnings: string[] = [];
+  const roadCoords = road.geometry_data.coordinates as Array<[number, number]>;
+  if (!roadCoords || roadCoords.length < 2) return warnings;
+
+  const roadName = road.properties.road_name || road.properties.name || road.name;
+  const width = road.properties.road_width || 12;
+
+  // 1. Minimum width validation
+  const minWidthRequired = 3;
+  if (width < minWidthRequired) {
+    warnings.push(`Road "${roadName}": Width (${width}m) is below the minimum required standard of ${minWidthRequired}m.`);
+  }
+
+  // 2. Road cannot leave boundary
+  const boundaryObj = objects.find(o => o.layerName === "BOUNDARY");
+  if (boundaryObj) {
+    const boundaryCoords = boundaryObj.geometry_data.coordinates as Array<[number, number]>;
+    if (boundaryCoords && boundaryCoords.length >= 3) {
+      let leftBoundary = false;
+      for (const pt of roadCoords) {
+        if (!isPointInsidePolygon(pt, boundaryCoords)) {
+          leftBoundary = true;
+          break;
+        }
+      }
+      if (leftBoundary) {
+        warnings.push(`Road "${roadName}": Coordinates exceed the layout boundary polygon limit.`);
+      }
+    }
+  }
+
+  const otherRoads = objects.filter(o => o.layerName === "ROADS" && o.id !== road.id);
+
+  // Helper to check if two points are close (2 meters = 4 pixels)
+  const arePointsClose = (p1: [number, number], p2: [number, number], tolerancePx = 4) => {
+    const dx = p1[0] - p2[0];
+    const dy = p1[1] - p2[1];
+    return Math.sqrt(dx * dx + dy * dy) <= tolerancePx;
+  };
+
+  // Helper to find minimum distance from a point to another road centerline
+  const distanceToPolyline = (p: [number, number], poly: Array<[number, number]>) => {
+    let minDist = Infinity;
+    for (let i = 0; i < poly.length - 1; i++) {
+      const dist = distanceToSegment(p, poly[i], poly[i + 1]);
+      if (dist < minDist) minDist = dist;
+    }
+    return minDist;
+  };
+
+  // 3. Road must connect
+  let isConnected = false;
+  if (otherRoads.length === 0 && !boundaryObj) {
+    isConnected = true;
+  } else {
+    const startPt = roadCoords[0];
+    const endPt = roadCoords[roadCoords.length - 1];
+
+    for (const other of otherRoads) {
+      const otherCoords = other.geometry_data.coordinates as Array<[number, number]>;
+      if (!otherCoords || otherCoords.length < 2) continue;
+
+      for (const opt of otherCoords) {
+        if (arePointsClose(startPt, opt) || arePointsClose(endPt, opt)) {
+          isConnected = true;
+          break;
+        }
+      }
+      if (isConnected) break;
+
+      if (distanceToPolyline(startPt, otherCoords) <= 4 || distanceToPolyline(endPt, otherCoords) <= 4) {
+        isConnected = true;
+        break;
+      }
+    }
+
+    if (!isConnected && boundaryObj) {
+      const boundaryCoords = boundaryObj.geometry_data.coordinates as Array<[number, number]>;
+      if (boundaryCoords) {
+        for (const bpt of boundaryCoords) {
+          if (arePointsClose(startPt, bpt) || arePointsClose(endPt, bpt)) {
+            isConnected = true;
+            break;
+          }
+        }
+        if (!isConnected && (distanceToPolyline(startPt, boundaryCoords) <= 4 || distanceToPolyline(endPt, boundaryCoords) <= 4)) {
+          isConnected = true;
+        }
+      }
+    }
+  }
+
+  if (!isConnected && (otherRoads.length > 0 || boundaryObj)) {
+    warnings.push(`Road "${roadName}": Connectivity warning. Road does not touch any other road centerlines or boundary.`);
+  }
+
+  // 4. Dead-end warning
+  if (otherRoads.length > 0 || boundaryObj) {
+    const startPt = roadCoords[0];
+    const endPt = roadCoords[roadCoords.length - 1];
+
+    let startConnected = false;
+    let endConnected = false;
+
+    for (const other of otherRoads) {
+      const otherCoords = other.geometry_data.coordinates as Array<[number, number]>;
+      if (!otherCoords) continue;
+
+      for (const opt of otherCoords) {
+        if (arePointsClose(startPt, opt)) startConnected = true;
+        if (arePointsClose(endPt, opt)) endConnected = true;
+      }
+      if (distanceToPolyline(startPt, otherCoords) <= 4) startConnected = true;
+      if (distanceToPolyline(endPt, otherCoords) <= 4) endConnected = true;
+    }
+
+    if (boundaryObj) {
+      const boundaryCoords = boundaryObj.geometry_data.coordinates as Array<[number, number]>;
+      if (boundaryCoords) {
+        if (distanceToPolyline(startPt, boundaryCoords) <= 4) startConnected = true;
+        if (distanceToPolyline(endPt, boundaryCoords) <= 4) endConnected = true;
+      }
+    }
+
+    if (!startConnected || !endConnected) {
+      warnings.push(`Road "${roadName}": Dead-end warning. Road has at least one loose, disconnected terminus.`);
+    }
+  }
+
+  // 5. Roads cannot overlap incorrectly
+  for (const other of otherRoads) {
+    const otherCoords = other.geometry_data.coordinates as Array<[number, number]>;
+    if (!otherCoords || otherCoords.length < 2) continue;
+
+    for (let i = 0; i < roadCoords.length - 1; i++) {
+      const p1 = roadCoords[i];
+      const q1 = roadCoords[i + 1];
+
+      for (let j = 0; j < otherCoords.length - 1; j++) {
+        const p2 = otherCoords[j];
+        const q2 = otherCoords[j + 1];
+
+        if (lineSegmentsIntersect(p1, q1, p2, q2)) {
+          const sharesVertex = arePointsClose(p1, p2) || arePointsClose(p1, q2) || arePointsClose(q1, p2) || arePointsClose(q1, q2);
+          if (!sharesVertex) {
+            const otherName = other.properties.road_name || other.properties.name || other.name;
+            warnings.push(`Road Overlap: "${roadName}" incorrectly crosses "${otherName}" without a snap/intersection node.`);
+          }
+        }
+      }
+    }
+  }
+
   return warnings;
 }
 

@@ -9,7 +9,10 @@ import {
   detectPlotFacing, 
   detectPlotCornerType, 
   rotatePoints, 
-  scalePoints 
+  scalePoints,
+  calculateCenterlineLength,
+  generateCarriagewayPolygon,
+  calculateRoadDirection
 } from "../../lib/plotEngine.ts";
 
 interface CanvasProps {
@@ -852,7 +855,23 @@ export default function Canvas({
         owner: ""
       };
     } else if (selectedTool === "road") {
-      initialProperties = { road_width: 12, owner: "" };
+      const roadCount = objects.filter(o => o.layerName === "ROADS").length + 1;
+      const lengthVal = calculateCenterlineLength(sanitized);
+      const defaultWidth = 12;
+      const boundaryVal = generateCarriagewayPolygon(sanitized, defaultWidth);
+      const directionVal = calculateRoadDirection(sanitized);
+      initialProperties = {
+        road_name: `Secondary Road ${roadCount}`,
+        road_type: "Secondary Road",
+        road_width: defaultWidth,
+        center_line: sanitized,
+        boundary: boundaryVal,
+        length: parseFloat(lengthVal.toFixed(2)),
+        direction: directionVal,
+        status: "Draft",
+        area_value: parseFloat((lengthVal * defaultWidth).toFixed(2)),
+        owner: "Municipal Board"
+      };
     }
 
     const newObj: MockGeometry = {
@@ -860,7 +879,11 @@ export default function Canvas({
       layer_id: layerId,
       layout_id: "lay-1",
       layerName: layerName as any,
-      name: selectedTool === "plot" ? `Subdivided Plot ${initialProperties.plot_number}` : `New ${selectedTool.charAt(0).toUpperCase() + selectedTool.slice(1)} ${objects.length + 1}`,
+      name: selectedTool === "plot" 
+        ? `Subdivided Plot ${initialProperties.plot_number}` 
+        : selectedTool === "road"
+          ? initialProperties.road_name
+          : `New ${selectedTool.charAt(0).toUpperCase() + selectedTool.slice(1)} ${objects.length + 1}`,
       object_type: isPolygon ? "POLYGON" : "POLYLINE",
       geometry_data: {
         coordinates: sanitized
@@ -924,9 +947,23 @@ export default function Canvas({
         if (o.id === draggedVertexObjectId) {
           const coords = [...(o.geometry_data.coordinates as Array<[number, number]>)];
           coords[draggedVertexIndex] = [finalX, finalY];
+          let props = { ...o.properties };
+          if (o.layerName === "ROADS") {
+            const width = o.properties.road_width || 12;
+            const len = calculateCenterlineLength(coords);
+            props = {
+              ...props,
+              center_line: coords,
+              boundary: generateCarriagewayPolygon(coords, width),
+              length: parseFloat(len.toFixed(2)),
+              direction: calculateRoadDirection(coords),
+              area_value: parseFloat((len * width).toFixed(2))
+            };
+          }
           return {
             ...o,
-            geometry_data: { ...o.geometry_data, coordinates: coords }
+            geometry_data: { ...o.geometry_data, coordinates: coords },
+            properties: props
           };
         }
         return o;
@@ -944,9 +981,23 @@ export default function Canvas({
       const updated = objects.map(o => {
         if (o.id === movingGeometryObjectId) {
           const shifted = movingGeometryStartCoords.map(pt => [pt[0] + dx, pt[1] + dy] as [number, number]);
+          let props = { ...o.properties };
+          if (o.layerName === "ROADS") {
+            const width = o.properties.road_width || 12;
+            const len = calculateCenterlineLength(shifted);
+            props = {
+              ...props,
+              center_line: shifted,
+              boundary: generateCarriagewayPolygon(shifted, width),
+              length: parseFloat(len.toFixed(2)),
+              direction: calculateRoadDirection(shifted),
+              area_value: parseFloat((len * width).toFixed(2))
+            };
+          }
           return {
             ...o,
-            geometry_data: { ...o.geometry_data, coordinates: shifted }
+            geometry_data: { ...o.geometry_data, coordinates: shifted },
+            properties: props
           };
         }
         return o;

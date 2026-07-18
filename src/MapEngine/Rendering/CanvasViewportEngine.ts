@@ -1,5 +1,5 @@
 import { GeometryLayer, GeometryObject } from "../Contracts/models.ts";
-import { calculatePlotMetrics } from "../../lib/plotEngine.ts";
+import { calculatePlotMetrics, generateCarriagewayPolygon } from "../../lib/plotEngine.ts";
 
 /**
  * Viewport State representing the active camera metrics on the infinite canvas.
@@ -517,41 +517,38 @@ export class CanvasViewportEngine {
       const pts = coords as Array<[number, number]>;
       if (layer.layer_name === "ROADS" && pts.length > 0) {
         const roadWidth = (obj.properties as any)?.road_width || 12;
+        const boundaryPts = (obj.properties as any)?.boundary || generateCarriagewayPolygon(pts, roadWidth);
+
+        if (boundaryPts && boundaryPts.length >= 3) {
+          // A. Draw full generated physical carriageway polygon filled with asphalt/configured style
+          ctx.save();
+          ctx.beginPath();
+          const startPt = this.worldToScreen(boundaryPts[0][0], boundaryPts[0][1]);
+          ctx.moveTo(startPt.x, startPt.y);
+          for (let i = 1; i < boundaryPts.length; i++) {
+            const pt = this.worldToScreen(boundaryPts[i][0], boundaryPts[i][1]);
+            ctx.lineTo(pt.x, pt.y);
+          }
+          ctx.closePath();
+
+          // Use style configuration from layer or default asphalt color
+          ctx.fillStyle = this.hexToRgba(style.fillColor || "#475569", style.opacity !== undefined ? style.opacity : 0.8);
+          ctx.fill();
+
+          // Draw side curb borders (Shoulders)
+          ctx.strokeStyle = isSelected ? "#6366F1" : style.strokeColor || "#1E293B";
+          ctx.lineWidth = isSelected ? Math.max(2, 2.5 * this.state.zoom) : Math.max(1, 1.25 * this.state.zoom);
+          if (isSelected) {
+            ctx.setLineDash([6 * this.state.zoom, 4 * this.state.zoom]);
+          }
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // B. Yellow centerline divider
+        ctx.save();
+        ctx.beginPath();
         const start = this.worldToScreen(pts[0][0], pts[0][1]);
-
-        // A. Base casing (Dark outer border)
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(start.x, start.y);
-        for (let i = 1; i < pts.length; i++) {
-          const pt = this.worldToScreen(pts[i][0], pts[i][1]);
-          ctx.lineTo(pt.x, pt.y);
-        }
-        ctx.strokeStyle = isSelected ? "#6366F1" : "#334155";
-        ctx.lineWidth = roadWidth * this.state.zoom;
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
-        ctx.stroke();
-        ctx.restore();
-
-        // B. Asphalt layer (Core fill)
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(start.x, start.y);
-        for (let i = 1; i < pts.length; i++) {
-          const pt = this.worldToScreen(pts[i][0], pts[i][1]);
-          ctx.lineTo(pt.x, pt.y);
-        }
-        ctx.strokeStyle = "#64748B";
-        ctx.lineWidth = Math.max(1.5, (roadWidth - 2) * this.state.zoom);
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
-        ctx.stroke();
-        ctx.restore();
-
-        // C. Yellow centerline divider
-        ctx.save();
-        ctx.beginPath();
         ctx.moveTo(start.x, start.y);
         for (let i = 1; i < pts.length; i++) {
           const pt = this.worldToScreen(pts[i][0], pts[i][1]);
@@ -565,7 +562,7 @@ export class CanvasViewportEngine {
         ctx.stroke();
         ctx.restore();
 
-        // D. Direction arrows
+        // C. Direction arrows
         ctx.save();
         ctx.strokeStyle = "rgba(255, 255, 255, 0.75)";
         ctx.lineWidth = Math.max(1, 1.5 * this.state.zoom);
