@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { 
   X, BookOpen, HelpCircle, ArrowLeftRight, CheckCircle, 
   Compass, FileCode2, Layers, Building2, Grid, Percent, 
-  LayoutGrid, ChevronRight, GraduationCap, Trophy, Play
+  LayoutGrid, ChevronRight, GraduationCap, Trophy, Play, Plus
 } from "lucide-react";
 
 interface UsageGuideDrawerProps {
@@ -14,6 +14,7 @@ interface UsageGuideDrawerProps {
   projects: any[];
   layouts: any[];
   plots: any[];
+  onCreateLayout?: () => void;
 }
 
 export default function UsageGuideDrawer({
@@ -23,7 +24,8 @@ export default function UsageGuideDrawer({
   setActiveTab,
   projects,
   layouts,
-  plots
+  plots,
+  onCreateLayout
 }: UsageGuideDrawerProps) {
   // Persist user preference for mode and position
   const [mode, setMode] = useState<"beginner" | "expert">(() => {
@@ -333,33 +335,67 @@ export default function UsageGuideDrawer({
                 </div>
 
                 {/* Micro Steps Map */}
-                <div className="flex flex-wrap gap-1.5">
-                  {steps.map((step, idx) => {
-                    const stepIcon = step.icon;
-                    const isStepActive = activeTab === step.id;
-                    return (
-                      <button
-                        key={step.id}
-                        onClick={() => setActiveTab(step.id)}
-                        className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-lg border transition-all ${
-                          isStepActive 
-                            ? "bg-indigo-650 text-white border-indigo-750 shadow-sm" 
-                            : step.isDone
-                              ? "bg-emerald-50 text-emerald-800 border-emerald-100"
-                              : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
-                        }`}
-                        title={`${step.label}: ${step.isDone ? "Done" : "Pending"}`}
-                      >
-                        {step.isDone ? (
-                          <CheckCircle className={`w-3 h-3 ${isStepActive ? "text-white" : "text-emerald-600"}`} />
-                        ) : (
+                {layouts.length === 0 ? (
+                  <div className="mt-2 bg-white border border-slate-200/60 rounded-xl p-3.5 space-y-2.5 shadow-3xs" id="guide-progress-checklist">
+                    <div className="flex items-center gap-2 text-emerald-700 font-extrabold text-xs">
+                      <span className="text-sm">✔</span>
+                      <span>Project</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-indigo-650 font-extrabold text-xs animate-pulse">
+                      <span className="text-sm">▶</span>
+                      <span>Create Layout</span>
+                    </div>
+                    <div className="pt-2 border-t border-slate-100">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Remaining steps</span>
+                      <ul className="space-y-1.5 text-xs text-slate-500 font-semibold pl-1.5 list-none">
+                        <li className="flex items-center gap-2">
                           <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
-                        )}
-                        <span>{idx + 1}. {step.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+                          <span>Imports</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                          <span>Interactive Map</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                          <span>Plots</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                          <span>Commercial</span>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {steps.map((step, idx) => {
+                      const stepIcon = step.icon;
+                      const isStepActive = activeTab === step.id;
+                      return (
+                        <button
+                          key={step.id}
+                          onClick={() => setActiveTab(step.id)}
+                          className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-lg border transition-all ${
+                            isStepActive 
+                              ? "bg-indigo-650 text-white border-indigo-750 shadow-sm" 
+                              : step.isDone
+                                ? "bg-emerald-50 text-emerald-800 border-emerald-100"
+                                : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+                          }`}
+                          title={`${step.label}: ${step.isDone ? "Done" : "Pending"}`}
+                        >
+                          {step.isDone ? (
+                            <CheckCircle className={`w-3 h-3 ${isStepActive ? "text-white" : "text-emerald-600"}`} />
+                          ) : (
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                          )}
+                          <span>{idx + 1}. {step.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -404,9 +440,22 @@ export default function UsageGuideDrawer({
                       <div className="bg-white p-4 rounded-xl border border-indigo-100 space-y-2.5 shadow-3xs">
                         <h5 className="font-bold text-xs text-indigo-800 uppercase tracking-wider border-b border-indigo-50 pb-1.5 flex items-center gap-1.5">
                           <Play className="w-3.5 h-3.5 text-indigo-600 fill-indigo-600" />
-                          <span>Recommended Next Action</span>
+                          <span>{layouts.length === 0 ? "Create First Layout" : "Recommended Next Action"}</span>
                         </h5>
-                        <p className="text-xs text-slate-700 font-medium leading-relaxed">{guide.beginner.nextStep}</p>
+                        <p className="text-xs text-slate-700 font-medium leading-relaxed">
+                          {layouts.length === 0 
+                            ? "Configure a subdivision layout design plan for your physical master projects." 
+                            : guide.beginner.nextStep}
+                        </p>
+                        {layouts.length === 0 && onCreateLayout && (
+                          <button
+                            onClick={onCreateLayout}
+                            className="w-full bg-indigo-650 hover:bg-indigo-750 text-white font-bold text-xs py-2 px-4 rounded-xl transition-all cursor-pointer border-0 flex items-center justify-center gap-1.5 mt-2 shadow-xs"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Create First Layout</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -436,9 +485,22 @@ export default function UsageGuideDrawer({
                       <div className="bg-white p-4 rounded-xl border border-indigo-100 space-y-2.5 shadow-3xs">
                         <h5 className="font-bold text-xs text-indigo-800 uppercase tracking-wider border-b border-indigo-50 pb-1.5 flex items-center gap-1.5">
                           <Play className="w-3.5 h-3.5 text-indigo-600 fill-indigo-600" />
-                          <span>Recommended Next Action</span>
+                          <span>{layouts.length === 0 ? "Create First Layout" : "Recommended Next Action"}</span>
                         </h5>
-                        <p className="text-xs text-slate-700 font-medium leading-relaxed">{guide.expert.nextStep}</p>
+                        <p className="text-xs text-slate-700 font-medium leading-relaxed">
+                          {layouts.length === 0 
+                            ? "Configure a subdivision layout design plan for your physical master projects." 
+                            : guide.expert.nextStep}
+                        </p>
+                        {layouts.length === 0 && onCreateLayout && (
+                          <button
+                            onClick={onCreateLayout}
+                            className="w-full bg-indigo-650 hover:bg-indigo-750 text-white font-bold text-xs py-2 px-4 rounded-xl transition-all cursor-pointer border-0 flex items-center justify-center gap-1.5 mt-2 shadow-xs"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Create First Layout</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}

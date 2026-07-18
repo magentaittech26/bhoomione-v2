@@ -3748,7 +3748,10 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                         approval_status: "PENDING",
                         approval_authority: "",
                         launch_date: "",
-                        possession_target_date: ""
+                        possession_target_date: "",
+                        project_type: "RESIDENTIAL",
+                        approvals_metadata: "{}",
+                        country: "IN"
                       });
                       setCurrModal("create_project");
                     }}
@@ -3844,7 +3847,66 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                 )}
               </div>
 
-              {/* Filtering suite */}
+              {layouts.length === 0 || lookupLayouts.length === 0 ? (
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-8 max-w-xl mx-auto shadow-sm space-y-6 text-center my-8" id="layouts-guided-onboarding-card">
+                  <div className="mx-auto bg-indigo-50 text-indigo-650 w-16 h-16 rounded-full flex items-center justify-center shadow-xs">
+                    <Layers className="w-8 h-8 text-indigo-650" />
+                  </div>
+                  <div className="space-y-3">
+                    <h3 className="text-lg font-extrabold text-slate-900 tracking-tight">No Layouts Created Yet</h3>
+                    <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+                      A Layout represents a subdivision or development phase inside a Project.
+                      Before importing PDF, Images or DXF drawings, the Project must contain at least one Layout.
+                    </p>
+                  </div>
+                  
+                  <div className="bg-white border border-slate-200 rounded-xl p-4 max-w-sm mx-auto text-left space-y-2.5">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Example layout phases:</span>
+                    <ul className="space-y-1.5 text-xs text-slate-600 font-semibold pl-1">
+                      <li className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                        <span>Phase 1 Residential</span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                        <span>Phase 2 Villas</span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                        <span>Commercial Zone</span>
+                      </li>
+                    </ul>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setEditId(null);
+                      setFormLay({
+                        project_id: lookupProjects[0]?.id || "",
+                        name: "",
+                        code: "",
+                        layout_type: "RESIDENTIAL",
+                        approval_number: "",
+                        survey_number: "",
+                        approval_date: "",
+                        total_area_value: "",
+                        total_area_unit_id: units[0]?.id || "",
+                        measurement_unit_id: units[0]?.id || "",
+                        status: "DRAFT",
+                        phase: "",
+                        description: ""
+                      });
+                      setCurrModal("create_layout");
+                    }}
+                    className="mx-auto bg-indigo-650 hover:bg-indigo-750 text-white font-bold text-xs py-3 px-6 rounded-xl shadow-md transition-all cursor-pointer border-0 flex items-center justify-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Create First Layout</span>
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* Filtering suite */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100/50">
                 <div>
                   <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Project filter</label>
@@ -4071,7 +4133,9 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                   </button>
                 </div>
               </div>
-            </div>
+            </>
+          )}
+        </div>
             )
           )}
 
@@ -6349,6 +6413,25 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
         projects={projects}
         layouts={layouts}
         plots={plots}
+        onCreateLayout={() => {
+          setEditId(null);
+          setFormLay({
+            project_id: lookupProjects[0]?.id || "",
+            name: "",
+            code: "",
+            layout_type: "RESIDENTIAL",
+            approval_number: "",
+            survey_number: "",
+            approval_date: "",
+            total_area_value: "",
+            total_area_unit_id: units[0]?.id || "",
+            measurement_unit_id: units[0]?.id || "",
+            status: "DRAFT",
+            phase: "",
+            description: ""
+          });
+          setCurrModal("create_layout");
+        }}
       />
 
     </div>
