@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import api from "./lib/api.ts";
 import { DomainResolver, AppType, ResolvedDomain } from "./lib/DomainResolver.ts";
+import { BhoomiModuleRegistry } from "./modules/index.ts";
 import MarketplaceApp from "./components/apps/MarketplaceApp.tsx";
 import SaaSAdminApp from "./components/apps/SaaSAdminApp.tsx";
 import TenantWorkspaceApp from "./components/apps/TenantWorkspaceApp.tsx";
@@ -82,6 +83,9 @@ export default function App() {
     api.fetchMySubscriptionSummary(activeTenant)
       .then((res) => {
         if (isMounted && res && res.enabled_features) {
+          // Sync with centralized spatial-core BhoomiModuleRegistry
+          BhoomiModuleRegistry.getInstance().setEntitlements(res.enabled_features);
+
           const rawFeats = res.enabled_features.map((f: string) => f.toLowerCase());
           const expandedFeats = [...rawFeats];
           if (rawFeats.includes("plots.view") || rawFeats.includes("plots.manage")) {

@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import api from "../../lib/api.ts";
 import { runValidationSuite } from "../../lib/plotEngine.ts";
+import { isModuleActive } from "../../modules/index.ts";
 import { WorkspaceState, MockGeometry, WorkspaceTool } from "./types.ts";
 import { GeometryLayer, LayoutAsset, LayoutVersion } from "../../MapEngine/Contracts/models.ts";
 import { DrawingToolManager, DeleteObjectCommand, AppTool } from "../../MapEngine/Drawing/DrawingToolManager.ts";
@@ -1846,7 +1847,20 @@ export default function MapWorkspaceIndex({
 
       if (shortcuts[key]) {
         e.preventDefault();
-        drawingManagerRef.current.switchTool(shortcuts[key]);
+        const tool = shortcuts[key];
+        let isToolActive = true;
+        if (tool === "boundary" && !isModuleActive("mod-boundary")) isToolActive = false;
+        else if (tool === "road" && !isModuleActive("mod-roads")) isToolActive = false;
+        else if (tool === "plot" && !isModuleActive("mod-plots")) isToolActive = false;
+        else if (tool === "park" && !isModuleActive("mod-parks")) isToolActive = false;
+        else if (tool === "amenity" && !isModuleActive("mod-amenities")) isToolActive = false;
+        else if (tool === "utility" && !isModuleActive("mod-utilities")) isToolActive = false;
+
+        if (isToolActive) {
+          drawingManagerRef.current.switchTool(tool);
+        } else {
+          setStatusLog(`Tool shortcut for "${tool}" disabled (Module licensing required).`);
+        }
       }
     };
 

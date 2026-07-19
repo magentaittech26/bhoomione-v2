@@ -1,4 +1,6 @@
 import { MockGeometry } from "../components/MapWorkspace/types.ts";
+import { validateUtilities } from "./utilityEngine.ts";
+import { isModuleActive } from "../modules/index.ts";
 
 export interface AreaMetrics {
   sqm: number;
@@ -304,7 +306,7 @@ export function checkPolygonsOverlap(polyA: Array<[number, number]>, polyB: Arra
  */
 export function runValidationSuite(objects: MockGeometry[]): string[] {
   const warnings: string[] = [];
-  const plots = objects.filter(o => o.layerName === "PLOTS");
+  const plots = isModuleActive("mod-plots") ? objects.filter(o => o.layerName === "PLOTS") : [];
   
   const plotNumbers = new Set<string>();
   
@@ -361,11 +363,280 @@ export function runValidationSuite(objects: MockGeometry[]): string[] {
   }
 
   // 7. Roads Validation
-  const roads = objects.filter(o => o.layerName === "ROADS");
-  roads.forEach((road) => {
-    const roadWarnings = validateRoad(road, objects);
-    warnings.push(...roadWarnings);
+  const roads = isModuleActive("mod-roads") ? objects.filter(o => o.layerName === "ROADS") : [];
+  if (isModuleActive("mod-roads")) {
+    roads.forEach((road) => {
+      const roadWarnings = validateRoad(road, objects);
+      warnings.push(...roadWarnings);
+    });
+  }
+
+  // 8. Parks Validation
+  const parks = isModuleActive("mod-parks") ? objects.filter(o => o.layerName === "PARK") : [];
+  const boundary = objects.find(o => o.layerName === "BOUNDARY");
+  const boundaryCoords = boundary?.geometry_data.coordinates as Array<[number, number]>;
+
+  parks.forEach((park) => {
+    const parkCoords = park.geometry_data.coordinates as Array<[number, number]>;
+    if (!parkCoords || parkCoords.length < 3) {
+      warnings.push(`Park "${park.name}": Open polygon warning (fewer than 3 vertices).`);
+      return;
+    }
+
+    const parkName = park.properties?.park_name || park.name || "Unnamed Park";
+
+    // A. Park inside Boundary
+    if (boundaryCoords && boundaryCoords.length >= 3) {
+      let isFullyInside = true;
+      for (const pt of parkCoords) {
+        if (!isPointInsidePolygon(pt, boundaryCoords)) {
+          isFullyInside = false;
+          break;
+        }
+      }
+      if (!isFullyInside) {
+        warnings.push(`Park "${parkName}": Located outside or intersecting layout boundary.`);
+      }
+    }
+
+    // B. No overlap with Roads
+    roads.forEach((road) => {
+      const roadCoords = road.geometry_data.coordinates as Array<[number, number]>;
+      if (!roadCoords || roadCoords.length < 2) return;
+      const roadWidth = road.properties?.road_width || 12;
+      const roadPoly = road.properties?.boundary || generateCarriagewayPolygon(roadCoords, roadWidth);
+      if (roadPoly && roadPoly.length >= 3) {
+        if (checkPolygonsOverlap(parkCoords, roadPoly)) {
+          warnings.push(`Overlap: Park "${parkName}" overlaps Road "${road.properties?.road_name || road.name}".`);
+        }
+      }
+    });
+
+    // C. No overlap with Utilities
+    const utilities = objects.filter(o => o.layerName === "UTILITIES");
+    utilities.forEach((utility) => {
+      const utilCoords = utility.geometry_data.coordinates;
+      if (!utilCoords) return;
+      const pts = Array.isArray(utilCoords[0]) ? (utilCoords as Array<[number, number]>) : [utilCoords as [number, number]];
+      let overlaps = false;
+      for (const pt of pts) {
+        if (isPointInsidePolygon(pt, parkCoords)) {
+          overlaps = true;
+          break;
+        }
+      }
+      if (overlaps) {
+        warnings.push(`Overlap: Park "${parkName}" overlaps Utility "${utility.name}".`);
+      }
+    });
+
+    // D. No overlap with Plots
+    plots.forEach((plot) => {
+      const plotCoords = plot.geometry_data.coordinates as Array<[number, number]>;
+      if (plotCoords && plotCoords.length >= 3) {
+        if (checkPolygonsOverlap(parkCoords, plotCoords)) {
+          warnings.push(`Overlap: Park "${parkName}" overlaps Plot "${plot.properties?.plot_number || plot.name}".`);
+        }
+      }
+    });
+
+    // E. Duplicate Park Name
+    const otherParks = parks.filter(p => p.id !== park.id);
+    const duplicate = otherParks.some(p => (p.properties?.park_name || p.name || "").toLowerCase() === parkName.toLowerCase());
+    if (duplicate && parkName.toLowerCase() !== "unnamed park") {
+      warnings.push(`Park Name Conflict: Duplicate park name "${parkName}" detected.`);
+    }
+
+    // F. Minimum Area
+    const metrics = calculatePlotMetrics(parkCoords);
+    if (metrics.sqm < 100) {
+      warnings.push(`Park "${parkName}": Footprint area is below recommended minimum of 100 sqm (currently ${metrics.sqm} sqm).`);
+    }
+
+    // G. Disconnected Park (Road frontage)
+    let isNearRoad = false;
+    if (roads.length === 0) {
+      isNearRoad = true; // Skip if no roads are defined yet
+    } else {
+      for (const road of roads) {
+        const roadCoords = road.geometry_data.coordinates as Array<[number, number]>;
+        if (roadCoords && roadCoords.length >= 2) {
+          if (distanceToPolyline(getPolygonCentroid(parkCoords), roadCoords) < 160) { // ~80m proximity
+            isNearRoad = true;
+            break;
+          }
+        }
+      }
+    }
+    if (!isNearRoad) {
+      warnings.push(`Park "${parkName}": Disconnected from public access network (no road frontage nearby).`);
+    }
   });
+
+  // 9. Amenities Validation
+  const amenities = isModuleActive("mod-amenities") ? objects.filter(o => o.layerName === "AMENITIES") : [];
+  amenities.forEach((amenity) => {
+    const amenityName = amenity.properties?.amenity_name || amenity.name || "Unnamed Amenity";
+    const otherAmenities = amenities.filter(a => a.id !== amenity.id);
+    const isPoint = amenity.object_type === "POINT";
+
+    // A. Duplicate name verification
+    const isDuplicate = otherAmenities.some(a => (a.properties?.amenity_name || a.name || "").toLowerCase() === amenityName.toLowerCase());
+    if (isDuplicate && amenityName.toLowerCase() !== "unnamed amenity") {
+      warnings.push(`Amenity Conflict: Duplicate name "${amenityName}" detected on layout.`);
+    }
+
+    if (isPoint) {
+      const pt = amenity.geometry_data.coordinates as [number, number];
+      if (!pt || pt.length !== 2) return;
+
+      // B. Inside Boundary (Point)
+      if (boundaryCoords && boundaryCoords.length >= 3) {
+        if (!isPointInsidePolygon(pt, boundaryCoords)) {
+          warnings.push(`Amenity "${amenityName}": Located outside of layout boundary.`);
+        }
+      }
+
+      // C. No overlap with Roads (Point)
+      roads.forEach((road) => {
+        const roadCoords = road.geometry_data.coordinates as Array<[number, number]>;
+        if (!roadCoords || roadCoords.length < 2) return;
+        const roadWidth = road.properties?.road_width || 12;
+        const roadPoly = road.properties?.boundary || generateCarriagewayPolygon(roadCoords, roadWidth);
+        if (roadPoly && roadPoly.length >= 3) {
+          if (isPointInsidePolygon(pt, roadPoly)) {
+            warnings.push(`Overlap: Amenity point "${amenityName}" overlaps Road "${road.properties?.road_name || road.name}".`);
+          }
+        }
+      });
+
+      // D. No overlap with Parks (Point)
+      parks.forEach((park) => {
+        const parkCoords = park.geometry_data.coordinates as Array<[number, number]>;
+        if (parkCoords && parkCoords.length >= 3) {
+          if (isPointInsidePolygon(pt, parkCoords)) {
+            warnings.push(`Overlap: Amenity point "${amenityName}" overlaps Park "${park.properties?.park_name || park.name}".`);
+          }
+        }
+      });
+
+      // E. No overlap with Plots (Point)
+      plots.forEach((plot) => {
+        const plotCoords = plot.geometry_data.coordinates as Array<[number, number]>;
+        if (plotCoords && plotCoords.length >= 3) {
+          if (isPointInsidePolygon(pt, plotCoords)) {
+            warnings.push(`Overlap: Amenity point "${amenityName}" overlaps Plot "${plot.properties?.plot_number || plot.name}".`);
+          }
+        }
+      });
+
+      // F. Road Frontage / Access (Point)
+      let isNearRoad = false;
+      if (roads.length === 0) {
+        isNearRoad = true;
+      } else {
+        for (const road of roads) {
+          const roadCoords = road.geometry_data.coordinates as Array<[number, number]>;
+          if (roadCoords && roadCoords.length >= 2) {
+            if (distanceToPolyline(pt, roadCoords) < 160) {
+              isNearRoad = true;
+              break;
+            }
+          }
+        }
+      }
+      if (!isNearRoad) {
+        warnings.push(`Amenity "${amenityName}": No road frontage or entrance access nearby.`);
+      }
+
+    } else {
+      // Polygon / Rectangle Amenities
+      const amenityCoords = amenity.geometry_data.coordinates as Array<[number, number]>;
+      if (!amenityCoords || amenityCoords.length < 3) {
+        warnings.push(`Amenity "${amenityName}": Open polygon warning (fewer than 3 vertices).`);
+        return;
+      }
+
+      // B. Inside Boundary (Polygon)
+      if (boundaryCoords && boundaryCoords.length >= 3) {
+        let isFullyInside = true;
+        for (const pt of amenityCoords) {
+          if (!isPointInsidePolygon(pt, boundaryCoords)) {
+            isFullyInside = false;
+            break;
+          }
+        }
+        if (!isFullyInside) {
+          warnings.push(`Amenity "${amenityName}": Located outside or intersecting layout boundary.`);
+        }
+      }
+
+      // C. No overlap with Roads (Polygon)
+      roads.forEach((road) => {
+        const roadCoords = road.geometry_data.coordinates as Array<[number, number]>;
+        if (!roadCoords || roadCoords.length < 2) return;
+        const roadWidth = road.properties?.road_width || 12;
+        const roadPoly = road.properties?.boundary || generateCarriagewayPolygon(roadCoords, roadWidth);
+        if (roadPoly && roadPoly.length >= 3) {
+          if (checkPolygonsOverlap(amenityCoords, roadPoly)) {
+            warnings.push(`Overlap: Amenity "${amenityName}" overlaps Road "${road.properties?.road_name || road.name}".`);
+          }
+        }
+      });
+
+      // D. No overlap with Parks (Polygon)
+      parks.forEach((park) => {
+        const parkCoords = park.geometry_data.coordinates as Array<[number, number]>;
+        if (parkCoords && parkCoords.length >= 3) {
+          if (checkPolygonsOverlap(amenityCoords, parkCoords)) {
+            warnings.push(`Overlap: Amenity "${amenityName}" overlaps Park "${park.properties?.park_name || park.name}".`);
+          }
+        }
+      });
+
+      // E. No overlap with Plots (Polygon)
+      plots.forEach((plot) => {
+        const plotCoords = plot.geometry_data.coordinates as Array<[number, number]>;
+        if (plotCoords && plotCoords.length >= 3) {
+          if (checkPolygonsOverlap(amenityCoords, plotCoords)) {
+            warnings.push(`Overlap: Amenity "${amenityName}" overlaps Plot "${plot.properties?.plot_number || plot.name}".`);
+          }
+        }
+      });
+
+      // F. Road Frontage / Access (Polygon)
+      let isNearRoad = false;
+      if (roads.length === 0) {
+        isNearRoad = true;
+      } else {
+        const centroid = getPolygonCentroid(amenityCoords);
+        for (const road of roads) {
+          const roadCoords = road.geometry_data.coordinates as Array<[number, number]>;
+          if (roadCoords && roadCoords.length >= 2) {
+            if (distanceToPolyline(centroid, roadCoords) < 160) {
+              isNearRoad = true;
+              break;
+            }
+          }
+        }
+      }
+      if (!isNearRoad) {
+        warnings.push(`Amenity "${amenityName}": No road frontage or entrance access nearby.`);
+      }
+
+      // G. Minimum footprint area verification
+      const metrics = calculatePlotMetrics(amenityCoords);
+      if (metrics.sqm < 100) {
+        warnings.push(`Amenity "${amenityName}": Footprint area is below recommended minimum of 100 sqm (currently ${metrics.sqm} sqm).`);
+      }
+    }
+  });
+
+  // 10. Utility Network Engine Validations
+  if (isModuleActive("mod-utilities")) {
+    const utilityWarnings = validateUtilities(objects);
+    warnings.push(...utilityWarnings);
+  }
 
   return warnings;
 }
@@ -684,4 +955,22 @@ export function scalePoints(coords: Array<[number, number]>, factor: number, cen
     const ry = (y - cy) * factor;
     return [cx + rx, cy + ry];
   });
+}
+
+/**
+ * Calculates total perimeter of a polygon in physical meters.
+ * Scale: 1 pixel = 0.5 meters
+ */
+export function calculatePolygonPerimeter(coords: Array<[number, number]>): number {
+  if (!coords || coords.length < 2) return 0;
+  let lenPx = 0;
+  const n = coords.length;
+  for (let i = 0; i < n; i++) {
+    const p1 = coords[i];
+    const p2 = coords[(i + 1) % n];
+    const dx = p2[0] - p1[0];
+    const dy = p2[1] - p1[1];
+    lenPx += Math.sqrt(dx * dx + dy * dy);
+  }
+  return lenPx * 0.5;
 }

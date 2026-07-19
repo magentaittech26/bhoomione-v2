@@ -1,6 +1,7 @@
 import { MockGeometry, WorkspaceTool } from "../../components/MapWorkspace/types.ts";
 import { GeometryLayer, GeometryObject } from "../Contracts/models.ts";
-import { calculatePlotMetrics, detectPlotFacing, detectPlotCornerType, calculateCenterlineLength, generateCarriagewayPolygon, calculateRoadDirection } from "../../lib/plotEngine.ts";
+import { calculatePlotMetrics, detectPlotFacing, detectPlotCornerType, calculateCenterlineLength, generateCarriagewayPolygon, calculateRoadDirection, calculatePolygonPerimeter } from "../../lib/plotEngine.ts";
+import { isModuleActive } from "../../modules/index.ts";
 
 /**
  * Define the comprehensive workspace tool list requested.
@@ -145,6 +146,23 @@ export class DrawingToolManager {
   public switchTool(toolId: AppTool): void {
     if (!this.toolRegistry.has(toolId)) {
       console.warn(`DrawingToolManager: Attempted to switch to unregistered tool "${toolId}".`);
+      return;
+    }
+
+    // Ensure module is active
+    let isToolActive = true;
+    if (toolId === "boundary" && !isModuleActive("mod-boundary")) isToolActive = false;
+    else if (toolId === "road" && !isModuleActive("mod-roads")) isToolActive = false;
+    else if (toolId === "plot" && !isModuleActive("mod-plots")) isToolActive = false;
+    else if (toolId === "park" && !isModuleActive("mod-parks")) isToolActive = false;
+    else if (toolId === "amenity" && !isModuleActive("mod-amenities")) isToolActive = false;
+    else if (toolId === "utility" && !isModuleActive("mod-utilities")) isToolActive = false;
+
+    if (!isToolActive) {
+      console.warn(`DrawingToolManager: Attempted to switch to tool "${toolId}" but module is disabled.`);
+      if (this.activeTool !== "select") {
+        this.switchTool("select");
+      }
       return;
     }
 
@@ -509,6 +527,14 @@ export class ModifyGeometryCommand implements Command {
             direction: calculateRoadDirection(this.newCoords),
             area_value: parseFloat((len * width).toFixed(2))
           };
+        } else if (obj.layerName === "PARK") {
+          const metrics = calculatePlotMetrics(this.newCoords);
+          const perimeterVal = calculatePolygonPerimeter(this.newCoords);
+          updatedProperties = {
+            ...updatedProperties,
+            area_value: Math.round(metrics.sqft),
+            perimeter_value: parseFloat(perimeterVal.toFixed(2))
+          };
         }
         return {
           ...obj,
@@ -555,6 +581,14 @@ export class ModifyGeometryCommand implements Command {
             length: parseFloat(len.toFixed(2)),
             direction: calculateRoadDirection(this.oldCoords),
             area_value: parseFloat((len * width).toFixed(2))
+          };
+        } else if (obj.layerName === "PARK") {
+          const metrics = calculatePlotMetrics(this.oldCoords);
+          const perimeterVal = calculatePolygonPerimeter(this.oldCoords);
+          updatedProperties = {
+            ...updatedProperties,
+            area_value: Math.round(metrics.sqft),
+            perimeter_value: parseFloat(perimeterVal.toFixed(2))
           };
         }
         return {

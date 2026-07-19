@@ -1,5 +1,7 @@
 import { GeometryLayer, GeometryObject } from "../Contracts/models.ts";
-import { calculatePlotMetrics, generateCarriagewayPolygon } from "../../lib/plotEngine.ts";
+import { calculatePlotMetrics, generateCarriagewayPolygon, getPolygonCentroid } from "../../lib/plotEngine.ts";
+import { getUtilityColor } from "../../lib/utilityEngine.ts";
+import { isModuleActive } from "../../modules/index.ts";
 
 /**
  * Viewport State representing the active camera metrics on the infinite canvas.
@@ -380,6 +382,18 @@ export class CanvasViewportEngine {
     for (const layer of sortedLayers) {
       if (!layer.is_visible) continue;
 
+      // Module activity check for the layer
+      let isLayerActive = true;
+      const lName = layer.layer_name.toUpperCase();
+      if (lName === "BOUNDARY" && !isModuleActive("mod-boundary")) isLayerActive = false;
+      else if (lName === "PLOTS" && !isModuleActive("mod-plots")) isLayerActive = false;
+      else if (lName === "ROADS" && !isModuleActive("mod-roads")) isLayerActive = false;
+      else if (lName === "PARK" && !isModuleActive("mod-parks")) isLayerActive = false;
+      else if ((lName === "AMENITIES" || lName === "CA") && !isModuleActive("mod-amenities")) isLayerActive = false;
+      else if (lName === "UTILITIES" && !isModuleActive("mod-utilities")) isLayerActive = false;
+
+      if (!isLayerActive) continue;
+
       const layerObjects = objects.filter(
         (obj) => obj.layer_id === layer.id || (obj as any).layerName === layer.layer_name
       );
@@ -463,15 +477,85 @@ export class CanvasViewportEngine {
     const style = layer.style_config || {};
     const isMatched = searchQuery
       ? obj.label_text?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        obj.properties?.plot_number?.toLowerCase().includes(searchQuery.toLowerCase())
+        (obj as any).name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        obj.properties?.plot_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        obj.properties?.park_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        obj.properties?.park_type?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        obj.properties?.amenity_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        obj.properties?.amenity_type?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        obj.properties?.unique_code?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        obj.properties?.road_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        obj.properties?.road_code?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        obj.properties?.utility_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        obj.properties?.utility_code?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        obj.properties?.network_type?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        obj.properties?.utility_type?.toLowerCase().includes(searchQuery.toLowerCase())
       : false;
 
     // Styling configuration
     ctx.save();
 
-    const baseStrokeColor = isSelected ? "#6366F1" : isMatched ? "#EF4444" : style.strokeColor || "#475569";
-    const baseFillColor = isMatched ? "#FEE2E2" : style.fillColor || "#E2E8F0";
-    const opacity = isMatched ? 0.85 : style.opacity !== undefined ? style.opacity : 0.4;
+    let baseStrokeColor = isSelected ? "#3B82F6" : isMatched ? "#EF4444" : style.strokeColor || "#475569";
+    let baseFillColor = isMatched ? "#FEE2E2" : style.fillColor || "#E2E8F0";
+    let opacity = isMatched ? 0.85 : style.opacity !== undefined ? style.opacity : 0.4;
+    let dashArrayToUse = style.dashArray || "";
+
+    if (layer.layer_name === "PARK") {
+      const pType = obj.properties?.park_type || "Park";
+      let pFill = "#22c55e"; // Bright green default
+      let pStroke = "#15803d";
+      let pOpacity = 0.5;
+      let pDash = "";
+
+      if (pType === "Central Park") {
+        pFill = "#15803d";
+        pStroke = "#14532d";
+        pOpacity = 0.8;
+      } else if (pType === "Children Park") {
+        pFill = "#22c55e";
+        pStroke = "#15803d";
+        pOpacity = 0.75;
+      } else if (pType === "Garden") {
+        pFill = "#86efac";
+        pStroke = "#16a34a";
+        pOpacity = 0.7;
+      } else if (pType === "Buffer Zone") {
+        pFill = "#a7f3d0";
+        pStroke = "#059669";
+        pOpacity = 0.25;
+      } else if (pType === "Future Expansion Area" || pType === "Future Area") {
+        pFill = "#f0fdf4";
+        pStroke = "#16a34a";
+        pOpacity = 0.3;
+        pDash = "6,4";
+      } else if (pType === "Open Space") {
+        pFill = "#4ade80";
+        pStroke = "#16a34a";
+        pOpacity = 0.5;
+      } else if (pType === "Green Belt") {
+        pFill = "#0f766e";
+        pStroke = "#115e59";
+        pOpacity = 0.6;
+      } else if (pType === "Reserved Open Space") {
+        pFill = "#059669";
+        pStroke = "#047857";
+        pOpacity = 0.5;
+      } else if (pType === "Recreation Area") {
+        pFill = "#10b981";
+        pStroke = "#047857";
+        pOpacity = 0.6;
+      }
+
+      baseFillColor = pFill;
+      if (!isSelected && !isMatched) {
+        baseStrokeColor = pStroke;
+      }
+      opacity = pOpacity;
+      if (pDash) {
+        dashArrayToUse = pDash;
+      }
+    }
+
     const strokeWidth = isSelected ? (style.strokeWidth || 1.5) + 1.5 : style.strokeWidth || 1.5;
 
     ctx.strokeStyle = baseStrokeColor;
@@ -483,8 +567,8 @@ export class CanvasViewportEngine {
     if (isSelected) {
       // Selection highlight dash effect
       ctx.setLineDash([6 * this.state.zoom, 4 * this.state.zoom]);
-    } else if (style.dashArray) {
-      const dashVals = style.dashArray.split(",").map((v) => parseFloat(v) * this.state.zoom);
+    } else if (dashArrayToUse) {
+      const dashVals = dashArrayToUse.split(",").map((v) => parseFloat(v) * this.state.zoom);
       ctx.setLineDash(dashVals);
     }
 
@@ -509,8 +593,21 @@ export class CanvasViewportEngine {
       ctx.fill();
       ctx.stroke();
 
+      // Draw custom GIS icon at centroid for AMENITIES layer
+      if (layer.layer_name === "AMENITIES") {
+        const ring0 = rings[0];
+        if (ring0 && ring0.length >= 3) {
+          const centroid = getPolygonCentroid(ring0);
+          if (centroid) {
+            const screenCentroid = this.worldToScreen(centroid[0], centroid[1]);
+            const amenityType = obj.properties?.amenity_type || "Amenity";
+            this.drawAmenityIcon(ctx, amenityType, screenCentroid.x, screenCentroid.y, 22 * Math.max(0.7, Math.min(1.5, this.state.zoom)), isSelected);
+          }
+        }
+      }
+
       // Render Label texts
-      if (layer.layer_name === "PLOTS" || layer.layer_name === "BOUNDARY" || layer.layer_name === "PARK") {
+      if (layer.layer_name === "PLOTS" || layer.layer_name === "BOUNDARY" || layer.layer_name === "PARK" || layer.layer_name === "AMENITIES") {
         this.renderLabelOverlay(ctx, obj, isSelected);
       }
     } else if (obj.object_type === "POLYLINE") {
@@ -585,47 +682,87 @@ export class CanvasViewportEngine {
 
         this.renderLabelOverlay(ctx, obj, isSelected);
       } else {
-        // Standard Polyline rendering for utilities etc.
-        ctx.beginPath();
-        if (pts.length > 0) {
-          const start = this.worldToScreen(pts[0][0], pts[0][1]);
-          ctx.moveTo(start.x, start.y);
-          for (let i = 1; i < pts.length; i++) {
-            const pt = this.worldToScreen(pts[i][0], pts[i][1]);
-            ctx.lineTo(pt.x, pt.y);
+        if (layer.layer_name === "UTILITIES") {
+          // Dedicated Utility Line rendering
+          ctx.save();
+          ctx.beginPath();
+          if (pts.length > 0) {
+            const start = this.worldToScreen(pts[0][0], pts[0][1]);
+            ctx.moveTo(start.x, start.y);
+            for (let i = 1; i < pts.length; i++) {
+              const pt = this.worldToScreen(pts[i][0], pts[i][1]);
+              ctx.lineTo(pt.x, pt.y);
+            }
           }
+          const networkType = obj.properties?.network_type || "";
+          const uColor = getUtilityColor(networkType);
+          ctx.strokeStyle = isSelected ? "#3B82F6" : uColor;
+          ctx.lineWidth = isSelected ? Math.max(3, 4.5 * this.state.zoom) : Math.max(1.5, 2.25 * this.state.zoom);
+          if (networkType.toLowerCase().includes("future") || (obj as any).style_config?.dashArray) {
+            ctx.setLineDash([6 * this.state.zoom, 6 * this.state.zoom]);
+          } else {
+            ctx.setLineDash([]);
+          }
+          ctx.lineCap = "round";
+          ctx.lineJoin = "round";
+          ctx.stroke();
+          ctx.restore();
+
+          this.renderUtilityLabel(ctx, obj, isSelected);
+        } else {
+          // Standard Polyline rendering for roads/other fallback layers
+          ctx.beginPath();
+          if (pts.length > 0) {
+            const start = this.worldToScreen(pts[0][0], pts[0][1]);
+            ctx.moveTo(start.x, start.y);
+            for (let i = 1; i < pts.length; i++) {
+              const pt = this.worldToScreen(pts[i][0], pts[i][1]);
+              ctx.lineTo(pt.x, pt.y);
+            }
+          }
+          ctx.stroke();
         }
-        ctx.stroke();
       }
     } else if (obj.object_type === "POINT") {
       const pt = coords as [number, number];
       const screenPt = this.worldToScreen(pt[0], pt[1]);
       
-      ctx.save();
-      ctx.font = "bold 9px sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      
-      // Draw subtle dot
-      ctx.fillStyle = isSelected ? "#4F46E5" : "#334155";
-      ctx.beginPath();
-      ctx.arc(screenPt.x, screenPt.y, 4, 0, Math.PI * 2);
-      ctx.fill();
-      
-      // Draw clean pill container
-      const text = (obj as any).name || obj.label_text || "Label";
-      const textWidth = ctx.measureText(text).width;
-      ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
-      ctx.strokeStyle = isSelected ? "#4F46E5" : "rgba(100, 116, 139, 0.4)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.roundRect(screenPt.x - textWidth/2 - 6, screenPt.y - 18, textWidth + 12, 16, 4);
-      ctx.fill();
-      ctx.stroke();
-      
-      ctx.fillStyle = "#1F2937";
-      ctx.fillText(text, screenPt.x, screenPt.y - 10);
-      ctx.restore();
+      if (layer.layer_name === "AMENITIES") {
+        const amenityType = obj.properties?.amenity_type || "Amenity";
+        this.drawAmenityIcon(ctx, amenityType, screenPt.x, screenPt.y, 22 * Math.max(0.7, Math.min(1.5, this.state.zoom)), isSelected);
+        this.renderLabelOverlay(ctx, obj, isSelected);
+      } else if (layer.layer_name === "UTILITIES") {
+        const assetType = obj.properties?.utility_type || "Node";
+        const networkType = obj.properties?.network_type || "";
+        this.drawUtilityAssetIcon(ctx, assetType, networkType, screenPt.x, screenPt.y, 14 * Math.max(0.7, Math.min(1.5, this.state.zoom)), isSelected);
+        this.renderUtilityLabel(ctx, obj, isSelected);
+      } else {
+        ctx.save();
+        ctx.font = "bold 9px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        
+        // Draw subtle dot
+        ctx.fillStyle = isSelected ? "#4F46E5" : "#334155";
+        ctx.beginPath();
+        ctx.arc(screenPt.x, screenPt.y, 4, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw clean pill container
+        const text = (obj as any).name || obj.label_text || "Label";
+        const textWidth = ctx.measureText(text).width;
+        ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
+        ctx.strokeStyle = isSelected ? "#4F46E5" : "rgba(100, 116, 139, 0.4)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(screenPt.x - textWidth/2 - 6, screenPt.y - 18, textWidth + 12, 16, 4);
+        ctx.fill();
+        ctx.stroke();
+        
+        ctx.fillStyle = "#1F2937";
+        ctx.fillText(text, screenPt.x, screenPt.y - 10);
+        ctx.restore();
+      }
     }
 
     ctx.restore();
@@ -651,6 +788,8 @@ export class CanvasViewportEngine {
 
     const lines: string[] = [];
     const isPlot = (obj as any).layerName === "PLOTS" || obj.properties?.plot_number !== undefined;
+    const isPark = (obj as any).layerName === "PARK" || obj.properties?.park_type !== undefined;
+    const isAmenity = (obj as any).layerName === "AMENITIES" || obj.properties?.amenity_type !== undefined;
 
     if (isPlot) {
       if (obj.properties?.plot_number) {
@@ -670,6 +809,34 @@ export class CanvasViewportEngine {
 
       if (obj.properties?.facing) {
         lines.push(`${obj.properties.facing} Facing`);
+      }
+    } else if (isPark) {
+      const parkName = obj.properties?.park_name || (obj as any).name || "Unnamed Park";
+      lines.push(parkName);
+      lines.push(obj.properties?.park_type || "Park");
+
+      const coords = obj.geometry_data.coordinates as Array<[number, number]>;
+      if (coords && coords.length >= 3) {
+        const metrics = calculatePlotMetrics(coords);
+        lines.push(`${metrics.sqft.toLocaleString()} sq.ft`);
+        lines.push(`${metrics.acres.toFixed(3)} acres`);
+      } else if (obj.properties?.area_value) {
+        lines.push(`${obj.properties.area_value} sq.ft`);
+      }
+    } else if (isAmenity) {
+      const amenityName = obj.properties?.amenity_name || (obj as any).name || "Unnamed Amenity";
+      const amenityType = obj.properties?.amenity_type || "Amenity";
+      lines.push(amenityName);
+      lines.push(amenityType);
+
+      if (obj.object_type === "POLYGON") {
+        const coords = obj.geometry_data.coordinates as Array<[number, number]>;
+        if (coords && coords.length >= 3) {
+          const metrics = calculatePlotMetrics(coords);
+          lines.push(`${metrics.sqft.toLocaleString()} sq.ft`);
+        } else if (obj.properties?.area_value) {
+          lines.push(`${obj.properties.area_value} sq.ft`);
+        }
       }
     } else {
       const labelText = obj.label_text || obj.properties?.amenity_type || (obj.properties?.road_width ? `${obj.properties.road_width}m Road` : "");
@@ -710,6 +877,230 @@ export class CanvasViewportEngine {
         const lineY = screenCenter.y - totalHeight / 2 + lineHeight * index + lineHeight / 2;
         ctx.fillText(line, screenCenter.x, lineY);
       });
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Helper to render highly polished GIS vector symbols for all 30 amenity types.
+   */
+  private drawAmenityIcon(
+    ctx: CanvasRenderingContext2D,
+    type: string,
+    x: number,
+    y: number,
+    size: number,
+    isSelected: boolean
+  ): void {
+    ctx.save();
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    // Set styling based on selection
+    ctx.strokeStyle = isSelected ? "#4F46E5" : "#EC4899";
+    ctx.fillStyle = isSelected ? "#EEF2FF" : "#FCE7F3";
+
+    const r = size / 2;
+
+    // Draw background circle or shield depending on type
+    ctx.beginPath();
+    if (type === "Police Station") {
+      // Draw shield shape
+      ctx.moveTo(x, y - r);
+      ctx.quadraticCurveTo(x + r, y - r, x + r, y - r/3);
+      ctx.quadraticCurveTo(x + r, y + r/3, x, y + r);
+      ctx.quadraticCurveTo(x - r, y + r/3, x - r, y - r/3);
+      ctx.quadraticCurveTo(x - r, y - r, x, y - r);
+    } else {
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+    }
+    ctx.fill();
+    ctx.stroke();
+
+    // Draw custom icon glyph inside the background
+    ctx.beginPath();
+    ctx.strokeStyle = isSelected ? "#312E81" : "#9D174D";
+    ctx.fillStyle = isSelected ? "#312E81" : "#9D174D";
+    ctx.lineWidth = 1.25;
+
+    const s = r * 0.55; // Inner bounds
+
+    switch (type) {
+      case "Temple": {
+        ctx.moveTo(x - s, y + s);
+        ctx.lineTo(x + s, y + s);
+        ctx.lineTo(x + s, y + s/3);
+        ctx.quadraticCurveTo(x, y - s, x - s, y + s/3);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(x, y - s);
+        ctx.lineTo(x, y - s * 1.5);
+        ctx.lineTo(x + s * 0.6, y - s * 1.25);
+        ctx.lineTo(x, y - s * 1.0);
+        ctx.stroke();
+        break;
+      }
+      case "Mosque": {
+        ctx.moveTo(x - s, y + s);
+        ctx.lineTo(x + s, y + s);
+        ctx.lineTo(x + s * 0.7, y + s * 0.2);
+        ctx.arc(x, y + s * 0.2, s * 0.7, Math.PI, 0, false);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(x, y - s * 0.7, s * 0.25, 0, Math.PI * 2);
+        ctx.stroke();
+        break;
+      }
+      case "Church": {
+        ctx.moveTo(x, y - s);
+        ctx.lineTo(x, y + s);
+        ctx.moveTo(x - s, y - s * 0.2);
+        ctx.lineTo(x + s, y - s * 0.2);
+        ctx.stroke();
+        break;
+      }
+      case "Hospital":
+      case "Clinic": {
+        ctx.fillRect(x - s * 0.25, y - s, s * 0.5, s * 2);
+        ctx.fillRect(x - s, y - s * 0.25, s * 2, s * 0.5);
+        break;
+      }
+      case "School":
+      case "College": {
+        ctx.moveTo(x, y - s * 0.6);
+        ctx.lineTo(x + s, y - s * 0.15);
+        ctx.lineTo(x, y + s * 0.3);
+        ctx.lineTo(x - s, y - s * 0.15);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(x, y + s * 0.3);
+        ctx.lineTo(x - s * 0.3, y + s * 0.9);
+        ctx.stroke();
+        break;
+      }
+      case "Community Hall":
+      case "Club House": {
+        ctx.moveTo(x - s, y + s);
+        ctx.lineTo(x - s, y);
+        ctx.lineTo(x, y - s);
+        ctx.lineTo(x + s, y);
+        ctx.lineTo(x + s, y + s);
+        ctx.closePath();
+        ctx.stroke();
+        ctx.fillRect(x - s * 0.25, y + s * 0.3, s * 0.5, s * 0.7);
+        break;
+      }
+      case "Swimming Pool": {
+        ctx.moveTo(x - s, y - s * 0.2);
+        ctx.bezierCurveTo(x - s * 0.5, y - s * 0.5, x - s * 0.5, y + s * 0.1, x, y - s * 0.2);
+        ctx.bezierCurveTo(x + s * 0.5, y - s * 0.5, x + s * 0.5, y + s * 0.1, x + s, y - s * 0.2);
+        ctx.moveTo(x - s, y + s * 0.3);
+        ctx.bezierCurveTo(x - s * 0.5, y, x - s * 0.5, y + s * 0.6, x, y + s * 0.3);
+        ctx.bezierCurveTo(x + s * 0.5, y, x + s * 0.5, y + s * 0.6, x + s, y + s * 0.3);
+        ctx.stroke();
+        break;
+      }
+      case "Gym": {
+        ctx.fillRect(x - s, y - s * 0.3, s * 0.35, s * 0.6);
+        ctx.fillRect(x + s * 0.65, y - s * 0.3, s * 0.35, s * 0.6);
+        ctx.fillRect(x - s * 0.6, y - s * 0.08, s * 1.2, s * 0.16);
+        break;
+      }
+      case "Shopping Complex":
+      case "Commercial Block":
+      case "Office Block": {
+        ctx.strokeRect(x - s * 0.7, y - s * 0.7, s * 1.4, s * 1.4);
+        ctx.strokeRect(x - s * 0.4, y - s * 0.4, s * 0.8, s * 0.8);
+        ctx.moveTo(x - s * 0.7, y + s * 0.1);
+        ctx.lineTo(x + s * 0.7, y + s * 0.1);
+        ctx.stroke();
+        break;
+      }
+      case "Police Station": {
+        ctx.arc(x, y, s * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case "Fire Station": {
+        ctx.moveTo(x, y - s);
+        ctx.bezierCurveTo(x + s * 0.7, y - s * 0.2, x + s * 0.4, y + s, x, y + s);
+        ctx.bezierCurveTo(x - s * 0.4, y + s, x - s * 0.7, y - s * 0.2, x, y - s);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      }
+      case "Water Tank": {
+        ctx.moveTo(x, y - s);
+        ctx.bezierCurveTo(x + s, y - s * 0.2, x + s, y + s, x, y + s);
+        ctx.bezierCurveTo(x - s, y + s, x - s, y - s * 0.2, x, y - s);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      }
+      case "Electrical Substation": {
+        ctx.moveTo(x + s * 0.15, y - s);
+        ctx.lineTo(x - s * 0.4, y + s * 0.1);
+        ctx.lineTo(x, y + s * 0.1);
+        ctx.lineTo(x - s * 0.15, y + s);
+        ctx.lineTo(x + s * 0.4, y - s * 0.1);
+        ctx.lineTo(x, y - s * 0.1);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      }
+      case "STP":
+      case "Sewage Pump":
+      case "Solid Waste Collection Point": {
+        ctx.arc(x, y, s * 0.65, 0, Math.PI * 2, false);
+        ctx.stroke();
+        ctx.moveTo(x - s * 0.5, y);
+        ctx.lineTo(x + s * 0.5, y);
+        ctx.moveTo(x, y - s * 0.5);
+        ctx.lineTo(x, y + s * 0.5);
+        ctx.stroke();
+        break;
+      }
+      case "Security Cabin":
+      case "Main Entrance Gate":
+      case "Secondary Gate": {
+        ctx.fillRect(x - s, y - s, s * 0.35, s * 2);
+        ctx.fillRect(x + s * 0.65, y - s, s * 0.35, s * 2);
+        ctx.fillRect(x - s * 0.6, y - s * 0.2, s * 1.2, s * 0.4);
+        break;
+      }
+      case "Bus Stop": {
+        ctx.strokeRect(x - s * 0.7, y - s * 0.7, s * 1.4, s * 1.4);
+        ctx.fillRect(x - s * 0.35, y - s * 0.35, s * 0.7, s * 0.7);
+        break;
+      }
+      case "Parking": {
+        ctx.font = `bold ${Math.round(size * 0.6)}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("P", x, y);
+        break;
+      }
+      case "EV Charging Station": {
+        ctx.fillRect(x - s * 0.35, y - s * 0.35, s * 0.7, s * 0.7);
+        ctx.moveTo(x, y + s * 0.35);
+        ctx.lineTo(x, y + s * 0.95);
+        ctx.stroke();
+        break;
+      }
+      default: {
+        ctx.strokeRect(x - s * 0.75, y - s * 0.45, s * 1.5, s * 0.9);
+        ctx.moveTo(x - s * 0.35, y + s * 0.45);
+        ctx.lineTo(x - s * 0.35, y - s * 0.75);
+        ctx.lineTo(x + s * 0.35, y - s * 0.75);
+        ctx.lineTo(x + s * 0.35, y + s * 0.45);
+        ctx.stroke();
+        break;
+      }
     }
 
     ctx.restore();
@@ -810,5 +1201,135 @@ export class CanvasViewportEngine {
       b = parseInt(cleanHex.substring(4, 6), 16);
     }
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  /**
+   * Helper to draw custom engineering icons for utility point nodes
+   */
+  private drawUtilityAssetIcon(
+    ctx: CanvasRenderingContext2D,
+    type: string,
+    networkType: string,
+    x: number,
+    y: number,
+    size: number,
+    isSelected: boolean
+  ): void {
+    ctx.save();
+    const color = getUtilityColor(networkType || type);
+    
+    // Draw outer circle/box container
+    ctx.beginPath();
+    ctx.arc(x, y, size, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+    ctx.strokeStyle = isSelected ? "#3B82F6" : color;
+    ctx.lineWidth = isSelected ? 3 : 2;
+    ctx.fill();
+    ctx.stroke();
+
+    // Draw inner engineering symbols
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.font = `bold ${Math.round(size * 0.95)}px monospace`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    const symbol = type.toLowerCase();
+    if (symbol.includes("transformer")) {
+      ctx.fillText("⚡", x, y);
+    } else if (symbol.includes("pole")) {
+      ctx.moveTo(x - size * 0.5, y);
+      ctx.lineTo(x + size * 0.5, y);
+      ctx.moveTo(x, y - size * 0.5);
+      ctx.lineTo(x, y + size * 0.5);
+      ctx.stroke();
+    } else if (symbol.includes("street light") || symbol.includes("lamp")) {
+      ctx.fillText("💡", x, y);
+    } else if (symbol.includes("manhole")) {
+      ctx.fillText("MH", x, y);
+    } else if (symbol.includes("chamber")) {
+      ctx.fillText("C", x, y);
+    } else if (symbol.includes("valve")) {
+      ctx.fillText("V", x, y);
+    } else if (symbol.includes("hydrant")) {
+      ctx.fillText("🔥", x, y);
+    } else if (symbol.includes("pump")) {
+      ctx.fillText("P", x, y);
+    } else if (symbol.includes("lift")) {
+      ctx.fillText("L", x, y);
+    } else {
+      ctx.beginPath();
+      ctx.arc(x, y, size * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Helper to render custom scaling labels for utility elements
+   */
+  private renderUtilityLabel(ctx: CanvasRenderingContext2D, obj: GeometryObject, isSelected: boolean): void {
+    ctx.save();
+    
+    // Scale label dynamically with zoom
+    const zoomScale = Math.max(0.6, Math.min(1.4, this.state.zoom));
+    ctx.font = `${isSelected ? "bold" : "normal"} ${Math.round(9.5 * zoomScale)}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    // Determine coordinate center
+    let labelX = 0;
+    let labelY = 0;
+    
+    if (obj.object_type === "POINT") {
+      const pt = obj.geometry_data.coordinates as [number, number];
+      const screenPt = this.worldToScreen(pt[0], pt[1]);
+      labelX = screenPt.x;
+      labelY = screenPt.y - (14 * zoomScale); // Offset above symbol
+    } else {
+      const pts = obj.geometry_data.coordinates as Array<[number, number]>;
+      if (pts.length < 2) {
+        ctx.restore();
+        return;
+      }
+      // Put label at the midpoint of the polyline
+      const midIdx = Math.floor(pts.length / 2);
+      const p1 = pts[midIdx];
+      const screenPt = this.worldToScreen(p1[0], p1[1]);
+      labelX = screenPt.x;
+      labelY = screenPt.y - (12 * zoomScale);
+    }
+
+    // Construct label text
+    const name = (obj as any).name || obj.properties?.utility_name || "Utility";
+    const type = obj.properties?.network_type || obj.properties?.utility_type || "";
+    
+    let detail = "";
+    if (obj.properties?.diameter) {
+      detail = `(${obj.properties.diameter})`;
+    } else if (obj.properties?.voltage) {
+      detail = `(${obj.properties.voltage})`;
+    }
+
+    const labelText = `${name} - ${type} ${detail}`.trim();
+    const textWidth = ctx.measureText(labelText).width;
+
+    // Draw background pill
+    ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+    ctx.strokeStyle = isSelected ? "#3B82F6" : "rgba(148, 163, 184, 0.5)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(labelX - textWidth / 2 - 5, labelY - 7 * zoomScale, textWidth + 10, 14 * zoomScale, 3);
+    ctx.fill();
+    ctx.stroke();
+
+    // Draw text
+    ctx.fillStyle = isSelected ? "#1E3A8A" : "#1E293B";
+    ctx.fillText(labelText, labelX, labelY);
+
+    ctx.restore();
   }
 }

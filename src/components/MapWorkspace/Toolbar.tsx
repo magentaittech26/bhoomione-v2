@@ -27,6 +27,7 @@ import {
   Redo2
 } from "lucide-react";
 import { WorkspaceTool } from "./types.ts";
+import { isModuleActive } from "../../modules/index.ts";
 
 interface ToolbarProps {
   projects: any[];
@@ -179,77 +180,89 @@ export default function Toolbar({
 
           {/* Drawing/Vector Category */}
           <div className="flex items-center pr-1 mr-1 border-r border-slate-200/80 gap-0.5">
-            <button
-              onClick={() => setSelectedTool("boundary")}
-              className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                selectedTool === "boundary" ? "bg-white text-indigo-650 shadow-sm font-bold ring-1 ring-slate-200/10" : "text-slate-500 hover:text-slate-900"
-              }`}
-              title="Boundary Limit Tool (B)"
-              id="tool-boundary"
-            >
-              <Square className={`w-3.5 h-3.5 ${selectedTool === "boundary" ? "text-indigo-600" : ""}`} />
-              <span className="hidden xl:inline text-[11px]">Boundary</span>
-            </button>
+            {isModuleActive("mod-boundary") && (
+              <button
+                onClick={() => setSelectedTool("boundary")}
+                className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  selectedTool === "boundary" ? "bg-white text-indigo-650 shadow-sm font-bold ring-1 ring-slate-200/10" : "text-slate-500 hover:text-slate-900"
+                }`}
+                title="Boundary Limit Tool (B)"
+                id="tool-boundary"
+              >
+                <Square className={`w-3.5 h-3.5 ${selectedTool === "boundary" ? "text-indigo-600" : ""}`} />
+                <span className="hidden xl:inline text-[11px]">Boundary</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => setSelectedTool("road")}
-              className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                selectedTool === "road" ? "bg-white text-indigo-650 shadow-sm font-bold ring-1 ring-slate-200/10" : "text-slate-500 hover:text-slate-900"
-              }`}
-              title="Road Alignment Tool (R)"
-              id="tool-road"
-            >
-              <Route className={`w-3.5 h-3.5 ${selectedTool === "road" ? "text-indigo-600" : ""}`} />
-              <span className="hidden xl:inline text-[11px]">Road</span>
-            </button>
+            {isModuleActive("mod-roads") && (
+              <button
+                onClick={() => setSelectedTool("road")}
+                className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  selectedTool === "road" ? "bg-white text-indigo-650 shadow-sm font-bold ring-1 ring-slate-200/10" : "text-slate-500 hover:text-slate-900"
+                }`}
+                title="Road Alignment Tool (R)"
+                id="tool-road"
+              >
+                <Route className={`w-3.5 h-3.5 ${selectedTool === "road" ? "text-indigo-600" : ""}`} />
+                <span className="hidden xl:inline text-[11px]">Road</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => setSelectedTool("plot")}
-              className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                selectedTool === "plot" ? "bg-white text-indigo-650 shadow-sm font-bold ring-1 ring-slate-200/10" : "text-slate-500 hover:text-slate-900"
-              }`}
-              title="Subdivided Plot Tool (P)"
-              id="tool-plot"
-            >
-              <Grid className={`w-3.5 h-3.5 ${selectedTool === "plot" ? "text-indigo-600" : ""}`} />
-              <span className="hidden xl:inline text-[11px]">Plot</span>
-            </button>
+            {isModuleActive("mod-plots") && (
+              <button
+                onClick={() => setSelectedTool("plot")}
+                className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  selectedTool === "plot" ? "bg-white text-indigo-650 shadow-sm font-bold ring-1 ring-slate-200/10" : "text-slate-500 hover:text-slate-900"
+                }`}
+                title="Subdivided Plot Tool (P)"
+                id="tool-plot"
+              >
+                <Grid className={`w-3.5 h-3.5 ${selectedTool === "plot" ? "text-indigo-600" : ""}`} />
+                <span className="hidden xl:inline text-[11px]">Plot</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => setSelectedTool("park")}
-              className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                selectedTool === "park" ? "bg-white text-indigo-650 shadow-sm font-bold ring-1 ring-slate-200/10" : "text-slate-500 hover:text-slate-900"
-              }`}
-              title="Parks & Green Zone Tool (G)"
-              id="tool-park"
-            >
-              <Trees className={`w-3.5 h-3.5 ${selectedTool === "park" ? "text-indigo-600" : ""}`} />
-              <span className="hidden xl:inline text-[11px]">Park</span>
-            </button>
+            {isModuleActive("mod-parks") && (
+              <button
+                onClick={() => setSelectedTool("park")}
+                className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  selectedTool === "park" ? "bg-white text-indigo-650 shadow-sm font-bold ring-1 ring-slate-200/10" : "text-slate-500 hover:text-slate-900"
+                }`}
+                title="Parks & Green Zone Tool (G)"
+                id="tool-park"
+              >
+                <Trees className={`w-3.5 h-3.5 ${selectedTool === "park" ? "text-indigo-600" : ""}`} />
+                <span className="hidden xl:inline text-[11px]">Park</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => setSelectedTool("amenity")}
-              className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                selectedTool === "amenity" ? "bg-white text-indigo-650 shadow-sm font-bold ring-1 ring-slate-200/10" : "text-slate-500 hover:text-slate-900"
-              }`}
-              title="Community Amenity Tool (A)"
-              id="tool-amenity"
-            >
-              <Building2 className={`w-3.5 h-3.5 ${selectedTool === "amenity" ? "text-indigo-600" : ""}`} />
-              <span className="hidden xl:inline text-[11px]">Amenity</span>
-            </button>
+            {isModuleActive("mod-amenities") && (
+              <button
+                onClick={() => setSelectedTool("amenity")}
+                className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  selectedTool === "amenity" ? "bg-white text-indigo-650 shadow-sm font-bold ring-1 ring-slate-200/10" : "text-slate-500 hover:text-slate-900"
+                }`}
+                title="Community Amenity Tool (A)"
+                id="tool-amenity"
+              >
+                <Building2 className={`w-3.5 h-3.5 ${selectedTool === "amenity" ? "text-indigo-600" : ""}`} />
+                <span className="hidden xl:inline text-[11px]">Amenity</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => setSelectedTool("utility")}
-              className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                selectedTool === "utility" ? "bg-white text-indigo-650 shadow-sm font-bold ring-1 ring-slate-200/10" : "text-slate-500 hover:text-slate-900"
-              }`}
-              title="Utility Line Alignment Tool (U)"
-              id="tool-utility"
-            >
-              <Wrench className={`w-3.5 h-3.5 ${selectedTool === "utility" ? "text-indigo-600" : ""}`} />
-              <span className="hidden xl:inline text-[11px]">Utility</span>
-            </button>
+            {isModuleActive("mod-utilities") && (
+              <button
+                onClick={() => setSelectedTool("utility")}
+                className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  selectedTool === "utility" ? "bg-white text-indigo-650 shadow-sm font-bold ring-1 ring-slate-200/10" : "text-slate-500 hover:text-slate-900"
+                }`}
+                title="Utility Line Alignment Tool (U)"
+                id="tool-utility"
+              >
+                <Wrench className={`w-3.5 h-3.5 ${selectedTool === "utility" ? "text-indigo-600" : ""}`} />
+                <span className="hidden xl:inline text-[11px]">Utility</span>
+              </button>
+            )}
 
             <button
               onClick={() => setSelectedTool("label")}

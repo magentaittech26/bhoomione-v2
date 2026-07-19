@@ -20,6 +20,7 @@ import {
   ListFilter
 } from "lucide-react";
 import { GeometryLayer, LayoutAsset } from "../../MapEngine/Contracts/models.ts";
+import { isModuleActive } from "../../modules/index.ts";
 
 interface SidebarProps {
   layers: GeometryLayer[];
@@ -36,6 +37,26 @@ interface SidebarProps {
   selectedLayoutId: string | null;
   isCollapsed: boolean;
   setIsCollapsed: (collapsed: boolean) => void;
+}
+
+function isLayerActive(layerName: string): boolean {
+  switch (layerName.toUpperCase()) {
+    case "BOUNDARY":
+      return isModuleActive("mod-boundary");
+    case "PLOTS":
+      return isModuleActive("mod-plots");
+    case "ROADS":
+      return isModuleActive("mod-roads");
+    case "PARK":
+      return isModuleActive("mod-parks");
+    case "AMENITIES":
+    case "CA":
+      return isModuleActive("mod-amenities");
+    case "UTILITIES":
+      return isModuleActive("mod-utilities");
+    default:
+      return true;
+  }
 }
 
 export default function Sidebar({
@@ -289,7 +310,7 @@ export default function Sidebar({
                                           {/* Layers */}
                                           <div className="py-0.5 px-1 hover:bg-slate-50 rounded flex items-center gap-1.5">
                                             <Layers className="w-2.5 h-2.5 text-indigo-400" />
-                                            <span>Layers ({layers.length})</span>
+                                            <span>Layers ({layers.filter(layer => isLayerActive(layer.layer_name)).length})</span>
                                           </div>
                                         </div>
                                       )}
@@ -318,7 +339,7 @@ export default function Sidebar({
                   Configure visual filters, locks, and arrangement priority order of geometry objects.
                 </p>
 
-                {layers.map((layer, index) => {
+                {layers.filter(layer => isLayerActive(layer.layer_name)).map((layer, index) => {
                   const style = layer.style_config || {};
                   return (
                     <div 

@@ -19,6 +19,7 @@ import {
   Activity
 } from "lucide-react";
 import { MockGeometry } from "./types.ts";
+import { isModuleActive } from "../../modules/index.ts";
 import EmptyState from "./EmptyState.tsx";
 import { 
   calculatePlotMetrics, 
@@ -30,7 +31,8 @@ import {
   runValidationSuite,
   calculateCenterlineLength,
   generateCarriagewayPolygon,
-  calculateRoadDirection
+  calculateRoadDirection,
+  calculatePolygonPerimeter
 } from "../../lib/plotEngine.ts";
 import { 
   ModifyGeometryCommand, 
@@ -91,7 +93,7 @@ export default function Inspector({
         updatedProperties.road_width = defaultWidth;
       }
 
-      if (key === "road_name") {
+      if (key === "road_name" || key === "park_name" || key === "amenity_name") {
         updatedName = value;
       }
 
@@ -112,6 +114,10 @@ export default function Inspector({
       if (!updatedProperties.status) {
         updatedProperties.status = "Draft";
       }
+    }
+
+    if (key === "road_name" || key === "park_name" || key === "amenity_name" || key === "utility_name" || key === "name" || key === "plot_number") {
+      updatedName = key === "plot_number" ? `Subdivided Plot ${value}` : value;
     }
 
     onUpdateObject({
@@ -343,7 +349,7 @@ export default function Inspector({
 
   // Compute live plot area metrics
   const plotCoords = selectedObject?.geometry_data?.coordinates as Array<[number, number]>;
-  const isPlot = selectedObject?.layerName === "PLOTS" || selectedObject?.properties?.plot_number !== undefined;
+  const isPlot = (selectedObject?.layerName === "PLOTS" || selectedObject?.properties?.plot_number !== undefined) && isModuleActive("mod-plots");
   const metrics = (isPlot && plotCoords && plotCoords.length >= 3) ? calculatePlotMetrics(plotCoords) : null;
 
   return (
@@ -577,7 +583,7 @@ export default function Inspector({
                     )}
 
                     {/* Roads specific controls */}
-                    {selectedObject.layerName === "ROADS" && (
+                    {selectedObject.layerName === "ROADS" && isModuleActive("mod-roads") && (
                       <div className="space-y-4 border-b border-slate-100 pb-4">
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Road Name</label>
@@ -661,6 +667,755 @@ export default function Inspector({
                               <span className="font-bold text-indigo-650 block">IRC Class A</span>
                             </div>
                           </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Parks & Open Spaces specific controls */}
+                    {selectedObject.layerName === "PARK" && isModuleActive("mod-parks") && (
+                      <div className="space-y-4 border-b border-slate-100 pb-4">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Park Name</label>
+                            <input
+                              type="text"
+                              value={selectedObject.properties.park_name || selectedObject.name || ""}
+                              onChange={(e) => handlePropertyChange("park_name", e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500 font-semibold text-xs"
+                              placeholder="e.g. Central Lawn"
+                              id="attr-park-name"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Park / Space Number</label>
+                            <input
+                              type="text"
+                              value={selectedObject.properties.park_number || ""}
+                              onChange={(e) => handlePropertyChange("park_number", e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500 font-semibold text-xs"
+                              placeholder="e.g. PK-04"
+                              id="attr-park-number"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Park / Open Space Type</label>
+                          <select
+                            value={selectedObject.properties.park_type || "Park"}
+                            onChange={(e) => handlePropertyChange("park_type", e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500 text-xs font-semibold cursor-pointer"
+                            id="attr-park-type"
+                          >
+                            <option value="Park">Park</option>
+                            <option value="Children Park">Children Park</option>
+                            <option value="Garden">Garden</option>
+                            <option value="Central Park">Central Park</option>
+                            <option value="Open Space">Open Space</option>
+                            <option value="Buffer Zone">Buffer Zone</option>
+                            <option value="Green Belt">Green Belt</option>
+                            <option value="Reserved Open Space">Reserved Open Space</option>
+                            <option value="Recreation Area">Recreation Area</option>
+                            <option value="Future Expansion Area">Future Expansion Area</option>
+                          </select>
+                        </div>
+
+                        {/* Real-time calculated spatial metadata for Parks */}
+                        <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 space-y-2">
+                          <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">Calculated Park Metrics (Live)</span>
+                          {(() => {
+                            const coords = selectedObject.geometry_data.coordinates as Array<[number, number]>;
+                            const metrics = coords && coords.length >= 3 ? calculatePlotMetrics(coords) : { sqm: 0, sqft: 0, acres: 0, gunta: 0, cent: 0 };
+                            const perimeter = coords && coords.length >= 2 ? calculatePolygonPerimeter(coords) : 0;
+                            return (
+                              <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div className="bg-white p-2 rounded-lg border border-slate-100">
+                                  <span className="text-[9px] text-slate-400 block font-medium">Square Feet</span>
+                                  <span className="font-bold text-slate-700 block">{metrics.sqft.toLocaleString()} sqft</span>
+                                </div>
+                                <div className="bg-white p-2 rounded-lg border border-slate-100">
+                                  <span className="text-[9px] text-slate-400 block font-medium">Square Meters</span>
+                                  <span className="font-bold text-slate-700 block">{metrics.sqm.toLocaleString()} m²</span>
+                                </div>
+                                <div className="bg-white p-2 rounded-lg border border-slate-100">
+                                  <span className="text-[9px] text-slate-400 block font-medium">Acres</span>
+                                  <span className="font-semibold text-slate-700 block">{metrics.acres.toFixed(4)} ac</span>
+                                </div>
+                                <div className="bg-white p-2 rounded-lg border border-slate-100 col-span-1">
+                                  <span className="text-[9px] text-slate-400 block font-medium">Guntas</span>
+                                  <span className="font-semibold text-slate-700 block">{metrics.gunta.toFixed(2)} guntas</span>
+                                </div>
+                                <div className="bg-white p-2 rounded-lg border border-slate-100 col-span-1">
+                                  <span className="text-[9px] text-slate-400 block font-medium">Cents</span>
+                                  <span className="font-semibold text-slate-700 block">{metrics.cent.toFixed(2)} cents</span>
+                                </div>
+                                <div className="bg-white p-2 rounded-lg border border-slate-100">
+                                  <span className="text-[9px] text-slate-400 block font-medium">Perimeter</span>
+                                  <span className="font-bold text-indigo-650 block">{perimeter.toFixed(1)} meters</span>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Landscape Status</label>
+                            <select
+                              value={selectedObject.properties.landscape_status || "Planned"}
+                              onChange={(e) => handlePropertyChange("landscape_status", e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500 text-xs font-semibold cursor-pointer"
+                              id="attr-park-landscape"
+                            >
+                              <option value="Planned">Planned</option>
+                              <option value="Under Construction">Under Construction</option>
+                              <option value="Completed">Completed</option>
+                              <option value="Maintained">Maintained</option>
+                            </select>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Maintenance Status</label>
+                            <select
+                              value={selectedObject.properties.maintenance_status || "Good"}
+                              onChange={(e) => handlePropertyChange("maintenance_status", e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500 text-xs font-semibold cursor-pointer"
+                              id="attr-park-maintenance"
+                            >
+                              <option value="Excellent">Excellent</option>
+                              <option value="Good">Good</option>
+                              <option value="Fair">Fair</option>
+                              <option value="Poor">Poor</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Accessibility</label>
+                          <select
+                            value={selectedObject.properties.accessibility || "Public"}
+                            onChange={(e) => handlePropertyChange("accessibility", e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500 text-xs font-semibold cursor-pointer"
+                            id="attr-park-accessibility"
+                          >
+                            <option value="Public">Public (All Access)</option>
+                            <option value="Wheelchair Accessible">Wheelchair Accessible</option>
+                            <option value="Restricted">Restricted Access</option>
+                            <option value="Private">Private / Members Only</option>
+                          </select>
+                        </div>
+
+                        {/* Amenity Toggles / Details */}
+                        <div className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 space-y-3">
+                          <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">LID / Landscape Infrastructure</span>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div className="space-y-1">
+                              <label className="text-[9px] text-slate-400 font-bold uppercase block">Lighting</label>
+                              <select
+                                value={selectedObject.properties.lighting || "Solar Lighting"}
+                                onChange={(e) => handlePropertyChange("lighting", e.target.value)}
+                                className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-slate-800 outline-none focus:border-indigo-500 text-[11px]"
+                                id="attr-park-lighting"
+                              >
+                                <option value="LED Street Lights">LED Street Lights</option>
+                                <option value="Solar Lighting">Solar Lighting</option>
+                                <option value="Decorative Lamps">Decorative Lamps</option>
+                                <option value="None">None</option>
+                              </select>
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[9px] text-slate-400 font-bold uppercase block">Irrigation</label>
+                              <select
+                                value={selectedObject.properties.irrigation || "Sprinklers"}
+                                onChange={(e) => handlePropertyChange("irrigation", e.target.value)}
+                                className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-slate-800 outline-none focus:border-indigo-500 text-[11px]"
+                                id="attr-park-irrigation"
+                              >
+                                <option value="Sprinklers">Sprinklers</option>
+                                <option value="Drip Irrigation">Drip Irrigation</option>
+                                <option value="Manual Hose">Manual Hose</option>
+                                <option value="None">None</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-2">
+                            <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] font-semibold text-slate-650">
+                              <input
+                                type="checkbox"
+                                checked={!!selectedObject.properties.water_feature}
+                                onChange={(e) => handlePropertyChange("water_feature", e.target.checked)}
+                                className="rounded text-indigo-600 border-slate-300 focus:ring-indigo-500 w-3.5 h-3.5 cursor-pointer"
+                                id="attr-park-water-feature"
+                              />
+                              Water Feature
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] font-semibold text-slate-650">
+                              <input
+                                type="checkbox"
+                                checked={!!selectedObject.properties.play_area}
+                                onChange={(e) => handlePropertyChange("play_area", e.target.checked)}
+                                className="rounded text-indigo-600 border-slate-300 focus:ring-indigo-500 w-3.5 h-3.5 cursor-pointer"
+                                id="attr-park-play-area"
+                              />
+                              Play Area
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] font-semibold text-slate-650">
+                              <input
+                                type="checkbox"
+                                checked={!!selectedObject.properties.walking_track}
+                                onChange={(e) => handlePropertyChange("walking_track", e.target.checked)}
+                                className="rounded text-indigo-600 border-slate-300 focus:ring-indigo-500 w-3.5 h-3.5 cursor-pointer"
+                                id="attr-park-walking-track"
+                              />
+                              Walking Track
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] font-semibold text-slate-650">
+                              <input
+                                type="checkbox"
+                                checked={!!selectedObject.properties.parking_available}
+                                onChange={(e) => handlePropertyChange("parking_available", e.target.checked)}
+                                className="rounded text-indigo-600 border-slate-300 focus:ring-indigo-500 w-3.5 h-3.5 cursor-pointer"
+                                id="attr-park-parking"
+                              />
+                              Parking Available
+                            </label>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block font-sans">Notes / Remarks</label>
+                          <textarea
+                            value={selectedObject.properties.notes || ""}
+                            onChange={(e) => handlePropertyChange("notes", e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500 text-xs min-h-[60px]"
+                            placeholder="Add landscape design remarks or community guidelines..."
+                            id="attr-park-notes"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Amenities specific controls */}
+                    {selectedObject.layerName === "AMENITIES" && isModuleActive("mod-amenities") && (
+                      <div className="space-y-4 border-b border-slate-100 pb-4">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Amenity Name</label>
+                            <input
+                              type="text"
+                              value={selectedObject.properties.amenity_name || selectedObject.name || ""}
+                              onChange={(e) => handlePropertyChange("amenity_name", e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500 font-semibold text-xs"
+                              placeholder="e.g. Community Center"
+                              id="attr-amenity-name"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Unique GIS Code</label>
+                            <input
+                              type="text"
+                              value={selectedObject.properties.unique_code || ""}
+                              onChange={(e) => handlePropertyChange("unique_code", e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500 font-semibold text-xs font-mono"
+                              placeholder="e.g. AM-102"
+                              id="attr-amenity-code"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Amenity Category / Type</label>
+                          <select
+                            value={selectedObject.properties.amenity_type || "Hospital"}
+                            onChange={(e) => handlePropertyChange("amenity_type", e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500 text-xs font-semibold cursor-pointer"
+                            id="attr-amenity-type"
+                          >
+                            <option value="Temple">Temple</option>
+                            <option value="Mosque">Mosque</option>
+                            <option value="Church">Church</option>
+                            <option value="Community Hall">Community Hall</option>
+                            <option value="Club House">Club House</option>
+                            <option value="Swimming Pool">Swimming Pool</option>
+                            <option value="Gym">Gym</option>
+                            <option value="School">School</option>
+                            <option value="College">College</option>
+                            <option value="Hospital">Hospital</option>
+                            <option value="Clinic">Clinic</option>
+                            <option value="Shopping Complex">Shopping Complex</option>
+                            <option value="Commercial Block">Commercial Block</option>
+                            <option value="Office Block">Office Block</option>
+                            <option value="Police Station">Police Station</option>
+                            <option value="Fire Station">Fire Station</option>
+                            <option value="Water Tank">Water Tank</option>
+                            <option value="Electrical Substation">Electrical Substation</option>
+                            <option value="STP">STP (Sewage Treatment)</option>
+                            <option value="Sewage Pump">Sewage Pump</option>
+                            <option value="Solid Waste Collection Point">Solid Waste Collection Point</option>
+                            <option value="Security Cabin">Security Cabin</option>
+                            <option value="Main Entrance Gate">Main Entrance Gate</option>
+                            <option value="Secondary Gate">Secondary Gate</option>
+                            <option value="Bus Stop">Bus Stop</option>
+                            <option value="Parking">Parking</option>
+                            <option value="EV Charging Station">EV Charging Station</option>
+                          </select>
+                        </div>
+
+                        {/* Real-time calculated spatial metadata for Amenities */}
+                        <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 space-y-2">
+                          <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">Calculated Spatial Metrics (Live)</span>
+                          {(() => {
+                            if (selectedObject.object_type === "POINT") {
+                              const coords = selectedObject.geometry_data.coordinates as [number, number];
+                              return (
+                                <div className="space-y-1 text-xs font-sans">
+                                  <div className="bg-white p-2 rounded-lg border border-slate-100 flex justify-between items-center">
+                                    <span className="text-[9px] text-slate-400 font-medium">GIS Geometry:</span>
+                                    <span className="font-extrabold text-pink-600 bg-pink-50 px-1.5 py-0.5 rounded text-[8px] uppercase font-mono">POINT SYMBOL</span>
+                                  </div>
+                                  <div className="bg-white p-2 rounded-lg border border-slate-100 flex justify-between items-center font-mono text-[9px]">
+                                    <span className="text-slate-400">Position Coordinates:</span>
+                                    <span className="font-semibold text-slate-700">({coords[0].toFixed(1)}m, {coords[1].toFixed(1)}m)</span>
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            const coords = selectedObject.geometry_data.coordinates as Array<[number, number]>;
+                            const metrics = coords && coords.length >= 3 ? calculatePlotMetrics(coords) : { sqm: 0, sqft: 0, acres: 0, gunta: 0, cent: 0 };
+                            const perimeter = coords && coords.length >= 2 ? calculatePolygonPerimeter(coords) : 0;
+                            return (
+                              <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div className="bg-white p-2 rounded-lg border border-slate-100">
+                                  <span className="text-[9px] text-slate-400 block font-medium">Square Feet</span>
+                                  <span className="font-bold text-slate-700 block">{metrics.sqft.toLocaleString()} sqft</span>
+                                </div>
+                                <div className="bg-white p-2 rounded-lg border border-slate-100">
+                                  <span className="text-[9px] text-slate-400 block font-medium">Square Meters</span>
+                                  <span className="font-bold text-slate-700 block">{metrics.sqm.toLocaleString()} m²</span>
+                                </div>
+                                <div className="bg-white p-2 rounded-lg border border-slate-100">
+                                  <span className="text-[9px] text-slate-400 block font-medium">Acres</span>
+                                  <span className="font-semibold text-slate-700 block">{metrics.acres.toFixed(4)} ac</span>
+                                </div>
+                                <div className="bg-white p-2 rounded-lg border border-slate-100">
+                                  <span className="text-[9px] text-slate-400 block font-medium">Perimeter</span>
+                                  <span className="font-bold text-indigo-650 block">{perimeter.toFixed(1)} meters</span>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Status</label>
+                            <select
+                              value={selectedObject.properties.status || "Planned"}
+                              onChange={(e) => handlePropertyChange("status", e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500 text-xs font-semibold cursor-pointer"
+                              id="attr-amenity-status"
+                            >
+                              <option value="Planned">Planned</option>
+                              <option value="Proposed">Proposed</option>
+                              <option value="Under Construction">Under Construction</option>
+                              <option value="Completed">Completed</option>
+                              <option value="Active">Active</option>
+                              <option value="Suspended">Suspended</option>
+                              <option value="Abandon">Abandoned</option>
+                            </select>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Ownership</label>
+                            <select
+                              value={selectedObject.properties.ownership || "Municipal Board"}
+                              onChange={(e) => handlePropertyChange("ownership", e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500 text-xs font-semibold cursor-pointer"
+                              id="attr-amenity-ownership"
+                            >
+                              <option value="Private">Private</option>
+                              <option value="Public">Public</option>
+                              <option value="Municipal Board">Municipal Board</option>
+                              <option value="Trust">Trust</option>
+                              <option value="Corporate">Corporate</option>
+                              <option value="Joint Venture">Joint Venture</option>
+                              <option value="Government">Government</option>
+                              <option value="NGO">NGO</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Operational</label>
+                            <select
+                              value={selectedObject.properties.operational_status || "Proposed"}
+                              onChange={(e) => handlePropertyChange("operational_status", e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500 text-xs font-semibold cursor-pointer"
+                              id="attr-amenity-operational"
+                            >
+                              <option value="Operational">Operational</option>
+                              <option value="Closed">Closed</option>
+                              <option value="Proposed">Proposed</option>
+                              <option value="Maintenance">Maintenance</option>
+                              <option value="Under Construction">Under Construction</option>
+                            </select>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Construction</label>
+                            <select
+                              value={selectedObject.properties.construction_status || "Proposed"}
+                              onChange={(e) => handlePropertyChange("construction_status", e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500 text-xs font-semibold cursor-pointer"
+                              id="attr-amenity-construction"
+                            >
+                              <option value="Proposed">Proposed</option>
+                              <option value="Approved">Approved</option>
+                              <option value="Excavation">Excavation</option>
+                              <option value="Structure">Structure</option>
+                              <option value="Finishes">Finishes</option>
+                              <option value="Commissioned">Commissioned</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Agency / Owner Name</label>
+                          <input
+                            type="text"
+                            value={selectedObject.properties.owner || ""}
+                            onChange={(e) => handlePropertyChange("owner", e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500 font-semibold text-xs"
+                            placeholder="e.g. Municipal Board, Health Dept"
+                            id="attr-amenity-owner"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Design Capacity</label>
+                            <input
+                              type="text"
+                              value={selectedObject.properties.capacity || ""}
+                              onChange={(e) => handlePropertyChange("capacity", e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500 font-semibold text-xs"
+                              placeholder="e.g. 500 visitors, 50 beds"
+                              id="attr-amenity-capacity"
+                            />
+                          </div>
+                          <div className="flex items-end pb-2">
+                            <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] font-semibold text-slate-650">
+                              <input
+                                type="checkbox"
+                                checked={!!selectedObject.properties.future_expansion}
+                                onChange={(e) => handlePropertyChange("future_expansion", e.target.checked)}
+                                className="rounded text-indigo-600 border-slate-300 focus:ring-indigo-500 w-3.5 h-3.5 cursor-pointer"
+                                id="attr-amenity-expansion"
+                              />
+                              Future Expansion
+                            </label>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Description / Remarks</label>
+                          <textarea
+                            value={selectedObject.properties.description || ""}
+                            onChange={(e) => handlePropertyChange("description", e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500 text-xs min-h-[50px]"
+                            placeholder="Add brief details about the public block..."
+                            id="attr-amenity-desc"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Maintenance Directives</label>
+                          <textarea
+                            value={selectedObject.properties.maintenance_notes || ""}
+                            onChange={(e) => handlePropertyChange("maintenance_notes", e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500 text-xs min-h-[50px]"
+                            placeholder="Add maintenance schedules or contact logs..."
+                            id="attr-amenity-maint"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Utilities specific controls */}
+                    {selectedObject.layerName === "UTILITIES" && isModuleActive("mod-utilities") && (
+                      <div className="space-y-4 border-b border-slate-100 pb-4">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Utility Name</label>
+                            <input
+                              type="text"
+                              value={selectedObject.properties.utility_name || selectedObject.name || ""}
+                              onChange={(e) => handlePropertyChange("utility_name", e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500 font-semibold text-xs"
+                              placeholder="e.g. Water Pipeline A"
+                              id="attr-utility-name"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Utility Code</label>
+                            <input
+                              type="text"
+                              value={selectedObject.properties.utility_code || ""}
+                              onChange={(e) => handlePropertyChange("utility_code", e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500 font-semibold text-xs font-mono"
+                              placeholder="e.g. UT-LINE-101"
+                              id="attr-utility-code"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Network Type</label>
+                            <select
+                              value={selectedObject.properties.network_type || "Water Supply"}
+                              onChange={(e) => handlePropertyChange("network_type", e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500 text-xs font-semibold cursor-pointer"
+                              id="attr-utility-network"
+                            >
+                              <option value="Water Supply">Water Supply</option>
+                              <option value="Raw Water Line">Raw Water Line</option>
+                              <option value="Overhead Water Line">Overhead Water Line</option>
+                              <option value="UG Water Line">UG Water Line</option>
+                              <option value="Sewer Line">Sewer Line</option>
+                              <option value="Storm Water Drain">Storm Water Drain</option>
+                              <option value="Open Drain">Open Drain</option>
+                              <option value="Underground Drain">Underground Drain</option>
+                              <option value="Electrical LT">Electrical LT</option>
+                              <option value="Electrical HT">Electrical HT</option>
+                              <option value="Street Lighting">Street Lighting</option>
+                              <option value="Fiber Optic">Fiber Optic</option>
+                              <option value="Telecom">Telecom</option>
+                              <option value="Gas Pipeline">Gas Pipeline</option>
+                              <option value="Fire Hydrant Line">Fire Hydrant Line</option>
+                              <option value="Irrigation Line">Irrigation Line</option>
+                              <option value="Rainwater Harvesting Line">Rainwater Harvesting Line</option>
+                              <option value="Future Reserved Utility">Future Reserved Utility</option>
+                            </select>
+                          </div>
+
+                          {selectedObject.object_type === "POINT" ? (
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Asset Node Type</label>
+                              <select
+                                value={selectedObject.properties.utility_type || "Transformer"}
+                                onChange={(e) => handlePropertyChange("utility_type", e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500 text-xs font-semibold cursor-pointer"
+                                id="attr-utility-asset-node"
+                              >
+                                <option value="Transformer">Transformer</option>
+                                <option value="Electric Pole">Electric Pole</option>
+                                <option value="Street Light">Street Light</option>
+                                <option value="Manhole">Manhole</option>
+                                <option value="Inspection Chamber">Inspection Chamber</option>
+                                <option value="Valve Chamber">Valve Chamber</option>
+                                <option value="Water Valve">Water Valve</option>
+                                <option value="Fire Hydrant">Fire Hydrant</option>
+                                <option value="Pump House">Pump House</option>
+                                <option value="Lift Station">Lift Station</option>
+                              </select>
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Pipe Diameter</label>
+                              <input
+                                type="text"
+                                value={selectedObject.properties.diameter || ""}
+                                onChange={(e) => handlePropertyChange("diameter", e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500 font-semibold text-xs"
+                                placeholder="e.g. 150 mm, 4 inches"
+                                id="attr-utility-diameter"
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Material</label>
+                            <input
+                              type="text"
+                              value={selectedObject.properties.material || ""}
+                              onChange={(e) => handlePropertyChange("material", e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500 font-semibold text-xs"
+                              placeholder="e.g. PVC, HDPE, DI, RCC"
+                              id="attr-utility-material"
+                            />
+                          </div>
+                          
+                          {selectedObject.properties.network_type?.toLowerCase().includes("electric") || selectedObject.properties.network_type?.toLowerCase().includes("light") ? (
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Voltage Level</label>
+                              <input
+                                type="text"
+                                value={selectedObject.properties.voltage || ""}
+                                onChange={(e) => handlePropertyChange("voltage", e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500 font-semibold text-xs"
+                                placeholder="e.g. 440 V, 11 KV"
+                                id="attr-utility-voltage"
+                              />
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Pressure / Flow Class</label>
+                              <input
+                                type="text"
+                                value={selectedObject.properties.pressure_class || ""}
+                                onChange={(e) => handlePropertyChange("pressure_class", e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500 font-semibold text-xs"
+                                placeholder="e.g. PN 10, PN 16, Class 150"
+                                id="attr-utility-pressure"
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Cover Depth (meters)</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={selectedObject.properties.minimum_cover ?? 0.8}
+                              onChange={(e) => handlePropertyChange("minimum_cover", parseFloat(e.target.value) || 0)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500 font-semibold text-xs"
+                              placeholder="e.g. 0.8"
+                              id="attr-utility-cover"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Design Capacity</label>
+                            <input
+                              type="text"
+                              value={selectedObject.properties.capacity || ""}
+                              onChange={(e) => handlePropertyChange("capacity", e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500 font-semibold text-xs"
+                              placeholder="e.g. 100 kVA, 50 Lps"
+                              id="attr-utility-capacity"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Real-time calculated spatial metadata for Utilities */}
+                        <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 space-y-2">
+                          <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">Calculated Spatial Metrics (Live)</span>
+                          {(() => {
+                            if (selectedObject.object_type === "POINT") {
+                              const coords = selectedObject.geometry_data.coordinates as [number, number];
+                              return (
+                                <div className="space-y-1 text-xs font-sans">
+                                  <div className="bg-white p-2 rounded-lg border border-slate-100 flex justify-between items-center font-mono text-[9px]">
+                                    <span className="text-slate-400">Position Coordinates:</span>
+                                    <span className="font-semibold text-slate-700">({coords[0].toFixed(1)}m, {coords[1].toFixed(1)}m)</span>
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            const coords = selectedObject.geometry_data.coordinates as Array<[number, number]>;
+                            const lenVal = coords && coords.length >= 2 ? calculateCenterlineLength(coords) : 0;
+                            return (
+                              <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div className="bg-white p-2 rounded-lg border border-slate-100">
+                                  <span className="text-[9px] text-slate-400 block font-medium">Pipeline Length</span>
+                                  <span className="font-bold text-indigo-650 block">{lenVal.toFixed(1)} meters</span>
+                                </div>
+                                <div className="bg-white p-2 rounded-lg border border-slate-100">
+                                  <span className="text-[9px] text-slate-400 block font-medium">Vertices Count</span>
+                                  <span className="font-bold text-slate-700 block">{coords?.length || 0} nodes</span>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Asset Condition</label>
+                            <select
+                              value={selectedObject.properties.condition || "Excellent"}
+                              onChange={(e) => handlePropertyChange("condition", e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500 text-xs font-semibold cursor-pointer"
+                              id="attr-utility-condition"
+                            >
+                              <option value="Excellent">Excellent</option>
+                              <option value="Good">Good</option>
+                              <option value="Fair">Fair</option>
+                              <option value="Poor">Poor</option>
+                              <option value="Critical">Critical</option>
+                            </select>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Maintenance Status</label>
+                            <select
+                              value={selectedObject.properties.maintenance_status || "Operational"}
+                              onChange={(e) => handlePropertyChange("maintenance_status", e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500 text-xs font-semibold cursor-pointer"
+                              id="attr-utility-maint-status"
+                            >
+                              <option value="Operational">Operational</option>
+                              <option value="Under Maintenance">Under Maintenance</option>
+                              <option value="Needs Repair">Needs Repair</option>
+                              <option value="Inoperative">Inoperative</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Operational Status</label>
+                            <select
+                              value={selectedObject.properties.operational_status || "Active"}
+                              onChange={(e) => handlePropertyChange("operational_status", e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500 text-xs font-semibold cursor-pointer"
+                              id="attr-utility-operational-status"
+                            >
+                              <option value="Active">Active</option>
+                              <option value="Proposed">Proposed</option>
+                              <option value="Abandoned">Abandoned</option>
+                              <option value="Future Upgrade">Future Upgrade</option>
+                            </select>
+                          </div>
+                          <div className="flex items-end pb-2">
+                            <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] font-semibold text-slate-650">
+                              <input
+                                type="checkbox"
+                                checked={!!selectedObject.properties.future_upgrade}
+                                onChange={(e) => handlePropertyChange("future_upgrade", e.target.checked)}
+                                className="rounded text-blue-600 border-slate-300 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
+                                id="attr-utility-future-upgrade"
+                              />
+                              Needs Future Upgrade
+                            </label>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Owner Agency</label>
+                          <input
+                            type="text"
+                            value={selectedObject.properties.owner || "Municipal Utilities Department"}
+                            onChange={(e) => handlePropertyChange("owner", e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500 font-semibold text-xs"
+                            placeholder="e.g. Municipal Board"
+                            id="attr-utility-owner"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Notes & Remarks</label>
+                          <textarea
+                            value={selectedObject.properties.notes || ""}
+                            onChange={(e) => handlePropertyChange("notes", e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 outline-none focus:border-indigo-500 text-xs min-h-[50px]"
+                            placeholder="Add brief utility notes or design codes..."
+                            id="attr-utility-notes"
+                          />
                         </div>
                       </div>
                     )}

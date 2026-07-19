@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Move, Maximize2, ZoomIn, ZoomOut, Compass, HelpCircle } from "lucide-react";
+import { Move, Maximize2, ZoomIn, ZoomOut, Compass, HelpCircle, MapPin, Square, Pentagon, Building, Layers, Activity, Wrench } from "lucide-react";
 import { WorkspaceTool, MockGeometry } from "./types.ts";
 import { GeometryLayer, GeometryObject } from "../../MapEngine/Contracts/models.ts";
 import { CanvasViewportEngine } from "../../MapEngine/Rendering/CanvasViewportEngine.ts";
@@ -12,8 +12,10 @@ import {
   scalePoints,
   calculateCenterlineLength,
   generateCarriagewayPolygon,
-  calculateRoadDirection
+  calculateRoadDirection,
+  calculatePolygonPerimeter
 } from "../../lib/plotEngine.ts";
+import { getUtilityColor, getNetworkTypeForAsset } from "../../lib/utilityEngine.ts";
 
 interface CanvasProps {
   layers: GeometryLayer[];
@@ -163,6 +165,63 @@ function sanitizePoints(pts: Array<[number, number]>): Array<[number, number]> {
   return out;
 }
 
+/**
+ * Snaps to the closest vertex of any active geometry object across all layers.
+ * Provides pixel-perfect cross-layer node snapping.
+ */
+function snapToGeometry(
+  x: number,
+  y: number,
+  currentObjects: MockGeometry[],
+  ignoreId?: string | null,
+  maxDistance: number = 12
+): { x: number; y: number; isSnapped: boolean } {
+  let bestX = x;
+  let bestY = y;
+  let minDist = maxDistance;
+  let isSnapped = false;
+
+  for (const obj of currentObjects) {
+    if (!obj.is_active || obj.id === ignoreId || !obj.geometry_data?.coordinates) continue;
+    const coords = obj.geometry_data.coordinates;
+
+    const checkPoint = (px: number, py: number) => {
+      const dist = Math.sqrt(Math.pow(px - x, 2) + Math.pow(py - y, 2));
+      if (dist < minDist) {
+        minDist = dist;
+        bestX = px;
+        bestY = py;
+        isSnapped = true;
+      }
+    };
+
+    if (obj.object_type === "POINT") {
+      const pt = coords as [number, number];
+      if (pt && pt.length === 2) {
+        checkPoint(pt[0], pt[1]);
+      }
+    } else if (Array.isArray(coords)) {
+      if (Array.isArray(coords[0]) && typeof coords[0][0] === "number") {
+        for (const pt of coords as Array<[number, number]>) {
+          if (pt && pt.length === 2) {
+            checkPoint(pt[0], pt[1]);
+          }
+        }
+      } else if (Array.isArray(coords[0])) {
+        for (const ring of coords as Array<Array<[number, number]>>) {
+          for (const pt of ring) {
+            if (pt && pt.length === 2) {
+              checkPoint(pt[0], pt[1]);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return { x: bestX, y: bestY, isSnapped };
+}
+
 export default function Canvas({
   layers,
   selectedTool,
@@ -217,6 +276,15 @@ export default function Canvas({
   const [savedMeasurements, setSavedMeasurements] = useState<
     { p1: { x: number; y: number }; p2: { x: number; y: number }; distance: number }[]
   >([]);
+
+  // Amenity creation parameters
+  const [amenityGeometryMode, setAmenityGeometryMode] = useState<"point" | "polygon" | "rectangle">("point");
+  const [defaultAmenityType, setDefaultAmenityType] = useState<string>("Hospital");
+
+  // Utility creation parameters
+  const [utilityGeometryMode, setUtilityGeometryMode] = useState<"polyline" | "point">("polyline");
+  const [defaultUtilityType, setDefaultUtilityType] = useState<string>("Water Supply");
+  const [defaultUtilityAsset, setDefaultUtilityAsset] = useState<string>("Transformer");
 
   // Active Drawing session points (Supports local fallback or synchronized parent state binds)
   const [localDrawingPoints, setLocalDrawingPoints] = useState<Array<[number, number]>>([]);
@@ -500,27 +568,40 @@ export default function Canvas({
         ctx.strokeStyle = "#3B82F6"; // Blue outline
         ctx.lineWidth = 2.5;
         ctx.setLineDash([6, 4]);
-        ctx.beginPath();
-        const startPt = engine.worldToScreen(drawingPoints[0][0], drawingPoints[0][1]);
-        ctx.moveTo(startPt.x, startPt.y);
 
-        for (let i = 1; i < drawingPoints.length; i++) {
-          const pt = engine.worldToScreen(drawingPoints[i][0], drawingPoints[i][1]);
-          ctx.lineTo(pt.x, pt.y);
-        }
+        const isRectangleMode = selectedTool === "amenity" && amenityGeometryMode === "rectangle";
 
-        if (drawingCurrentMouse) {
-          const curPt = engine.worldToScreen(drawingCurrentMouse[0], drawingCurrentMouse[1]);
-          ctx.lineTo(curPt.x, curPt.y);
-          if (selectedTool !== "road") {
-            ctx.closePath();
-          }
-        }
-        ctx.stroke();
-
-        if (selectedTool !== "road") {
-          ctx.fillStyle = "rgba(59, 130, 246, 0.08)"; // Transparent fill
+        if (isRectangleMode && drawingPoints.length === 1 && drawingCurrentMouse) {
+          const p1 = engine.worldToScreen(drawingPoints[0][0], drawingPoints[0][1]);
+          const p2 = engine.worldToScreen(drawingCurrentMouse[0], drawingCurrentMouse[1]);
+          ctx.beginPath();
+          ctx.rect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y);
+          ctx.stroke();
+          ctx.fillStyle = "rgba(236, 72, 153, 0.08)"; // Pinkish background fill
           ctx.fill();
+        } else {
+          ctx.beginPath();
+          const startPt = engine.worldToScreen(drawingPoints[0][0], drawingPoints[0][1]);
+          ctx.moveTo(startPt.x, startPt.y);
+
+          for (let i = 1; i < drawingPoints.length; i++) {
+            const pt = engine.worldToScreen(drawingPoints[i][0], drawingPoints[i][1]);
+            ctx.lineTo(pt.x, pt.y);
+          }
+
+          if (drawingCurrentMouse) {
+            const curPt = engine.worldToScreen(drawingCurrentMouse[0], drawingCurrentMouse[1]);
+            ctx.lineTo(curPt.x, curPt.y);
+            if (selectedTool !== "road") {
+              ctx.closePath();
+            }
+          }
+          ctx.stroke();
+
+          if (selectedTool !== "road") {
+            ctx.fillStyle = "rgba(59, 130, 246, 0.08)"; // Transparent fill
+            ctx.fill();
+          }
         }
         ctx.restore();
 
@@ -692,6 +773,83 @@ export default function Canvas({
     calibDistance
   ]);
 
+  // Auto-zoom, pan, and select object matching search query
+  useEffect(() => {
+    if (!searchQuery || searchQuery.trim().length < 2) return;
+
+    const q = searchQuery.toLowerCase().trim();
+    const match = objects.find(obj => {
+      const name = (obj.name || "").toLowerCase();
+      const pName = (obj.properties?.park_name || "").toLowerCase();
+      const pType = (obj.properties?.park_type || "").toLowerCase();
+      const aName = (obj.properties?.amenity_name || "").toLowerCase();
+      const aType = (obj.properties?.amenity_type || "").toLowerCase();
+      const code = (obj.properties?.unique_code || "").toLowerCase();
+      const plotNum = (obj.properties?.plot_number || "").toLowerCase();
+      const rName = (obj.properties?.road_name || "").toLowerCase();
+      const rCode = (obj.properties?.road_code || "").toLowerCase();
+      const uName = (obj.properties?.utility_name || "").toLowerCase();
+      const uCode = (obj.properties?.utility_code || "").toLowerCase();
+      const netType = (obj.properties?.network_type || "").toLowerCase();
+      const uType = (obj.properties?.utility_type || "").toLowerCase();
+      return name.includes(q) || 
+             pName.includes(q) || 
+             pType.includes(q) || 
+             aName.includes(q) || 
+             aType.includes(q) || 
+             code.includes(q) || 
+             plotNum.includes(q) ||
+             rName.includes(q) ||
+             rCode.includes(q) ||
+             uName.includes(q) ||
+             uCode.includes(q) ||
+             netType.includes(q) ||
+             uType.includes(q);
+    });
+
+    if (match) {
+      // 1. Set selected object to open inspector
+      onSelectObject(match);
+
+      // 2. Set zoom to a nice closer level
+      const targetZoom = 1.2;
+      setZoomLevel(targetZoom);
+
+      // 3. Center on the coordinates
+      let targetX = 0;
+      let targetY = 0;
+
+      if (match.object_type === "POINT") {
+        const coords = match.geometry_data.coordinates as [number, number];
+        if (coords && coords.length === 2) {
+          targetX = coords[0];
+          targetY = coords[1];
+        }
+      } else {
+        const coords = match.geometry_data.coordinates as Array<[number, number]>;
+        if (coords && coords.length > 0) {
+          let sumX = 0;
+          let sumY = 0;
+          coords.forEach(pt => {
+            sumX += pt[0];
+            sumY += pt[1];
+          });
+          targetX = sumX / coords.length;
+          targetY = sumY / coords.length;
+        }
+      }
+
+      if (canvasRef.current && targetX !== 0 && targetY !== 0) {
+        const width = canvasRef.current.clientWidth || 800;
+        const height = canvasRef.current.clientHeight || 600;
+        const nextPanX = width / 2 - targetX * targetZoom;
+        const nextPanY = height / 2 - targetY * targetZoom;
+        setPan({ x: nextPanX, y: nextPanY });
+        setStatusLog(`Centered and inspected matching GIS object: "${match.name || match.properties?.amenity_name || match.properties?.park_name || match.properties?.plot_number || match.properties?.unique_code}"`);
+      }
+    }
+  }, [searchQuery, objects]);
+
   /**
    * Dedicated overlay drawing module for CAD scale measurements
    */
@@ -795,7 +953,7 @@ export default function Canvas({
       return;
     }
 
-    const isPolygon = selectedTool !== "road";
+    const isPolygon = selectedTool !== "road" && !(selectedTool === "utility" && utilityGeometryMode === "polyline");
     const sanitized = sanitizePoints(drawingPoints);
 
     if (isPolygon) {
@@ -827,12 +985,20 @@ export default function Canvas({
     const layerName = toolToLayerName[selectedTool] || selectedTool.toUpperCase();
     const matchedLayer = layers.find(l => l.layer_name === layerName);
     const layerId = matchedLayer ? matchedLayer.id : `l-${selectedTool}`;
-    const styleConfig = matchedLayer?.style_config || {
+    const styleConfig = { ...(matchedLayer?.style_config || {
       strokeColor: "#10B981",
       strokeWidth: 2,
       fillColor: "#10B981",
       opacity: 0.15
-    };
+    }) };
+
+    if (selectedTool === "utility") {
+      styleConfig.strokeColor = getUtilityColor(defaultUtilityType);
+      styleConfig.strokeWidth = 3;
+      if (defaultUtilityType.toLowerCase().includes("future")) {
+        styleConfig.dashArray = "6,6";
+      }
+    }
 
     let initialProperties: any = { owner: "" };
 
@@ -872,6 +1038,70 @@ export default function Canvas({
         area_value: parseFloat((lengthVal * defaultWidth).toFixed(2)),
         owner: "Municipal Board"
       };
+    } else if (selectedTool === "park") {
+      const parkCount = objects.filter(o => o.layerName === "PARK").length + 1;
+      const metrics = calculatePlotMetrics(sanitized);
+      const perimeterVal = calculatePolygonPerimeter(sanitized);
+      initialProperties = {
+        park_name: `Park ${parkCount}`,
+        park_type: "Park",
+        park_number: `PK-${String(parkCount).padStart(2, "0")}`,
+        area_value: Math.round(metrics.sqft),
+        perimeter_value: parseFloat(perimeterVal.toFixed(2)),
+        landscape_status: "Planned",
+        maintenance_status: "Good",
+        accessibility: "Public",
+        lighting: "Solar Lighting",
+        irrigation: "Sprinklers",
+        water_feature: false,
+        play_area: false,
+        walking_track: false,
+        parking_available: false,
+        notes: "",
+        owner: "Municipal Parks Department"
+      };
+    } else if (selectedTool === "amenity") {
+      const amenityCount = objects.filter(o => o.layerName === "AMENITIES").length + 1;
+      const metrics = calculatePlotMetrics(sanitized);
+      const perimeterVal = calculatePolygonPerimeter(sanitized);
+      initialProperties = {
+        amenity_name: `${defaultAmenityType} ${amenityCount}`,
+        amenity_type: defaultAmenityType,
+        unique_code: `AM-${String(amenityCount).padStart(3, "0")}`,
+        status: "Planned",
+        ownership: "Municipal Board",
+        operational_status: "Proposed",
+        area_value: Math.round(metrics.sqft),
+        perimeter_value: parseFloat(perimeterVal.toFixed(2)),
+        capacity: "",
+        description: "",
+        maintenance_notes: "",
+        construction_status: "Proposed",
+        future_expansion: false,
+        owner: "Municipal Board"
+      };
+    } else if (selectedTool === "utility") {
+      const utilityCount = objects.filter(o => o.layerName === "UTILITIES").length + 1;
+      const len = calculateCenterlineLength(sanitized);
+      initialProperties = {
+        utility_name: `${defaultUtilityType} Line ${utilityCount}`,
+        network_type: defaultUtilityType,
+        utility_code: `UT-LINE-${String(utilityCount).padStart(3, "0")}`,
+        diameter: defaultUtilityType.toLowerCase().includes("water") ? "150 mm" : defaultUtilityType.toLowerCase().includes("sewer") ? "300 mm" : "50 mm",
+        material: defaultUtilityType.toLowerCase().includes("water") ? "DI (Ductile Iron)" : defaultUtilityType.toLowerCase().includes("sewer") ? "RCC NP3" : "HDPE",
+        pressure_class: defaultUtilityType.toLowerCase().includes("water") ? "PN 10" : "",
+        voltage: defaultUtilityType.toLowerCase().includes("ht") ? "11 KV" : defaultUtilityType.toLowerCase().includes("lt") ? "440 V" : "",
+        capacity: "",
+        owner: "Municipal Utilities Department",
+        installation_year: String(new Date().getFullYear()),
+        condition: "Excellent",
+        maintenance_status: "Operational",
+        operational_status: "Active",
+        minimum_cover: 0.8,
+        future_upgrade: false,
+        length_value: parseFloat(len.toFixed(2)),
+        notes: ""
+      };
     }
 
     const newObj: MockGeometry = {
@@ -883,7 +1113,13 @@ export default function Canvas({
         ? `Subdivided Plot ${initialProperties.plot_number}` 
         : selectedTool === "road"
           ? initialProperties.road_name
-          : `New ${selectedTool.charAt(0).toUpperCase() + selectedTool.slice(1)} ${objects.length + 1}`,
+          : selectedTool === "park"
+            ? initialProperties.park_name
+            : selectedTool === "amenity"
+              ? initialProperties.amenity_name
+              : selectedTool === "utility"
+                ? initialProperties.utility_name
+                : `New ${selectedTool.charAt(0).toUpperCase() + selectedTool.slice(1)} ${objects.length + 1}`,
       object_type: isPolygon ? "POLYGON" : "POLYLINE",
       geometry_data: {
         coordinates: sanitized
@@ -926,9 +1162,17 @@ export default function Canvas({
 
     const worldPos = engineRef.current.screenToWorld(mouseX, mouseY);
 
-    // Grid snapping logic if enabled
-    const finalX = isSnapToGrid ? Math.round(worldPos.x / 20) * 20 : worldPos.x;
-    const finalY = isSnapToGrid ? Math.round(worldPos.y / 20) * 20 : worldPos.y;
+    // Cross-layer vertex snapping (prioritized) or Grid snapping
+    let finalX = worldPos.x;
+    let finalY = worldPos.y;
+    const snapResult = snapToGeometry(worldPos.x, worldPos.y, objects, draggedVertexObjectId);
+    if (snapResult.isSnapped) {
+      finalX = snapResult.x;
+      finalY = snapResult.y;
+    } else if (isSnapToGrid) {
+      finalX = Math.round(worldPos.x / 20) * 20;
+      finalY = Math.round(worldPos.y / 20) * 20;
+    }
 
     onUpdateMouseCoords({ x: finalX, y: finalY });
 
@@ -1084,8 +1328,17 @@ export default function Canvas({
     const mouseY = e.clientY - rect.top;
     const worldPos = engineRef.current.screenToWorld(mouseX, mouseY);
 
-    const finalX = isSnapToGrid ? Math.round(worldPos.x / 20) * 20 : worldPos.x;
-    const finalY = isSnapToGrid ? Math.round(worldPos.y / 20) * 20 : worldPos.y;
+    // Cross-layer vertex snapping (prioritized) or Grid snapping
+    let finalX = worldPos.x;
+    let finalY = worldPos.y;
+    const snapResult = snapToGeometry(worldPos.x, worldPos.y, objects);
+    if (snapResult.isSnapped) {
+      finalX = snapResult.x;
+      finalY = snapResult.y;
+    } else if (isSnapToGrid) {
+      finalX = Math.round(worldPos.x / 20) * 20;
+      finalY = Math.round(worldPos.y / 20) * 20;
+    }
 
     // Double-click detection for drawing tools
     const now = Date.now();
@@ -1213,6 +1466,186 @@ export default function Canvas({
         setIsDragging(true);
         setDragStart({ x: e.clientX, y: e.clientY });
         setPanAtStart({ x: pan.x, y: pan.y });
+        return;
+      }
+    }
+
+    if (selectedTool === "utility") {
+      if (utilityGeometryMode === "point") {
+        const utilityCount = objects.filter(o => o.layerName === "UTILITIES").length + 1;
+        const initialProperties = {
+          utility_name: `${defaultUtilityAsset} ${utilityCount}`,
+          utility_type: defaultUtilityAsset,
+          network_type: getNetworkTypeForAsset(defaultUtilityAsset),
+          utility_code: `UT-NODE-${String(utilityCount).padStart(3, "0")}`,
+          diameter: "",
+          material: "",
+          pressure_class: "",
+          voltage: defaultUtilityAsset === "Transformer" ? "11 KV" : defaultUtilityAsset === "Electric Pole" ? "440 V" : "",
+          capacity: "",
+          owner: "Municipal Utilities Department",
+          installation_year: String(new Date().getFullYear()),
+          condition: "Excellent",
+          maintenance_status: "Operational",
+          operational_status: "Active",
+          future_upgrade: false,
+          notes: ""
+        };
+
+        const newObj: MockGeometry = {
+          id: `obj-utility-${Date.now()}`,
+          layer_id: "l-utilities",
+          layout_id: "lay-1",
+          layerName: "UTILITIES",
+          name: initialProperties.utility_name,
+          object_type: "POINT",
+          geometry_data: {
+            coordinates: [finalX, finalY]
+          },
+          style_config: {
+            strokeColor: getUtilityColor(initialProperties.network_type),
+            strokeWidth: 2,
+            fillColor: "#FFFFFF",
+            opacity: 1
+          },
+          properties: initialProperties,
+          is_active: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+
+        const cmd = new CreateGeometryCommand(
+          newObj,
+          objects,
+          (updated) => onUpdateObjects(updated),
+          (id) => onSelectObject(newObj)
+        );
+        drawingManager.executeCommand(cmd);
+        setStatusLog(`Placed Utility Node: "${newObj.name}" of type ${defaultUtilityAsset}`);
+        return;
+      }
+    }
+
+    if (selectedTool === "amenity") {
+      if (amenityGeometryMode === "point") {
+        const amenityCount = objects.filter(o => o.layerName === "AMENITIES").length + 1;
+        const initialProperties = {
+          amenity_name: `${defaultAmenityType} ${amenityCount}`,
+          amenity_type: defaultAmenityType,
+          unique_code: `AM-${String(amenityCount).padStart(3, "0")}`,
+          status: "Planned",
+          ownership: "Municipal Board",
+          operational_status: "Proposed",
+          area_value: 0,
+          capacity: "",
+          description: "",
+          maintenance_notes: "",
+          construction_status: "Proposed",
+          future_expansion: false,
+          owner: "Municipal Board"
+        };
+
+        const newObj: MockGeometry = {
+          id: `obj-amenity-${Date.now()}`,
+          layer_id: "l-amenities",
+          layout_id: "lay-1",
+          layerName: "AMENITIES",
+          name: initialProperties.amenity_name,
+          object_type: "POINT",
+          geometry_data: {
+            coordinates: [finalX, finalY]
+          },
+          style_config: {
+            strokeColor: "#EC4899",
+            strokeWidth: 2,
+            fillColor: "#FCE7F3",
+            opacity: 0.15
+          },
+          properties: initialProperties,
+          is_active: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+
+        const cmd = new CreateGeometryCommand(
+          newObj,
+          objects,
+          (updated) => onUpdateObjects(updated),
+          (id) => onSelectObject(newObj)
+        );
+        drawingManager.executeCommand(cmd);
+        setStatusLog(`Placed Point Amenity: "${newObj.name}" of type ${defaultAmenityType}`);
+        return;
+      } else if (amenityGeometryMode === "rectangle") {
+        if (drawingPoints.length === 0) {
+          setDrawingPoints([[finalX, finalY]]);
+          setDrawingCurrentMouse([finalX, finalY]);
+          setStatusLog(`Rectangle starting corner plotted at (${finalX.toFixed(1)}m, ${finalY.toFixed(1)}m). Click opposite diagonal corner to finish.`);
+        } else {
+          // Second click completes the rectangle!
+          const p1 = drawingPoints[0];
+          const p2 = [finalX, finalY];
+          // Generate 4 corners clockwise
+          const rectCoords: Array<[number, number]> = [
+            [p1[0], p1[1]],
+            [p2[0], p1[1]],
+            [p2[0], p2[1]],
+            [p1[0], p2[1]]
+          ];
+
+          const amenityCount = objects.filter(o => o.layerName === "AMENITIES").length + 1;
+          const metrics = calculatePlotMetrics(rectCoords);
+          const perimeterVal = calculatePolygonPerimeter(rectCoords);
+          const initialProperties = {
+            amenity_name: `${defaultAmenityType} ${amenityCount}`,
+            amenity_type: defaultAmenityType,
+            unique_code: `AM-${String(amenityCount).padStart(3, "0")}`,
+            status: "Planned",
+            ownership: "Municipal Board",
+            operational_status: "Proposed",
+            area_value: Math.round(metrics.sqft),
+            perimeter_value: parseFloat(perimeterVal.toFixed(2)),
+            capacity: "",
+            description: "",
+            maintenance_notes: "",
+            construction_status: "Proposed",
+            future_expansion: false,
+            owner: "Municipal Board"
+          };
+
+          const newObj: MockGeometry = {
+            id: `obj-amenity-${Date.now()}`,
+            layer_id: "l-amenities",
+            layout_id: "lay-1",
+            layerName: "AMENITIES",
+            name: initialProperties.amenity_name,
+            object_type: "POLYGON",
+            geometry_data: {
+              coordinates: rectCoords
+            },
+            style_config: {
+              strokeColor: "#EC4899",
+              strokeWidth: 2,
+              fillColor: "#FCE7F3",
+              opacity: 0.15
+            },
+            properties: initialProperties,
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+
+          const cmd = new CreateGeometryCommand(
+            newObj,
+            objects,
+            (updated) => onUpdateObjects(updated),
+            (id) => onSelectObject(newObj)
+          );
+          drawingManager.executeCommand(cmd);
+          setDrawingPoints([]);
+          setDrawingCurrentMouse(null);
+          setStatusLog(`Added Rectangle Amenity: "${newObj.name}". Undo/redo cached.`);
+        }
         return;
       }
     }
@@ -1598,6 +2031,265 @@ export default function Canvas({
             </div>
           </div>
         </div>
+
+        {/* Amenity Tool Floating Setup Dashboard */}
+        {selectedTool === "amenity" && (
+          <div
+            className="absolute top-4 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-md border border-slate-200/80 rounded-2xl shadow-xl px-4 py-3 flex items-center gap-4 pointer-events-auto select-none z-20 animate-in fade-in slide-in-from-top-4 duration-300 border-l-4 border-l-pink-500"
+            id="amenity-drawing-settings"
+          >
+            <div className="flex items-center gap-2 border-r border-slate-200 pr-3">
+              <Building className="w-5 h-5 text-pink-500 shrink-0" />
+              <div className="flex flex-col">
+                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Layer Setup</span>
+                <span className="text-[11px] font-black text-slate-800">Amenity Settings</span>
+              </div>
+            </div>
+
+            {/* Geometry Mode Toggle */}
+            <div className="flex flex-col gap-1">
+              <span className="text-[8px] font-bold uppercase tracking-wider text-slate-450 font-mono">Drawing Tool</span>
+              <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200/50">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAmenityGeometryMode("point");
+                    setDrawingPoints([]);
+                    setDrawingCurrentMouse(null);
+                    setStatusLog("Switched Amenity Tool to Point placement mode. Click once to place.");
+                  }}
+                  className={`px-2.5 py-1 text-[10px] font-extrabold rounded-md flex items-center gap-1.5 transition-all cursor-pointer border-0 ${
+                    amenityGeometryMode === "point"
+                      ? "bg-white text-pink-650 shadow-xs font-black"
+                      : "text-slate-500 hover:text-slate-800 bg-transparent"
+                  }`}
+                  title="Single point icon placement"
+                >
+                  <MapPin className="w-3.5 h-3.5" />
+                  <span>Point</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAmenityGeometryMode("rectangle");
+                    setDrawingPoints([]);
+                    setDrawingCurrentMouse(null);
+                    setStatusLog("Switched Amenity Tool to Rectangle drawing mode. Click diagonally to enclose.");
+                  }}
+                  className={`px-2.5 py-1 text-[10px] font-extrabold rounded-md flex items-center gap-1.5 transition-all cursor-pointer border-0 ${
+                    amenityGeometryMode === "rectangle"
+                      ? "bg-white text-pink-650 shadow-xs font-black"
+                      : "text-slate-500 hover:text-slate-800 bg-transparent"
+                  }`}
+                  title="Enclosed diagonal box layout"
+                >
+                  <Square className="w-3.5 h-3.5" />
+                  <span>Rectangle</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAmenityGeometryMode("polygon");
+                    setDrawingPoints([]);
+                    setDrawingCurrentMouse(null);
+                    setStatusLog("Switched Amenity Tool to Polygon (Freehand) drawing mode. Plot vertices and double-click to finish.");
+                  }}
+                  className={`px-2.5 py-1 text-[10px] font-extrabold rounded-md flex items-center gap-1.5 transition-all cursor-pointer border-0 ${
+                    amenityGeometryMode === "polygon"
+                      ? "bg-white text-pink-650 shadow-xs font-black"
+                      : "text-slate-500 hover:text-slate-800 bg-transparent"
+                  }`}
+                  title="Enclosed custom-shaped boundary"
+                >
+                  <Pentagon className="w-3.5 h-3.5" />
+                  <span>Polygon</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Amenity Class Selection */}
+            <div className="flex flex-col gap-1 min-w-[160px]">
+              <span className="text-[8px] font-bold uppercase tracking-wider text-slate-450 font-mono">Amenity Class</span>
+              <select
+                value={defaultAmenityType}
+                onChange={(e) => {
+                  setDefaultAmenityType(e.target.value);
+                  setStatusLog(`Amenity class set to "${e.target.value}".`);
+                }}
+                className="bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-pink-500 transition-colors cursor-pointer"
+              >
+                <optgroup label="Civic & Worship">
+                  <option value="Temple">Temple</option>
+                  <option value="Mosque">Mosque</option>
+                  <option value="Church">Church</option>
+                  <option value="Community Hall">Community Hall</option>
+                  <option value="Club House">Club House</option>
+                </optgroup>
+                <optgroup label="Recreation & Education">
+                  <option value="Swimming Pool">Swimming Pool</option>
+                  <option value="Gym">Gym</option>
+                  <option value="School">School</option>
+                  <option value="College">College</option>
+                </optgroup>
+                <optgroup label="Health & Safety">
+                  <option value="Hospital">Hospital</option>
+                  <option value="Clinic">Clinic</option>
+                  <option value="Police Station">Police Station</option>
+                  <option value="Fire Station">Fire Station</option>
+                </optgroup>
+                <optgroup label="Commercial & Retail">
+                  <option value="Shopping Complex">Shopping Complex</option>
+                  <option value="Commercial Block">Commercial Block</option>
+                  <option value="Office Block">Office Block</option>
+                </optgroup>
+                <optgroup label="Utilities & Services">
+                  <option value="Water Tank">Water Tank</option>
+                  <option value="Electrical Substation">Electrical Substation</option>
+                  <option value="STP">STP (Sewage Treatment)</option>
+                  <option value="Sewage Pump">Sewage Pump</option>
+                  <option value="Solid Waste Collection Point">Solid Waste Collection</option>
+                  <option value="Security Cabin">Security Cabin</option>
+                  <option value="Main Entrance Gate">Main Entrance Gate</option>
+                  <option value="Secondary Gate">Secondary Gate</option>
+                </optgroup>
+                <optgroup label="Transport & Parking">
+                  <option value="Bus Stop">Bus Stop</option>
+                  <option value="Parking">Parking</option>
+                  <option value="EV Charging Station">EV Charging Station</option>
+                </optgroup>
+              </select>
+            </div>
+          </div>
+        )}
+
+        {selectedTool === "utility" && (
+          <div
+            className="absolute top-4 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-md border border-slate-200/80 rounded-2xl shadow-xl px-4 py-3 flex items-center gap-4 pointer-events-auto select-none z-20 animate-in fade-in slide-in-from-top-4 duration-300 border-l-4 border-l-blue-500"
+            id="utility-drawing-settings"
+          >
+            <div className="flex items-center gap-2 border-r border-slate-200 pr-3">
+              <Activity className="w-5 h-5 text-blue-500 shrink-0 animate-pulse" />
+              <div className="flex flex-col">
+                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Infrastructure</span>
+                <span className="text-[11px] font-black text-slate-800">Utility Settings</span>
+              </div>
+            </div>
+
+            {/* Geometry Mode Toggle */}
+            <div className="flex flex-col gap-1">
+              <span className="text-[8px] font-bold uppercase tracking-wider text-slate-450 font-mono">Infrastructure Element</span>
+              <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200/50">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUtilityGeometryMode("polyline");
+                    setDrawingPoints([]);
+                    setDrawingCurrentMouse(null);
+                    setStatusLog("Switched Utility Tool to Pipeline Route (Polyline) mode. Click to plot route, double-click to finish.");
+                  }}
+                  className={`px-2.5 py-1 text-[10px] font-extrabold rounded-md flex items-center gap-1.5 transition-all cursor-pointer border-0 ${
+                    utilityGeometryMode === "polyline"
+                      ? "bg-white text-blue-650 shadow-xs font-black"
+                      : "text-slate-500 hover:text-slate-800 bg-transparent"
+                  }`}
+                  title="Draw continuous pipeline route polyline"
+                >
+                  <Activity className="w-3.5 h-3.5" />
+                  <span>Pipeline (Route)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUtilityGeometryMode("point");
+                    setDrawingPoints([]);
+                    setDrawingCurrentMouse(null);
+                    setStatusLog("Switched Utility Tool to Asset Node placement mode. Click once on canvas to place Node.");
+                  }}
+                  className={`px-2.5 py-1 text-[10px] font-extrabold rounded-md flex items-center gap-1.5 transition-all cursor-pointer border-0 ${
+                    utilityGeometryMode === "point"
+                      ? "bg-white text-blue-650 shadow-xs font-black"
+                      : "text-slate-500 hover:text-slate-800 bg-transparent"
+                  }`}
+                  title="Single click node asset placement"
+                >
+                  <MapPin className="w-3.5 h-3.5" />
+                  <span>Asset Node</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Network / Node Selector */}
+            {utilityGeometryMode === "polyline" ? (
+              <div className="flex flex-col gap-1 min-w-[165px]">
+                <span className="text-[8px] font-bold uppercase tracking-wider text-slate-450 font-mono">Network Type</span>
+                <select
+                  value={defaultUtilityType}
+                  onChange={(e) => {
+                    setDefaultUtilityType(e.target.value);
+                    setStatusLog(`Utility network type set to "${e.target.value}".`);
+                  }}
+                  className="bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors cursor-pointer"
+                >
+                  <optgroup label="Water Systems">
+                    <option value="Water Supply">Water Supply</option>
+                    <option value="Raw Water Line">Raw Water Line</option>
+                    <option value="Overhead Water Line">Overhead Water Line</option>
+                    <option value="UG Water Line">UG Water Line</option>
+                    <option value="Irrigation Line">Irrigation Line</option>
+                    <option value="Fire Hydrant Line">Fire Hydrant Line</option>
+                  </optgroup>
+                  <optgroup label="Sewer & Drainage">
+                    <option value="Sewer Line">Sewer Line</option>
+                    <option value="Storm Water Drain">Storm Water Drain</option>
+                    <option value="Open Drain">Open Drain</option>
+                    <option value="Underground Drain">Underground Drain</option>
+                    <option value="Rainwater Harvesting Line">Rainwater Harvesting Line</option>
+                  </optgroup>
+                  <optgroup label="Electrical & Telecom">
+                    <option value="Electrical LT">Electrical LT (440V)</option>
+                    <option value="Electrical HT">Electrical HT (11KV+)</option>
+                    <option value="Street Lighting">Street Lighting</option>
+                    <option value="Fiber Optic">Fiber Optic</option>
+                    <option value="Telecom">Telecom</option>
+                  </optgroup>
+                  <optgroup label="Other Networks">
+                    <option value="Gas Pipeline">Gas Pipeline</option>
+                    <option value="Future Reserved Utility">Future Reserved Utility</option>
+                  </optgroup>
+                </select>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1 min-w-[165px]">
+                <span className="text-[8px] font-bold uppercase tracking-wider text-slate-450 font-mono">Asset Node Type</span>
+                <select
+                  value={defaultUtilityAsset}
+                  onChange={(e) => {
+                    setDefaultUtilityAsset(e.target.value);
+                    setStatusLog(`Utility node type set to "${e.target.value}".`);
+                  }}
+                  className="bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors cursor-pointer"
+                >
+                  <optgroup label="Electrical Infrastructure">
+                    <option value="Transformer">Transformer (⚡)</option>
+                    <option value="Electric Pole">Electric Pole</option>
+                    <option value="Street Light">Street Light (💡)</option>
+                  </optgroup>
+                  <optgroup label="Drainage & Wastewater">
+                    <option value="Manhole">Manhole (MH)</option>
+                    <option value="Inspection Chamber">Inspection Chamber</option>
+                    <option value="Lift Station">Lift Station</option>
+                  </optgroup>
+                  <optgroup label="Water Supply Node">
+                    <option value="Water Valve">Water Valve (V)</option>
+                    <option value="Valve Chamber">Valve Chamber</option>
+                    <option value="Fire Hydrant">Fire Hydrant (🔥)</option>
+                    <option value="Pump House">Pump House</option>
+                  </optgroup>
+                </select>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
