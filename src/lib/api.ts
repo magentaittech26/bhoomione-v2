@@ -2,6 +2,7 @@ import { AuthResponse, UserProfile, SystemHealth } from "../types/auth.ts";
 
 class ApiClient {
   private baseUri = ((import.meta as any).env?.VITE_LARAVEL_API_URL || "/api/v1").replace(/\/$/, "");
+  private refreshPromise: Promise<string> | null = null;
 
   // Get tokens from sessionStorage to survive iframe reloads
   getAccessToken(): string | null {
@@ -77,31 +78,69 @@ class ApiClient {
 
     // If unauthorized, attempt transparent refresh token handshake
     if (response.status === 401) {
+      if ((options as any)._isRetry) {
+        console.warn("⚠️ Request failed with 401 even after token refresh retry.");
+        this.clearTokens();
+        if (typeof window !== "undefined") {
+          window.location.reload();
+        }
+        throw new Error("Unauthorized");
+      }
+
       const refresh = this.getRefreshToken();
       if (refresh) {
-        console.log("🔄 Access token expired. Attempting token refresh handshake...");
         try {
-          const refreshRes = await fetch(`${this.baseUri}/auth/refresh`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ refreshToken: refresh }),
-          });
+          if (!this.refreshPromise) {
+            console.log("🔄 Access token expired. Attempting token refresh handshake...");
+            this.refreshPromise = (async () => {
+              try {
+                const refreshRes = await fetch(`${this.baseUri}/auth/refresh`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ refreshToken: refresh }),
+                });
 
-          if (refreshRes.ok) {
-            const data = await refreshRes.json();
-            this.setTokens(data.accessToken, refresh);
-            headers.set("Authorization", `Bearer ${data.accessToken}`);
-            
-            // Retry the original request
-            response = await fetch(url, { ...options, headers });
-          } else {
-            console.warn("⚠️ Refresh token invalid or expired. Terminating session.");
-            this.clearTokens();
+                if (refreshRes.ok) {
+                  const data = await refreshRes.json();
+                  const newAccessToken = data.accessToken;
+                  this.setTokens(newAccessToken, refresh);
+                  return newAccessToken;
+                } else {
+                  console.warn("⚠️ Refresh token invalid or expired. Terminating session.");
+                  this.clearTokens();
+                  if (typeof window !== "undefined") {
+                    window.location.reload();
+                  }
+                  throw new Error("Session expired");
+                }
+              } catch (err) {
+                console.error("Token refresh routing failed:", err);
+                this.clearTokens();
+                if (typeof window !== "undefined") {
+                  window.location.reload();
+                }
+                throw err;
+              } finally {
+                this.refreshPromise = null;
+              }
+            })();
           }
-        } catch (err) {
-          console.error("Token refresh routing failed:", err);
-          this.clearTokens();
+
+          const newAccessToken = await this.refreshPromise;
+          headers.set("Authorization", `Bearer ${newAccessToken}`);
+          
+          // Retry the original request
+          response = await fetch(url, { ...options, headers, _isRetry: true } as any);
+        } catch (refreshErr) {
+          throw refreshErr;
         }
+      } else {
+        console.warn("⚠️ No refresh token available. Terminating session.");
+        this.clearTokens();
+        if (typeof window !== "undefined") {
+          window.location.reload();
+        }
+        throw new Error("Unauthorized");
       }
     }
 

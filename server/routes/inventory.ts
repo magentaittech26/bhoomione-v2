@@ -673,50 +673,230 @@ router.get("/layouts/:id", requireAuth, async (req: AuthenticatedRequest, res: R
 
 router.post("/layouts", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { project_id, name, sector_code, total_land_area, status } = req.body;
+    const {
+      project_id,
+      name,
+      code,
+      layout_type,
+      approval_number,
+      approval_date,
+      total_area_value,
+      total_area_unit_id,
+      measurement_unit_id,
+      status,
+    } = req.body;
+
+    // 1. Validate required fields
+    if (!project_id) {
+      return res.status(422).json({ error: "Validation Error: Parent Project Context is required to register a Layout Subdivision plan." });
+    }
+    if (!name || !name.trim()) {
+      return res.status(422).json({ error: "Validation Error: Layout Name is required." });
+    }
+    if (!code || !code.trim()) {
+      return res.status(422).json({ error: "Validation Error: Subdivision Code is required." });
+    }
+
+    const cleanCode = code.trim().toUpperCase();
+
+    // 2. Validate total_area_value if specified
+    if (total_area_value !== undefined && total_area_value !== null && total_area_value !== "") {
+      const parsedArea = parseFloat(total_area_value);
+      if (isNaN(parsedArea) || parsedArea <= 0) {
+        return res.status(422).json({ error: "Validation Error: Zoned Area value must be a positive numeric value higher than 0." });
+      }
+    }
+
+    // 3. Resolve and validate measurement_unit_id
+    const db = getPool();
+    let finalUnitId = measurement_unit_id || total_area_unit_id;
+    if (!finalUnitId || finalUnitId === "") {
+      // Look up a fallback unit from database if none provided
+      const unitQuery = await db.query(`SELECT id FROM measurement_units LIMIT 1`);
+      if (unitQuery.rowCount === 0) {
+        return res.status(422).json({ error: "Validation Error: No valid measurement units are defined in the system. Please define a unit first." });
+      }
+      finalUnitId = unitQuery.rows[0].id;
+    } else {
+      // Validate that the specified unit actually exists
+      const unitCheck = await db.query(`SELECT id FROM measurement_units WHERE id = $1`, [finalUnitId]);
+      if (unitCheck.rowCount === 0) {
+        return res.status(422).json({ error: "Validation Error: Selected Standard Measurement Unit is invalid or does not exist." });
+      }
+    }
+
+    // 4. Validate project authorization and existence via verifyPlotAccess
     const check = await verifyPlotAccess(req, res, "plots.create", { projectId: project_id });
-    if (!check.success) return;
+    if (!check.success) return; // verifyPlotAccess already sent a response (e.g. 403 or 404)
 
     const tenantId = check.tenantId!;
-    const db = getPool();
 
+    // 5. Check duplicate layout name/code within the project context
+    const dupCheck = await db.query(
+      `SELECT id FROM layouts 
+       WHERE project_id = $1 AND (LOWER(name) = LOWER($2) OR UPPER(code) = UPPER($3))`,
+      [project_id, name.trim(), cleanCode]
+    );
+    if (dupCheck.rowCount > 0) {
+      return res.status(422).json({ error: "Validation Error: A layout phase with the same name or subdivision code already exists within this project." });
+    }
+
+    // 6. Force status to DRAFT for new creation as mandated by security requirements
+    const finalStatus = "DRAFT";
+
+    // 7. Normalize layout_type
+    let cleanLayoutType = "RESIDENTIAL";
+    if (layout_type) {
+      const typeStr = layout_type.trim().toUpperCase().replace(/\s+/g, "_");
+      if (["RESIDENTIAL", "COMMERCIAL", "MIXED_USE", "INDUSTRIAL", "FARM_LAND"].includes(typeStr)) {
+        cleanLayoutType = typeStr;
+      }
+    }
+
+    // 8. DB Insertion matching exact database columns
     const result = await db.query(
-      `INSERT INTO layouts (project_id, name, sector_code, total_land_area, status)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      `INSERT INTO layouts (
+        project_id, name, code, layout_type, approval_number, 
+        approval_date, total_area_value, total_area_unit_id, measurement_unit_id, status
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
       [
         project_id,
-        sanitizeString(name),
-        sanitizeString(sector_code),
-        total_land_area ? parseFloat(total_land_area) : 0,
-        status || "PLANNING",
+        name.trim(),
+        cleanCode,
+        cleanLayoutType,
+        approval_number ? approval_number.trim() : null,
+        approval_date ? approval_date : null,
+        total_area_value ? parseFloat(total_area_value) : null,
+        total_area_unit_id || finalUnitId,
+        finalUnitId,
+        finalStatus
       ]
     );
 
     res.status(201).json(result.rows[0]);
   } catch (err: any) {
     console.error("createLayout Error:", err);
-    res.status(500).json({ error: "Failed to design sector layout." });
+    res.status(500).json({ error: "Failed to design sector layout. Internal Database Error." });
   }
 });
 
 router.put("/layouts/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { name, sector_code, total_land_area, status } = req.body;
+    const {
+      name,
+      code,
+      layout_type,
+      approval_number,
+      approval_date,
+      total_area_value,
+      total_area_unit_id,
+      measurement_unit_id,
+      status,
+    } = req.body;
+
+    const db = getPool();
+
+    // 1. Fetch layout context
+    const layoutCheck = await db.query(
+      `SELECT project_id, code FROM layouts WHERE id = $1`,
+      [req.params.id]
+    );
+    if (layoutCheck.rowCount === 0) {
+      return res.status(404).json({ error: "Layout not found." });
+    }
+    const currentLayout = layoutCheck.rows[0];
+
+    // 2. Validate authorization via verifyPlotAccess
     const check = await verifyPlotAccess(req, res, "plots.edit", { layoutId: req.params.id });
     if (!check.success) return;
 
     const tenantId = check.tenantId!;
-    const db = getPool();
+
+    // 3. Validation
+    if (!name || !name.trim()) {
+      return res.status(422).json({ error: "Validation Error: Layout Name is required." });
+    }
+    if (!code || !code.trim()) {
+      return res.status(422).json({ error: "Validation Error: Subdivision Code is required." });
+    }
+
+    const cleanCode = code.trim().toUpperCase();
+
+    // Check duplicate name or code (excluding current layout)
+    const dupCheck = await db.query(
+      `SELECT id FROM layouts 
+       WHERE project_id = $1 AND id <> $2 AND (LOWER(name) = LOWER($3) OR UPPER(code) = UPPER($4))`,
+      [currentLayout.project_id, req.params.id, name.trim(), cleanCode]
+    );
+    if (dupCheck.rowCount > 0) {
+      return res.status(422).json({ error: "Validation Error: A layout phase with the same name or subdivision code already exists within this project." });
+    }
+
+    // Conditional Validation for APPROVED lifecycle state
+    if (status === "APPROVED") {
+      if (!approval_number || !approval_number.trim()) {
+        return res.status(422).json({ error: "Validation Error: Approval Reference Number is required for APPROVED layout phases." });
+      }
+      if (!approval_date) {
+        return res.status(422).json({ error: "Validation Error: Approval Date is required for APPROVED layout phases." });
+      }
+    }
+
+    if (total_area_value !== undefined && total_area_value !== null && total_area_value !== "") {
+      const parsedArea = parseFloat(total_area_value);
+      if (isNaN(parsedArea) || parsedArea <= 0) {
+        return res.status(422).json({ error: "Validation Error: Zoned Area value must be a positive numeric value higher than 0." });
+      }
+    }
+
+    // Validate measurement_unit_id
+    let finalUnitId = measurement_unit_id || total_area_unit_id;
+    if (finalUnitId) {
+      const unitCheck = await db.query(`SELECT id FROM measurement_units WHERE id = $1`, [finalUnitId]);
+      if (unitCheck.rowCount === 0) {
+        return res.status(422).json({ error: "Validation Error: Selected Standard Measurement Unit is invalid." });
+      }
+    } else {
+      // Keep existing measurement unit or fetch fallback
+      const unitQuery = await db.query(`SELECT measurement_unit_id FROM layouts WHERE id = $1`, [req.params.id]);
+      finalUnitId = unitQuery.rows[0].measurement_unit_id;
+    }
+
+    // Normalize layout_type
+    let cleanLayoutType = "RESIDENTIAL";
+    if (layout_type) {
+      const typeStr = layout_type.trim().toUpperCase().replace(/\s+/g, "_");
+      if (["RESIDENTIAL", "COMMERCIAL", "MIXED_USE", "INDUSTRIAL", "FARM_LAND"].includes(typeStr)) {
+        cleanLayoutType = typeStr;
+      }
+    }
+
+    // DB Update matching exact database columns
     const result = await db.query(
       `UPDATE layouts SET
-        name = $1, sector_code = $2, total_land_area = $3, status = $4, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $5 AND project_id IN (SELECT id FROM projects WHERE tenant_id = $6)
+        name = $1,
+        code = $2,
+        layout_type = $3,
+        approval_number = $4,
+        approval_date = $5,
+        total_area_value = $6,
+        total_area_unit_id = $7,
+        measurement_unit_id = $8,
+        status = $9,
+        updated_at = CURRENT_TIMESTAMP
+       WHERE id = $10 AND project_id IN (SELECT id FROM projects WHERE tenant_id = $11)
        RETURNING *`,
       [
-        sanitizeString(name),
-        sanitizeString(sector_code),
-        total_land_area ? parseFloat(total_land_area) : 0,
-        status,
+        name.trim(),
+        cleanCode,
+        cleanLayoutType,
+        approval_number ? approval_number.trim() : null,
+        approval_date ? approval_date : null,
+        total_area_value ? parseFloat(total_area_value) : null,
+        total_area_unit_id || finalUnitId,
+        finalUnitId,
+        status || "DRAFT",
         req.params.id,
         tenantId,
       ]
@@ -728,7 +908,7 @@ router.put("/layouts/:id", requireAuth, async (req: AuthenticatedRequest, res: R
     res.json(result.rows[0]);
   } catch (err: any) {
     console.error("updateLayout Error:", err);
-    res.status(500).json({ error: "Failed to update layout." });
+    res.status(500).json({ error: "Failed to update layout blueprint. Internal Database Error." });
   }
 });
 

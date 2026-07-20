@@ -38,7 +38,7 @@ export default function PlotControlCenter({
   selectedLayoutId,
   onClose
 }: PlotControlCenterProps) {
-  const isQaSimulationEnabled = import.meta.env.VITE_ENABLE_QA_SIMULATION === "true";
+  const isQaSimulationEnabled = (import.meta as any).env.VITE_ENABLE_QA_SIMULATION === "true";
   const [activeTab, setActiveTab] = useState<"row" | "grid" | "numbering" | "profiles" | "qa">("row");
   const [statusMessage, setStatusMessage] = useState<{ type: "success" | "error" | "info" | null; text: string }>({ type: null, text: "" });
 

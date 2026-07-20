@@ -1558,10 +1558,37 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
         return;
       }
 
+      // Normalization of survey_number: split/trim/comma-separated
+      const normalizedSurvey = formLay.survey_number
+        ? formLay.survey_number
+            .split(",")
+            .map(s => s.trim())
+            .filter(Boolean)
+            .join(", ")
+        : "";
+
+      // Validation: Measurement Unit ID cannot be empty
+      if (!formLay.measurement_unit_id) {
+        setErrorMess("Validation Error: Please select a valid Standard Measurement Unit.");
+        return;
+      }
+
+      // Validation: If status is APPROVED, approval details must be filled
+      if (formLay.status === "APPROVED") {
+        if (!formLay.approval_number || !formLay.approval_number.trim()) {
+          setErrorMess("Validation Error: Approval Reference Number is required for APPROVED layout phases.");
+          return;
+        }
+        if (!formLay.approval_date) {
+          setErrorMess("Validation Error: Approval Date is required for APPROVED layout phases.");
+          return;
+        }
+      }
+
       // Safe packing of Survey numbers and other extra fields into approval_number text field to survive schema restrictions
       const packedStr = packApprovalNumber(
         formLay.approval_number,
-        formLay.survey_number,
+        normalizedSurvey,
         formLay.phase,
         formLay.description
       );
@@ -6664,6 +6691,12 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl max-h-[85vh] overflow-y-auto">
             <h4 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">{currModal === "create_layout" ? "Define Layout Subdivision Plan" : "Edit Phase Blueprint"}</h4>
+            {errorMess && (
+              <div className="bg-rose-50 border border-rose-100 rounded-xl p-3 text-xs text-rose-800 flex items-start gap-2" id="layout-modal-error-banner">
+                <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
+                <span>{errorMess}</span>
+              </div>
+            )}
             <form onSubmit={handleSaveLayout} className="space-y-3.5 test-xs text-left">
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Parent Project Context *</label>

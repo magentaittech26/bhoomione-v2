@@ -9,7 +9,7 @@ let mockProjectRows: any[] = [];
 let mockPermissionCount = 0;
 
 // Override pg.Pool.prototype.query to redirect queries to our memory mock driver
-pg.Pool.prototype.query = async function (text: string, params?: any[]): Promise<any> {
+(pg.Pool.prototype as any).query = async function (text: string, params?: any[]): Promise<any> {
   const queryTrimmed = text.trim().replace(/\s+/g, " ");
 
   // 1. Plot check query
