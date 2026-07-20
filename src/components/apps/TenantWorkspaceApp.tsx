@@ -5,7 +5,6 @@ import TenantLogin from "../TenantLogin.tsx";
 import PasswordReset from "../PasswordReset.tsx";
 import Dashboard from "../Dashboard.tsx";
 import SettingsBilling from "../SettingsBilling.tsx";
-import MeasurementUnitsConsole from "../MeasurementUnitsConsole.tsx";
 import { ShieldCheck, ArrowRight, Building2, HelpCircle, ServerOff, Settings, Layout, Sliders } from "lucide-react";
 
 interface TenantWorkspaceAppProps {
@@ -49,7 +48,7 @@ const TENANT_REGISTRY: Record<string, TenantDetails> = {
 export default function TenantWorkspaceApp({ tenantCode }: TenantWorkspaceAppProps) {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [view, setView] = useState<"login" | "reset">("login");
-  const [activeTab, setActiveTab] = useState<"dashboard" | "settings" | "measurement-units">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "settings">("dashboard");
 
   // Lookup tenant details dynamically
   const code = tenantCode || "bhoomi-alpha";
@@ -148,18 +147,6 @@ export default function TenantWorkspaceApp({ tenantCode }: TenantWorkspaceAppPro
                   <span>ERP Dashboard</span>
                 </button>
                 <button
-                  onClick={() => setActiveTab("measurement-units")}
-                  className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
-                    activeTab === "measurement-units"
-                      ? "bg-white text-slate-900 shadow-sm font-bold border border-slate-200/20"
-                      : "text-slate-500 hover:text-slate-900"
-                  }`}
-                  id="tab-measurement-units"
-                >
-                  <Sliders className="w-3.5 h-3.5" />
-                  <span>Measurement Units Master</span>
-                </button>
-                <button
                   onClick={() => setActiveTab("settings")}
                   className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
                     activeTab === "settings"
@@ -176,8 +163,6 @@ export default function TenantWorkspaceApp({ tenantCode }: TenantWorkspaceAppPro
             
             {activeTab === "dashboard" ? (
               <Dashboard user={currentUser} onLogout={handleLogout} />
-            ) : activeTab === "measurement-units" ? (
-              <MeasurementUnitsConsole user={currentUser} />
             ) : (
               <SettingsBilling user={currentUser} onLogout={handleLogout} />
             )}

@@ -16,6 +16,11 @@ This document outlines the strategic engineering and design roadmap for BhoomiOn
                                   |
                                   v
   +-----------------------------------------------------------------+
+  | Phase 1A: Master Data Management (MDM) Platform Standard         |
+  +-----------------------------------------------------------------+
+                                  |
+                                  v
+  +-----------------------------------------------------------------+
   | Phase 2: AI Plot Search & Sales Intelligence                    |
   +-----------------------------------------------------------------+
                                   |
@@ -70,6 +75,15 @@ This document outlines the strategic engineering and design roadmap for BhoomiOn
     *   Sub-second parsing of dense geometry datasets.
     *   Smooth pan-and-zoom controls with touch gestures.
     *   High-fidelity SVG printing and plot-specific drawing exports.
+ 
+### Phase 1A: Master Data Management (MDM) Platform Standard
+*   **Focus:** Establishing a rigid, reusable enterprise architecture for all master administrative data.
+*   **Deliverables:**
+    *   **Measurement Units**: Completed reference implementation with multi-tenant overrides, precision logic, and standard conversions.
+    *   **Common Database & API Contracts**: Frozen specifications for tables, columns, indexes, auditing, and paginated/filtered JSON REST endpoints.
+    *   **Dependency Safeguard Engine**: Restricts deleting master records if active layout or plot references exist.
+    *   **Unified RBAC and Auditing**: Auto-assigned administrative permissions and compliance-ready historical diff logging.
+    *   **Future Master Extensibility**: Standardized blueprint for rapid seeding of Countries, States, Road Types, Plot Types, Amenity Types, and Document Types without code duplication.
 
 ### Phase 2: AI Plot Search & Sales Intelligence
 *   **Focus:** Embedding smart search tools to help builders query inventory intuitively.

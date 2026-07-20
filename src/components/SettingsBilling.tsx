@@ -13,6 +13,7 @@ import {
 import api from "../lib/api.ts";
 import { UserProfile, SystemHealth } from "../types/auth.ts";
 import TenantSubscriptionStore from "./saas/TenantSubscriptionStore.tsx";
+import MeasurementUnitsConsole from "./MeasurementUnitsConsole.tsx";
 import {
   LogOut,
   Fingerprint,
@@ -25,6 +26,8 @@ import {
   ShieldCheck,
   RefreshCw,
   ShoppingCart,
+  Sliders,
+  Layout,
 } from "lucide-react";
 
 interface SettingsBillingProps {
@@ -33,6 +36,7 @@ interface SettingsBillingProps {
 }
 
 export default function SettingsBilling({ user, onLogout }: SettingsBillingProps) {
+  const [settingsTab, setSettingsTab] = useState<"general" | "mdm">("general");
   const [health, setHealth] = useState<SystemHealth | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
@@ -180,7 +184,92 @@ export default function SettingsBilling({ user, onLogout }: SettingsBillingProps
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" id="settings-metrics-grid">
+      {/* Tenant Administration Navigation Tabs */}
+      <div className="flex border-b border-slate-200/60 pb-px mb-2 gap-4" id="tenant-admin-tabs">
+        <button
+          onClick={() => setSettingsTab("general")}
+          className={`pb-3 text-xs font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+            settingsTab === "general"
+              ? "border-slate-900 text-slate-900 font-bold"
+              : "border-transparent text-slate-500 hover:text-slate-900"
+          }`}
+          id="admin-tab-general"
+        >
+          <Sliders className="w-3.5 h-3.5" />
+          <span>General Administration &amp; Billing</span>
+        </button>
+        <button
+          onClick={() => setSettingsTab("mdm")}
+          className={`pb-3 text-xs font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+            settingsTab === "mdm"
+              ? "border-slate-900 text-slate-900 font-bold"
+              : "border-transparent text-slate-500 hover:text-slate-900"
+          }`}
+          id="admin-tab-mdm"
+        >
+          <Grid className="w-3.5 h-3.5" />
+          <span>Master Data Management</span>
+        </button>
+      </div>
+
+      {settingsTab === "mdm" ? (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6" id="mdm-panel-root">
+          {/* MDM Sidebar */}
+          <div className="md:col-span-1 bg-white border border-slate-200 rounded-xl p-4 h-fit space-y-1 shadow-sm" id="mdm-sidebar">
+            <h3 className="text-xs font-bold text-slate-400 px-3 py-2 uppercase tracking-wider font-mono">Master Datasets</h3>
+            <button
+              onClick={() => {}}
+              className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold bg-slate-900 text-white flex items-center gap-2 transition-all cursor-pointer"
+              id="mdm-dataset-units"
+            >
+              <Grid className="w-3.5 h-3.5" />
+              <span>Measurement Units</span>
+            </button>
+            <button
+              disabled
+              className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-slate-400 flex items-center justify-between transition-all cursor-not-allowed opacity-50"
+              id="mdm-dataset-countries"
+            >
+              <span className="flex items-center gap-2">
+                <Globe className="w-3.5 h-3.5" />
+                <span>Countries</span>
+              </span>
+              <span className="bg-slate-100 text-slate-500 text-[8px] px-1.5 py-0.2 rounded font-mono uppercase font-semibold">Soon</span>
+            </button>
+            <button
+              disabled
+              className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-slate-400 flex items-center justify-between transition-all cursor-not-allowed opacity-50"
+              id="mdm-dataset-states"
+            >
+              <span className="flex items-center gap-2">
+                <Grid className="w-3.5 h-3.5" />
+                <span>States &amp; Provinces</span>
+              </span>
+              <span className="bg-slate-100 text-slate-500 text-[8px] px-1.5 py-0.2 rounded font-mono uppercase font-semibold">Soon</span>
+            </button>
+          </div>
+          
+          {/* MDM Workspace View */}
+          <div className="md:col-span-3 space-y-6" id="mdm-workspace-view">
+            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4" id="mdm-title-card">
+              <div className="flex items-center gap-2 text-xs font-semibold text-indigo-650 bg-indigo-50 border border-indigo-150 px-2.5 py-0.5 rounded-full w-fit">
+                <Grid className="w-3.5 h-3.5" />
+                <span>Master Data Management Platform</span>
+              </div>
+              <div className="space-y-1">
+                <h2 className="text-xl font-bold tracking-tight text-slate-905">Measurement Units Master</h2>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Establish system-wide units of measure consumed across BhoomiOne projects, layouts, plots, and engineering modules. Unit definitions, scaling factors, and overrides are securely persisted in PostgreSQL.
+                </p>
+              </div>
+            </div>
+            
+            <MeasurementUnitsConsole user={user} />
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" id="settings-metrics-grid">
         {/* Profile Credentials Card */}
         <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-6 shadow-sm" id="profile-card">
           <div className="flex items-center gap-3 pb-4 border-b border-slate-100">
@@ -964,6 +1053,8 @@ export default function SettingsBilling({ user, onLogout }: SettingsBillingProps
           ))}
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }
