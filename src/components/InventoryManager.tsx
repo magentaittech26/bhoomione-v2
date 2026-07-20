@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import api from "../lib/api.ts";
+import { useMeasurementUnits } from "../hooks/useMeasurementUnits.ts";
 import { BhoomiModuleRegistry } from "../modules/spatial-core/registry/index.ts";
 import { UserProfile } from "../types/auth.ts";
 import { CADImportManager } from "./CADImportManager.tsx";
@@ -120,7 +121,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
   const [projects, setProjects] = useState<any[]>([]);
   const [layouts, setLayouts] = useState<any[]>([]);
   const [plots, setPlots] = useState<any[]>([]);
-  const [units, setUnits] = useState<any[]>([]);
+  const { units } = useMeasurementUnits();
 
   // Selection/Dropdown references (Lookup Tables)
   const [lookupProjects, setLookupProjects] = useState<any[]>([]);
@@ -980,14 +981,30 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
   };
 
   const fetchUnitsOnOpen = async () => {
-    try {
-      const unitsData = await api.fetchMeasurementUnits();
-      setUnits(unitsData);
-    } catch (err: any) {
-      console.error("fetchUnitsOnOpen Error:", err);
-      setErrorMess("Measurement units could not be loaded. Please contact the administrator.");
-    }
+    // Handled by useMeasurementUnits hook reactively
   };
+
+  // Reactive defaults population when units are loaded/fetched
+  useEffect(() => {
+    if (units && units.length > 0) {
+      setFormLay(prev => {
+        const defUnit = getDefaultUnitId(prev.project_id) || units[0]?.id || "";
+        return {
+          ...prev,
+          total_area_unit_id: prev.total_area_unit_id || defUnit,
+          measurement_unit_id: prev.measurement_unit_id || defUnit
+        };
+      });
+      setFormPlot(prev => ({
+        ...prev,
+        measurement_unit_id: prev.measurement_unit_id || getDefaultUnitId() || units[0]?.id || ""
+      }));
+      setBulkCreate(prev => ({
+        ...prev,
+        measurement_unit_id: prev.measurement_unit_id || getDefaultUnitId() || units[0]?.id || ""
+      }));
+    }
+  }, [units]);
 
   // Dynamic seeding flag check from backend server environments (Sprints 1 and 2 check)
   const [isSeeding, setIsSeeding] = useState(false);
@@ -1030,20 +1047,6 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
         }
       } catch (sumErr) {
         console.warn("Failed to retrieve subscription summary in InventoryManager:", sumErr);
-      }
-
-      const unitsData = await api.fetchMeasurementUnits();
-      setUnits(unitsData);
-
-      // Pre-populate units in fields
-      if (unitsData.length > 0) {
-        setFormLay(prev => ({
-          ...prev,
-          total_area_unit_id: prev.total_area_unit_id || getDefaultUnitId(prev.project_id),
-          measurement_unit_id: prev.measurement_unit_id || getDefaultUnitId(prev.project_id)
-        }));
-        setFormPlot(prev => ({ ...prev, measurement_unit_id: prev.measurement_unit_id || unitsData[0].id }));
-        setBulkCreate(prev => ({ ...prev, measurement_unit_id: prev.measurement_unit_id || unitsData[0].id }));
       }
 
       if (hasProjView) {
@@ -6791,7 +6794,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                       <>
                         <option value="">-- Select Standard Measurement Unit * --</option>
                         {units.map(u => (
-                          <option key={u.id} value={u.id}>{u.name} ({u.code})</option>
+                          <option key={u.id} value={u.id}>{u.name} ({u.symbol || u.code})</option>
                         ))}
                       </>
                     )}
@@ -6887,7 +6890,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Measurement Unit *</label>
                   <select value={formPlot.measurement_unit_id} onChange={(e) => setFormPlot({ ...formPlot, measurement_unit_id: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs">
                     {units.map(u => (
-                      <option key={u.id} value={u.id}>{u.name} ({u.code})</option>
+                      <option key={u.id} value={u.id}>{u.name} ({u.symbol || u.code})</option>
                     ))}
                   </select>
                 </div>
@@ -7005,7 +7008,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Measurement Unit</label>
                   <select value={bulkCreate.measurement_unit_id} onChange={(e) => setBulkCreate({ ...bulkCreate, measurement_unit_id: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs">
                     {units.map(u => (
-                      <option key={u.id} value={u.id}>{u.name} ({u.code})</option>
+                      <option key={u.id} value={u.id}>{u.name} ({u.symbol || u.code})</option>
                     ))}
                   </select>
                 </div>

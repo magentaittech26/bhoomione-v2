@@ -30,6 +30,26 @@ export async function bootstrapDatabase() {
       )
     `);
 
+    // Add additional columns for BhoomiOne V3 Measurement Units Master Module
+    await client.query("ALTER TABLE measurement_units ADD COLUMN IF NOT EXISTS uuid UUID UNIQUE DEFAULT gen_random_uuid()");
+    await client.query("ALTER TABLE measurement_units ADD COLUMN IF NOT EXISTS display_name VARCHAR(255)");
+    await client.query("ALTER TABLE measurement_units ADD COLUMN IF NOT EXISTS symbol VARCHAR(50)");
+    await client.query("ALTER TABLE measurement_units ADD COLUMN IF NOT EXISTS short_code VARCHAR(50)");
+    await client.query("ALTER TABLE measurement_units ADD COLUMN IF NOT EXISTS measurement_type VARCHAR(100) DEFAULT 'Area'");
+    await client.query("ALTER TABLE measurement_units ADD COLUMN IF NOT EXISTS conversion_factor DECIMAL(18,8) DEFAULT 1.0");
+    await client.query("ALTER TABLE measurement_units ADD COLUMN IF NOT EXISTS base_unit VARCHAR(100)");
+    await client.query("ALTER TABLE measurement_units ADD COLUMN IF NOT EXISTS precision INTEGER DEFAULT 2");
+    await client.query("ALTER TABLE measurement_units ADD COLUMN IF NOT EXISTS decimal_places INTEGER DEFAULT 2");
+    await client.query("ALTER TABLE measurement_units ADD COLUMN IF NOT EXISTS display_order INTEGER DEFAULT 0");
+    await client.query("ALTER TABLE measurement_units ADD COLUMN IF NOT EXISTS is_metric BOOLEAN DEFAULT FALSE");
+    await client.query("ALTER TABLE measurement_units ADD COLUMN IF NOT EXISTS is_default BOOLEAN DEFAULT FALSE");
+    await client.query("ALTER TABLE measurement_units ADD COLUMN IF NOT EXISTS is_system BOOLEAN DEFAULT TRUE");
+    await client.query("ALTER TABLE measurement_units ADD COLUMN IF NOT EXISTS country_code VARCHAR(10) NULL");
+    await client.query("ALTER TABLE measurement_units ADD COLUMN IF NOT EXISTS state_code VARCHAR(10) NULL");
+    await client.query("ALTER TABLE measurement_units ADD COLUMN IF NOT EXISTS tenant_override_allowed BOOLEAN DEFAULT TRUE");
+    await client.query("ALTER TABLE measurement_units ADD COLUMN IF NOT EXISTS description TEXT");
+    await client.query("ALTER TABLE measurement_units ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE NULL");
+
     // 2. subscription_plans Table
     await client.query(`
       CREATE TABLE IF NOT EXISTS subscription_plans (
@@ -227,6 +247,9 @@ export async function bootstrapDatabase() {
         UNIQUE (tenant_id, code)
       )
     `);
+
+    // Ensure projects table has default_unit_id referencing measurement_units(id)
+    await client.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS default_unit_id UUID REFERENCES measurement_units(id) ON DELETE SET NULL");
 
     // 15. layouts Table
     await client.query(`
@@ -1393,14 +1416,46 @@ export async function bootstrapDatabase() {
 
     // Seed geographic measurement units
     await client.query(`
-      INSERT INTO measurement_units (id, code, name, conversion_to_sqft) VALUES
-      ('33333333-3333-3333-3333-333333333331', 'SQFT', 'Square Feet', 1.00000000),
-      ('33333333-3333-3333-3333-333333333332', 'SQM', 'Square Metres', 10.76391042),
-      ('33333333-3333-3333-3333-333333333333', 'ACRE', 'Acres', 43560.00000000),
-      ('33333333-3333-3333-3333-333333333334', 'GUNTHA', 'Guntas', 1089.00000000),
-      ('33333333-3333-3333-3333-333333333336', 'CENT', 'Cents', 435.60000000),
-      ('33333333-3333-3333-3333-333333333337', 'HECTARE', 'Hectares', 107639.10000000),
-      ('33333333-3333-3333-3333-333333333335', 'BIGHA', 'Bigha', 27000.00000000)
+      INSERT INTO measurement_units (
+        id, uuid, code, name, display_name, symbol, short_code, measurement_type,
+        conversion_factor, conversion_to_sqft, base_unit, precision, decimal_places,
+        display_order, is_metric, is_default, is_system, is_active, tenant_override_allowed, description
+      ) VALUES
+      (
+        '33333333-3333-3333-3333-333333333331', '33333333-3333-3333-3333-333333333331',
+        'SQFT', 'Square Feet', 'Square Feet', 'sqft', 'SQFT', 'Area',
+        1.00000000, 1.00000000, 'SQFT', 2, 2, 1, false, true, true, true, true, 'Square Feet standard measurement'
+      ),
+      (
+        '33333333-3333-3333-3333-333333333332', '33333333-3333-3333-3333-333333333332',
+        'SQM', 'Square Metres', 'Square Metres', 'sqm', 'SQM', 'Area',
+        10.76391042, 10.76391042, 'SQFT', 2, 2, 2, true, false, true, true, true, 'Square Meters standard measurement'
+      ),
+      (
+        '33333333-3333-3333-3333-333333333333', '33333333-3333-3333-3333-333333333333',
+        'ACRE', 'Acres', 'Acres', 'ac', 'ACR', 'Area',
+        43560.00000000, 43560.00000000, 'SQFT', 4, 4, 3, false, false, true, true, true, 'Acre measurement (43,560 sq ft)'
+      ),
+      (
+        '33333333-3333-3333-3333-333333333334', '33333333-3333-3333-3333-333333333334',
+        'GUNTHA', 'Guntas', 'Guntas', 'gun', 'GUN', 'Area',
+        1089.00000000, 1089.00000000, 'SQFT', 2, 2, 4, false, false, true, true, true, 'Guntha measurement (1,089 sq ft)'
+      ),
+      (
+        '33333333-3333-3333-3333-333333333336', '33333333-3333-3333-3333-333333333336',
+        'CENT', 'Cents', 'Cents', 'cent', 'CEN', 'Area',
+        435.60000000, 435.60000000, 'SQFT', 2, 2, 5, false, false, true, true, true, 'Cent measurement (435.6 sq ft)'
+      ),
+      (
+        '33333333-3333-3333-3333-333333333337', '33333333-3333-3333-3333-333333333337',
+        'HECTARE', 'Hectares', 'Hectares', 'ha', 'HEC', 'Area',
+        107639.10000000, 107639.10000000, 'SQFT', 4, 4, 6, true, false, true, true, true, 'Hectare measurement (107,639 sq ft)'
+      ),
+      (
+        '33333333-3333-3333-3333-333333333335', '33333333-3333-3333-3333-333333333335',
+        'BIGHA', 'Bigha', 'Bigha', 'bigha', 'BIG', 'Area',
+        27000.00000000, 27000.00000000, 'SQFT', 2, 2, 7, false, false, true, true, true, 'Bigha measurement (27,000 sq ft)'
+      )
     `);
     console.log("Seeded default geographic measurement units.");
 
@@ -1586,6 +1641,12 @@ export async function bootstrapDatabase() {
 
       'agents.view': { name: 'View broker registers', module: 'contacts' },
       'agents.manage': { name: 'Onboard external brokers and commissions', module: 'contacts' },
+      'masters.measurement_units.view': { name: 'View measurement units', module: 'masters' },
+      'masters.measurement_units.create': { name: 'Create measurement units', module: 'masters' },
+      'masters.measurement_units.edit': { name: 'Edit measurement units', module: 'masters' },
+      'masters.measurement_units.delete': { name: 'Delete measurement units', module: 'masters' },
+      'masters.measurement_units.activate': { name: 'Activate/Deactivate measurement units', module: 'masters' },
+      'masters.measurement_units.export': { name: 'Export measurement units list', module: 'masters' },
     };
 
     const permIds: Record<string, string> = {};
@@ -1607,13 +1668,15 @@ export async function bootstrapDatabase() {
         'maps.upload', 'maps.view', 'projects.view', 'projects.manage',
         'layouts.view', 'layouts.manage', 'plots.view', 'plots.manage',
         'bookings.view', 'bookings.manage', 'collections.view', 'collections.manage',
-        'customers.view', 'customers.manage', 'agents.view', 'agents.manage'
+        'customers.view', 'customers.manage', 'agents.view', 'agents.manage',
+        'masters.measurement_units.view', 'masters.measurement_units.create', 'masters.measurement_units.edit', 'masters.measurement_units.delete', 'masters.measurement_units.activate', 'masters.measurement_units.export'
       ],
       'PLATFORM_SUPPORT': [
         'users.view', 'roles.view', 'permissions.view', 'tenants.view',
         'subscriptions.view', 'audit.view', 'kyc.review', 'maps.view',
         'projects.view', 'layouts.view', 'plots.view', 'bookings.view',
-        'collections.view', 'customers.view', 'agents.view'
+        'collections.view', 'customers.view', 'agents.view',
+        'masters.measurement_units.view', 'masters.measurement_units.export'
       ],
       'DEVELOPER_OWNER': [
         'users.view', 'users.create', 'users.update', 'users.delete',
@@ -1623,7 +1686,8 @@ export async function bootstrapDatabase() {
         'projects.view', 'projects.manage', 'layouts.view', 'layouts.manage',
         'plots.view', 'plots.manage', 'bookings.view', 'bookings.manage',
         'collections.view', 'collections.manage', 'customers.view', 'customers.manage',
-        'agents.view', 'agents.manage'
+        'agents.view', 'agents.manage',
+        'masters.measurement_units.view', 'masters.measurement_units.create', 'masters.measurement_units.edit', 'masters.measurement_units.delete', 'masters.measurement_units.activate', 'masters.measurement_units.export'
       ],
       'DEVELOPER_ADMIN': [
         'users.view', 'users.create', 'users.update',
@@ -1631,7 +1695,8 @@ export async function bootstrapDatabase() {
         'subscriptions.view', 'marketplace.publish', 'maps.upload', 'maps.view',
         'projects.view', 'projects.manage', 'layouts.view', 'layouts.manage',
         'plots.view', 'plots.manage', 'bookings.view', 'bookings.manage',
-        'collections.view', 'customers.view', 'customers.manage'
+        'collections.view', 'customers.view', 'customers.manage',
+        'masters.measurement_units.view', 'masters.measurement_units.create', 'masters.measurement_units.edit', 'masters.measurement_units.delete', 'masters.measurement_units.activate', 'masters.measurement_units.export'
       ],
       'FINANCE_MANAGER': [
         'users.view', 'subscriptions.view', 'bookings.view',
@@ -1640,7 +1705,8 @@ export async function bootstrapDatabase() {
       'PROJECT_MANAGER': [
         'users.view', 'maps.upload', 'maps.view',
         'projects.view', 'projects.manage', 'layouts.view', 'layouts.manage',
-        'plots.view', 'plots.manage'
+        'plots.view', 'plots.manage',
+        'masters.measurement_units.view', 'masters.measurement_units.export'
       ],
       'SALES_MANAGER': [
         'users.view', 'bookings.view', 'bookings.manage',

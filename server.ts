@@ -6,6 +6,7 @@ import inventoryRouter from "./server/routes/inventory.ts";
 import saasRouter from "./server/routes/saas.ts";
 import notificationsRouter from "./server/routes/notifications.ts";
 import coreMastersRouter from "./server/routes/core-masters.ts";
+import measurementUnitsRouter from "./server/routes/measurement-units.ts";
 import { bootstrapDatabase } from "./server/db/bootstrap.ts";
 
 async function startServer() {
@@ -25,6 +26,7 @@ async function startServer() {
   app.use("/api/v1", saasRouter);
   app.use("/api/v1", notificationsRouter);
   app.use("/api/v1/core-masters", coreMastersRouter);
+  app.use("/api/v1/measurement-units", measurementUnitsRouter);
 
   // Integrate Vite dev middleware or production asset files
   if (process.env.NODE_ENV !== "production") {
