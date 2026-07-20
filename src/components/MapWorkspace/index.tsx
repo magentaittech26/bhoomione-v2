@@ -42,6 +42,7 @@ import Canvas from "./Canvas.tsx";
 import Inspector from "./Inspector.tsx";
 import StatusBar from "./StatusBar.tsx";
 import EmptyState from "./EmptyState.tsx";
+import PlotControlCenter from "./PlotControlCenter.tsx";
 
 // No demo/mock projects or layouts. Everything is loaded dynamically from PostgreSQL.
 const MOCK_PROJECTS: any[] = [];
@@ -826,6 +827,7 @@ export default function MapWorkspaceIndex({
   // ========================================================
   const [isWizardMode, setIsWizardMode] = useState(false);
   const [showDraftPromptModal, setShowDraftPromptModal] = useState(false);
+  const [showPlotControlCenter, setShowPlotControlCenter] = useState(false);
   const [wizardStep, setWizardStep] = useState<WizardStep>("info");
 
   // Synchronized drawing state variables for wizard mode
@@ -2214,6 +2216,7 @@ export default function MapWorkspaceIndex({
             canRedo={canRedo}
             onUndo={handleUndo}
             onRedo={handleRedo}
+            onOpenPlotControlCenter={() => setShowPlotControlCenter(true)}
           />
 
           {/* Central Workspace Panel */}
@@ -5106,6 +5109,16 @@ export default function MapWorkspaceIndex({
             </button>
           </div>
         </div>
+      )}
+
+      {/* Plot Control Center */}
+      {showPlotControlCenter && (
+        <PlotControlCenter
+          objects={objects}
+          onUpdateObjects={setObjects}
+          selectedLayoutId={selectedLayoutId}
+          onClose={() => setShowPlotControlCenter(false)}
+        />
       )}
 
       {/* Draft Resume Prompt Modal */}

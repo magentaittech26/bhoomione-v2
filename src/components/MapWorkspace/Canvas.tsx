@@ -16,6 +16,7 @@ import {
   calculatePolygonPerimeter
 } from "../../lib/plotEngine.ts";
 import { getUtilityColor, getNetworkTypeForAsset } from "../../lib/utilityEngine.ts";
+import { queryPlots } from "../../modules/plots/search/provider.ts";
 
 interface CanvasProps {
   layers: GeometryLayer[];
@@ -778,7 +779,7 @@ export default function Canvas({
     if (!searchQuery || searchQuery.trim().length < 2) return;
 
     const q = searchQuery.toLowerCase().trim();
-    const match = objects.find(obj => {
+    const match = queryPlots(objects, searchQuery) || objects.find(obj => {
       const name = (obj.name || "").toLowerCase();
       const pName = (obj.properties?.park_name || "").toLowerCase();
       const pType = (obj.properties?.park_type || "").toLowerCase();
@@ -1017,8 +1018,17 @@ export default function Canvas({
         area_value: Math.round(metrics.sqft),
         facing: facing,
         corner_type: cornerType,
+        corner_status: {
+          is_corner_plot: cornerType !== "Internal Plot",
+          corner_type: cornerType
+        },
         zoning: "Residential",
-        owner: ""
+        plot_type: "Residential",
+        owner: "",
+        metadata: {
+          planning_remarks: "Manually drafted plot.",
+          internal_notes: ""
+        }
       };
     } else if (selectedTool === "road") {
       const roadCount = objects.filter(o => o.layerName === "ROADS").length + 1;

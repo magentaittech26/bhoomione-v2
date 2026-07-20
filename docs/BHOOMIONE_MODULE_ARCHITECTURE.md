@@ -87,3 +87,30 @@ Modules can react to state changes (e.g., subscription upgrades or administrativ
 
 ### C. Validation Suite
 * Dynamic bypass filters inside `runValidationSuite` ensure that rules associated with unlicensed features are not processed, conserving compute resources.
+
+---
+
+## 6. Backend Authorization & Sprint 6B Security Hardening
+
+To satisfy production-security compliance, frontend visibility is not considered authorization. Every persistent operation targeting the Plot Module must be validated on the backend.
+
+### A. Core Security Verification Strategy (`verifyPlotAccess`)
+All CAD import, layout, asset management, and plot mutation endpoints utilize the centralized, relation-aware `verifyPlotAccess` gateway:
+1. **Subscription Enforcement**: Validates that the active tenant has an `ACTIVE` or `TRIAL` subscription status and that the expiration timestamp has not passed.
+2. **Feature Entitlements**: Ensures the tenant's current subscription plan permits the `maps.plots` entitlement (`PLOTS` feature is `ENABLED`).
+3. **Cross-Tenant Context Isolation**: Dynamically resolves and matches relationship boundaries (Plot -> Layout -> Project -> Tenant) to prevent parameter tampering or cross-tenant UUID injection. Any access mismatch fails closed and returns `404 Not Found`.
+
+### B. Dynamic Permission Resolution
+The backend dynamically intercepts request payloads to deduce high-severity operations:
+* **plots.split**: Escalated when `dimensions_metadata` contains `split_from_plot_id`.
+* **plots.merge**: Escalated when `dimensions_metadata` contains `merged_from_plot_ids`.
+* **plots.renumber**: Escalated when a PUT request attempts to change the `plot_number` field.
+
+### C. Commercial Plot Lifecycle Integrity
+Commercial plots are strictly restricted to `DRAFT`, `VALIDATED`, and `APPROVED` statuses. Transitioning commercial plots to consumer states (e.g., `BOOKED`, `SOLD`, `CANCELLED`) is hard-blocked at the database and API level.
+
+### D. Production Environment QA Simulation Locking
+To safeguard production releases:
+* The interactive QA Simulation panel is completely hidden and compiled out of client views when `VITE_ENABLE_QA_SIMULATION !== "true"`.
+* Bypasses written in the browser console cannot compromise security because the backend does not rely on frontend-simulated roles or entitlements.
+

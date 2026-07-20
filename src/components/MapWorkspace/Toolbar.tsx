@@ -24,7 +24,8 @@ import {
   Wrench,
   Type,
   Undo2,
-  Redo2
+  Redo2,
+  Sparkles
 } from "lucide-react";
 import { WorkspaceTool } from "./types.ts";
 import { isModuleActive } from "../../modules/index.ts";
@@ -54,6 +55,7 @@ interface ToolbarProps {
   canRedo?: boolean;
   onUndo?: () => void;
   onRedo?: () => void;
+  onOpenPlotControlCenter?: () => void;
 }
 
 export default function Toolbar({
@@ -80,7 +82,8 @@ export default function Toolbar({
   canUndo = false,
   canRedo = false,
   onUndo = () => {},
-  onRedo = () => {}
+  onRedo = () => {},
+  onOpenPlotControlCenter
 }: ToolbarProps) {
   const [isVersionDropdownOpen, setIsVersionDropdownOpen] = useState(false);
   const [isNewVersionModalOpen, setIsNewVersionModalOpen] = useState(false);
@@ -209,17 +212,30 @@ export default function Toolbar({
             )}
 
             {isModuleActive("mod-plots") && (
-              <button
-                onClick={() => setSelectedTool("plot")}
-                className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                  selectedTool === "plot" ? "bg-white text-indigo-650 shadow-sm font-bold ring-1 ring-slate-200/10" : "text-slate-500 hover:text-slate-900"
-                }`}
-                title="Subdivided Plot Tool (P)"
-                id="tool-plot"
-              >
-                <Grid className={`w-3.5 h-3.5 ${selectedTool === "plot" ? "text-indigo-600" : ""}`} />
-                <span className="hidden xl:inline text-[11px]">Plot</span>
-              </button>
+              <>
+                <button
+                  onClick={() => setSelectedTool("plot")}
+                  className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    selectedTool === "plot" ? "bg-white text-indigo-650 shadow-sm font-bold ring-1 ring-slate-200/10" : "text-slate-500 hover:text-slate-900"
+                  }`}
+                  title="Subdivided Plot Tool (P)"
+                  id="tool-plot"
+                >
+                  <Grid className={`w-3.5 h-3.5 ${selectedTool === "plot" ? "text-indigo-600" : ""}`} />
+                  <span className="hidden xl:inline text-[11px]">Plot</span>
+                </button>
+                {onOpenPlotControlCenter && (
+                  <button
+                    onClick={onOpenPlotControlCenter}
+                    className="p-1.5 rounded-lg text-xs font-bold flex items-center gap-1 bg-gradient-to-r from-indigo-50 to-emerald-50 hover:from-indigo-100 hover:to-emerald-100 text-indigo-700 border border-indigo-200 shadow-xs transition-all cursor-pointer"
+                    title="Open Intelligent Plot Subdivision Control Center"
+                    id="btn-open-plot-engine"
+                  >
+                    <Sparkles className="w-3 h-3 text-indigo-600 animate-pulse" />
+                    <span className="hidden xl:inline text-[10px]">Engine</span>
+                  </button>
+                )}
+              </>
             )}
 
             {isModuleActive("mod-parks") && (

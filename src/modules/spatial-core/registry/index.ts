@@ -86,6 +86,14 @@ export class BhoomiModuleRegistry {
     return Array.from(this.tenantEntitlements);
   }
 
+  public addEntitlement(key: string): void {
+    this.tenantEntitlements.add(key);
+  }
+
+  public removeEntitlement(key: string): void {
+    this.tenantEntitlements.delete(key);
+  }
+
   /**
    * Check if the tenant owns/has license for a specific entitlement key
    */
@@ -121,7 +129,10 @@ export class BhoomiModuleRegistry {
    * Check if a module is licensed (has tenant entitlement) and currently enabled
    */
   public isModuleActive(id: string): boolean {
-    const mod = this.modules.get(id);
+    let mod = this.modules.get(id);
+    if (!mod && !id.startsWith("mod-")) {
+      mod = this.modules.get("mod-" + id);
+    }
     if (!mod) return false;
 
     // A module is active if the tenant has entitlement and it hasn't been disabled

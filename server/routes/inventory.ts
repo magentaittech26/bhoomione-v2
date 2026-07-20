@@ -12,6 +12,203 @@ function sanitizeString(val: any): string {
   return typeof val === "string" ? val.trim() : "";
 }
 
+// Robust backend authorization for Plot operations
+export async function verifyPlotAccess(
+  req: AuthenticatedRequest,
+  res: Response,
+  requiredPermission: string,
+  context?: { projectId?: string; layoutId?: string; plotId?: string }
+): Promise<{ success: boolean; tenantId?: string }> {
+  const tenantId = req.user?.tenantId;
+  if (!tenantId) {
+    res.status(400).json({ error: "Tenant context could not be resolved. Please specify X-Tenant-ID header." });
+    return { success: false };
+  }
+
+  const db = getPool();
+
+  try {
+    // Determine dynamic permission requirements based on body inputs (split, merge, renumber)
+    let finalPermission = requiredPermission;
+    const bodyMetadata = req.body?.dimensions_metadata;
+    let parsedMeta: any = {};
+    if (bodyMetadata) {
+      if (typeof bodyMetadata === "object") {
+        parsedMeta = bodyMetadata;
+      } else {
+        try {
+          parsedMeta = JSON.parse(bodyMetadata);
+        } catch (_) {}
+      }
+    }
+
+    if (parsedMeta?.split_from_plot_id) {
+      finalPermission = "plots.split";
+    } else if (parsedMeta?.merged_from_plot_ids) {
+      finalPermission = "plots.merge";
+    }
+
+    // Resolve query parameters/body/route parameters context if not passed explicitly
+    const resolvedPlotId = context?.plotId || req.params?.id;
+    const resolvedLayoutId = context?.layoutId || req.body?.layout_id || req.query?.layout_id as string;
+    const resolvedProjectId = context?.projectId || req.body?.project_id || req.query?.project_id as string;
+
+    // Validate relationships if any IDs are present
+    if (resolvedPlotId && (finalPermission !== "plots.view" || req.path.startsWith("/plots/"))) {
+      // Fetch plot and check tenant and layout association
+      const plotCheck = await db.query(
+        `SELECT p.id, p.plot_number, p.layout_id, l.project_id, prj.tenant_id
+         FROM plots p
+         JOIN layouts l ON p.layout_id = l.id
+         JOIN projects prj ON l.project_id = prj.id
+         WHERE p.id = $1`,
+        [resolvedPlotId]
+      );
+
+      if (plotCheck.rowCount === 0) {
+        res.status(404).json({ error: "Plot not found." });
+        return { success: false };
+      }
+
+      const pRow = plotCheck.rows[0];
+      if (pRow.tenant_id !== tenantId) {
+        res.status(404).json({ error: "Plot not found." });
+        return { success: false };
+      }
+
+      if (resolvedLayoutId && pRow.layout_id !== resolvedLayoutId) {
+        res.status(400).json({ error: "Validation Error: Plot does not belong to specified layout." });
+        return { success: false };
+      }
+
+      // Check for renumbering
+      if (req.body?.plot_number && pRow.plot_number !== req.body.plot_number) {
+        finalPermission = "plots.renumber";
+      }
+    }
+
+    if (resolvedLayoutId) {
+      const layoutCheck = await db.query(
+        `SELECT l.id, l.project_id, prj.tenant_id
+         FROM layouts l
+         JOIN projects prj ON l.project_id = prj.id
+         WHERE l.id = $1`,
+        [resolvedLayoutId]
+      );
+
+      if (layoutCheck.rowCount === 0) {
+        res.status(404).json({ error: "Layout not found." });
+        return { success: false };
+      }
+
+      const lRow = layoutCheck.rows[0];
+      if (lRow.tenant_id !== tenantId) {
+        res.status(404).json({ error: "Layout not found." });
+        return { success: false };
+      }
+
+      if (resolvedProjectId && lRow.project_id !== resolvedProjectId) {
+        res.status(400).json({ error: "Validation Error: Layout does not belong to specified project." });
+        return { success: false };
+      }
+    }
+
+    if (resolvedProjectId && !resolvedLayoutId) {
+      const projectCheck = await db.query(
+        `SELECT id, tenant_id FROM projects WHERE id = $1`,
+        [resolvedProjectId]
+      );
+
+      if (projectCheck.rowCount === 0) {
+        res.status(404).json({ error: "Project not found." });
+        return { success: false };
+      }
+
+      if (projectCheck.rows[0].tenant_id !== tenantId) {
+        res.status(404).json({ error: "Project not found." });
+        return { success: false };
+      }
+    }
+
+    // 1. Check active subscription
+    const subQuery = await db.query(
+      `SELECT ts.status, sp.plan_code, ts.expires_at, spf.access_level
+       FROM tenant_subscriptions ts
+       JOIN subscription_plans sp ON ts.plan_id = sp.id
+       LEFT JOIN subscription_plan_features spf ON spf.plan_id = sp.id AND spf.feature_id = (
+         SELECT id FROM saas_features WHERE code = 'PLOTS' LIMIT 1
+       )
+       WHERE ts.tenant_id = $1`,
+      [tenantId]
+    );
+
+    if (subQuery.rowCount === 0) {
+      res.status(403).json({ error: "Forbidden. Subscription context could not be resolved." });
+      return { success: false };
+    }
+
+    const sub = subQuery.rows[0];
+    if (sub.status !== 'ACTIVE' && sub.status !== 'TRIAL') {
+      res.status(403).json({ error: "Forbidden. Inactive tenant subscription." });
+      return { success: false };
+    }
+
+    if (sub.expires_at && new Date(sub.expires_at) < new Date()) {
+      res.status(403).json({ error: "Forbidden. Tenant subscription has expired." });
+      return { success: false };
+    }
+
+    // Check maps.plots (PLOTS feature) entitlement
+    if (sub.access_level === 'DISABLED') {
+      res.status(403).json({ error: "Forbidden. maps.plots entitlement is disabled on your current plan tier." });
+      return { success: false };
+    }
+
+    // 2. Check permission for the user
+    const roleUpper = req.user?.role ? req.user.role.toUpperCase() : "";
+    const isAdmin = ["DEVELOPER_OWNER", "DEVELOPER_ADMIN", "PLATFORM_ADMIN", "TENANT_OWNER", "TENANT_ADMIN", "OWNER", "ADMIN"].includes(roleUpper);
+
+    if (!isAdmin && finalPermission) {
+      const permQuery = await db.query(
+        `SELECT COUNT(*) as count
+         FROM tenant_users tu
+         JOIN role_permissions rp ON tu.role_id = rp.role_id
+         JOIN permissions p ON rp.permission_id = p.id
+         WHERE tu.user_id = $1 AND tu.tenant_id = $2 AND p.code = $3`,
+        [req.user?.userId, tenantId, finalPermission]
+      );
+
+      const count = parseInt(permQuery.rows[0]?.count || "0", 10);
+      if (count === 0) {
+        // Fallback for write permissions: if requested is plots.create/edit/delete/generate/split/merge etc, check plots.manage
+        if (finalPermission !== 'plots.view') {
+          const manageQuery = await db.query(
+            `SELECT COUNT(*) as count
+             FROM tenant_users tu
+             JOIN role_permissions rp ON tu.role_id = rp.role_id
+             JOIN permissions p ON rp.permission_id = p.id
+             WHERE tu.user_id = $1 AND tu.tenant_id = $2 AND p.code = 'plots.manage'`,
+            [req.user?.userId, tenantId]
+          );
+          if (parseInt(manageQuery.rows[0]?.count || "0", 10) === 0) {
+            res.status(403).json({ error: `Forbidden. Insufficient permissions to execute action [${finalPermission}].` });
+            return { success: false };
+          }
+        } else {
+          res.status(403).json({ error: `Forbidden. Insufficient permissions to execute action [${finalPermission}].` });
+          return { success: false };
+        }
+      }
+    }
+
+    return { success: true, tenantId };
+  } catch (err) {
+    console.error("verifyPlotAccess Error:", err);
+    res.status(500).json({ error: "Failed to verify backend authorization metrics." });
+    return { success: false };
+  }
+}
+
 // Heuristics for DXF Layer matching with intelligent pattern matching
 function evaluateLayerHeuristic(name: string): { suggested_type: string; confidence_score: number; reason: string } {
   const upper = name.trim().toUpperCase();
@@ -419,10 +616,11 @@ router.delete("/projects/:id", requireAuth, async (req: AuthenticatedRequest, re
 // ==========================================
 router.get("/layouts", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) return res.status(400).json({ error: "No active tenant." });
-
     const projectId = req.query.project_id;
+    const check = await verifyPlotAccess(req, res, "plots.view", { projectId: projectId as string });
+    if (!check.success) return;
+
+    const tenantId = check.tenantId!;
     const db = getPool();
 
     let query = `
@@ -450,9 +648,10 @@ router.get("/layouts", requireAuth, async (req: AuthenticatedRequest, res: Respo
 
 router.get("/layouts/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) return res.status(400).json({ error: "Tenant context required." });
+    const check = await verifyPlotAccess(req, res, "plots.view", { layoutId: req.params.id });
+    if (!check.success) return;
 
+    const tenantId = check.tenantId!;
     const db = getPool();
     const result = await db.query(
       `SELECT l.* 
@@ -474,20 +673,12 @@ router.get("/layouts/:id", requireAuth, async (req: AuthenticatedRequest, res: R
 
 router.post("/layouts", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) return res.status(400).json({ error: "Tenant missing." });
-
     const { project_id, name, sector_code, total_land_area, status } = req.body;
+    const check = await verifyPlotAccess(req, res, "plots.create", { projectId: project_id });
+    if (!check.success) return;
 
+    const tenantId = check.tenantId!;
     const db = getPool();
-    // Validate project belongs to tenant
-    const prj = await db.query("SELECT id FROM projects WHERE id = $1 AND tenant_id = $2", [
-      project_id,
-      tenantId,
-    ]);
-    if (prj.rowCount === 0) {
-      return res.status(403).json({ error: "Unauthorized project layout assignment." });
-    }
 
     const result = await db.query(
       `INSERT INTO layouts (project_id, name, sector_code, total_land_area, status)
@@ -510,11 +701,11 @@ router.post("/layouts", requireAuth, async (req: AuthenticatedRequest, res: Resp
 
 router.put("/layouts/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) return res.status(400).json({ error: "Tenant context required." });
-
     const { name, sector_code, total_land_area, status } = req.body;
+    const check = await verifyPlotAccess(req, res, "plots.edit", { layoutId: req.params.id });
+    if (!check.success) return;
 
+    const tenantId = check.tenantId!;
     const db = getPool();
     const result = await db.query(
       `UPDATE layouts SET
@@ -543,9 +734,10 @@ router.put("/layouts/:id", requireAuth, async (req: AuthenticatedRequest, res: R
 
 router.delete("/layouts/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) return res.status(400).json({ error: "Tenant context mismatch." });
+    const check = await verifyPlotAccess(req, res, "plots.delete", { layoutId: req.params.id });
+    if (!check.success) return;
 
+    const tenantId = check.tenantId!;
     const db = getPool();
     const result = await db.query(
       `DELETE FROM layouts 
@@ -571,22 +763,10 @@ router.delete("/layouts/:id", requireAuth, async (req: AuthenticatedRequest, res
 // GET /layouts/:id/assets - Get all assets (history) for a layout
 router.get("/layouts/:id/assets", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) return res.status(400).json({ error: "Tenant context required." });
+    const check = await verifyPlotAccess(req, res, "plots.view", { layoutId: req.params.id });
+    if (!check.success) return;
 
     const db = getPool();
-    // Validate layout belongs to tenant first
-    const layoutCheck = await db.query(
-      `SELECT l.id FROM layouts l
-       JOIN projects p ON l.project_id = p.id
-       WHERE l.id = $1 AND p.tenant_id = $2`,
-      [req.params.id, tenantId]
-    );
-
-    if (layoutCheck.rowCount === 0) {
-      return res.status(404).json({ error: "Layout not found or unauthorized access." });
-    }
-
     const result = await db.query(
       `SELECT id, layout_id, asset_type, file_name, mime_type, file_size, uploaded_by, metadata, is_active, created_at, updated_at
        FROM layout_assets
@@ -605,22 +785,10 @@ router.get("/layouts/:id/assets", requireAuth, async (req: AuthenticatedRequest,
 // GET /layouts/:id/active-asset - Get current active asset
 router.get("/layouts/:id/active-asset", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) return res.status(400).json({ error: "Tenant context required." });
+    const check = await verifyPlotAccess(req, res, "plots.view", { layoutId: req.params.id });
+    if (!check.success) return;
 
     const db = getPool();
-    // Validate layout belongs to tenant first
-    const layoutCheck = await db.query(
-      `SELECT l.id FROM layouts l
-       JOIN projects p ON l.project_id = p.id
-       WHERE l.id = $1 AND p.tenant_id = $2`,
-      [req.params.id, tenantId]
-    );
-
-    if (layoutCheck.rowCount === 0) {
-      return res.status(404).json({ error: "Layout not found or unauthorized access." });
-    }
-
     const result = await db.query(
       `SELECT * FROM layout_assets
        WHERE layout_id = $1 AND is_active = TRUE
@@ -642,8 +810,8 @@ router.get("/layouts/:id/active-asset", requireAuth, async (req: AuthenticatedRe
 // POST /layouts/:id/assets - Save a layout asset (PDF or IMAGE)
 router.post("/layouts/:id/assets", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) return res.status(400).json({ error: "Tenant context required." });
+    const check = await verifyPlotAccess(req, res, "plots.edit", { layoutId: req.params.id });
+    if (!check.success) return;
 
     const { asset_type, file_name, file_path_or_base64, mime_type, file_size, metadata } = req.body;
 
@@ -652,17 +820,6 @@ router.post("/layouts/:id/assets", requireAuth, async (req: AuthenticatedRequest
     }
 
     const db = getPool();
-    // Validate layout belongs to tenant first
-    const layoutCheck = await db.query(
-      `SELECT l.id FROM layouts l
-       JOIN projects p ON l.project_id = p.id
-       WHERE l.id = $1 AND p.tenant_id = $2`,
-      [req.params.id, tenantId]
-    );
-
-    if (layoutCheck.rowCount === 0) {
-      return res.status(404).json({ error: "Layout not found or unauthorized access." });
-    }
 
     // Check for duplicate uploads (same name and size, and is active)
     const duplicateCheck = await db.query(
@@ -681,7 +838,7 @@ router.post("/layouts/:id/assets", requireAuth, async (req: AuthenticatedRequest
         `UPDATE layout_assets
          SET metadata = $1, updated_at = CURRENT_TIMESTAMP
          WHERE id = $2 RETURNING *`,
-        [JSON.stringify(mergedMetadata), existingAsset.id]
+         [JSON.stringify(mergedMetadata), existingAsset.id]
       );
       
       return res.json(updateResult.rows[0]);
@@ -725,8 +882,9 @@ router.post("/layouts/:id/assets", requireAuth, async (req: AuthenticatedRequest
 // ==========================================
 router.get("/plots", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) return res.status(400).json({ error: "No active tenant." });
+    const check = await verifyPlotAccess(req, res, "plots.view");
+    if (!check.success) return;
+    const tenantId = check.tenantId;
 
     const db = getPool();
 
@@ -859,8 +1017,9 @@ router.get("/plots", requireAuth, async (req: AuthenticatedRequest, res: Respons
 
 router.get("/plots/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) return res.status(400).json({ error: "Tenant context required." });
+    const check = await verifyPlotAccess(req, res, "plots.view");
+    if (!check.success) return;
+    const tenantId = check.tenantId;
 
     const db = getPool();
     const result = await db.query(
@@ -884,8 +1043,9 @@ router.get("/plots/:id", requireAuth, async (req: AuthenticatedRequest, res: Res
 
 router.post("/plots", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) return res.status(400).json({ error: "Tenant missing." });
+    const check = await verifyPlotAccess(req, res, "plots.create");
+    if (!check.success) return;
+    const tenantId = check.tenantId;
 
     const {
       layout_id,
@@ -966,8 +1126,9 @@ router.post("/plots", requireAuth, async (req: AuthenticatedRequest, res: Respon
 
 router.put("/plots/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) return res.status(400).json({ error: "Tenant context required." });
+    const check = await verifyPlotAccess(req, res, "plots.edit");
+    if (!check.success) return;
+    const tenantId = check.tenantId;
 
     const {
       layout_id,
@@ -1083,8 +1244,9 @@ router.put("/plots/:id", requireAuth, async (req: AuthenticatedRequest, res: Res
 
 router.delete("/plots/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) return res.status(400).json({ error: "Tenant context mismatch." });
+    const check = await verifyPlotAccess(req, res, "plots.delete");
+    if (!check.success) return;
+    const tenantId = check.tenantId;
 
     const db = getPool();
 
@@ -1213,8 +1375,9 @@ router.get("/dxf/jobs/:id", requireAuth, async (req: AuthenticatedRequest, res: 
 // POST /dxf/upload
 router.post("/dxf/upload", requireAuth, upload.single("dxf_file"), async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) return res.status(400).json({ error: "Tenant context unresolved." });
+    const check = await verifyPlotAccess(req, res, "plots.generate");
+    if (!check.success) return;
+    const tenantId = check.tenantId;
 
     const { project_id, layout_id } = req.body;
     const file = req.file;
@@ -1704,8 +1867,9 @@ router.post("/dxf/upload", requireAuth, upload.single("dxf_file"), async (req: A
 // POST /dxf/mappings
 router.post("/dxf/mappings", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) return res.status(400).json({ error: "Tenant context unresolved." });
+    const check = await verifyPlotAccess(req, res, "plots.validate");
+    if (!check.success) return;
+    const tenantId = check.tenantId;
 
     const { dxf_file_id, mappings } = req.body;
     if (!dxf_file_id || !Array.isArray(mappings)) {
@@ -1972,8 +2136,9 @@ async function compileLayoutSvgDocument(db: any, tenantId: string, layoutId: str
 // POST /dxf/process
 router.post("/dxf/process", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-     const tenantId = req.user?.tenantId;
-     if (!tenantId) return res.status(400).json({ error: "Tenant context is missing." });
+     const check = await verifyPlotAccess(req, res, "plots.approve");
+     if (!check.success) return;
+     const tenantId = check.tenantId;
 
      const { dxf_file_id } = req.body;
      const db = getPool();
@@ -2170,9 +2335,10 @@ const GLOBAL_PRESETS = [
 // GET /dxf/templates
 router.get("/dxf/templates", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-     const tenantId = req.user?.tenantId;
-     if (!tenantId) return res.status(400).json({ error: "Tenant required." });
+     const check = await verifyPlotAccess(req, res, "plots.view");
+     if (!check.success) return;
 
+     const tenantId = check.tenantId!;
      const db = getPool();
      const result = await db.query(
        "SELECT * FROM import_templates WHERE tenant_id = $1 ORDER BY name ASC",
@@ -2191,9 +2357,10 @@ router.get("/dxf/templates", requireAuth, async (req: AuthenticatedRequest, res:
 // POST /dxf/templates
 router.post("/dxf/templates", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-     const tenantId = req.user?.tenantId;
-     if (!tenantId) return res.status(400).json({ error: "Tenant missing." });
+     const check = await verifyPlotAccess(req, res, "plots.create");
+     if (!check.success) return;
 
+     const tenantId = check.tenantId!;
      const { name, mappings } = req.body;
      if (!name || !mappings) {
         return res.status(400).json({ error: "Please enter template name and layers configuration schema." });
@@ -2216,9 +2383,10 @@ router.post("/dxf/templates", requireAuth, async (req: AuthenticatedRequest, res
 // PUT /dxf/templates/:id
 router.put("/dxf/templates/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-     const tenantId = req.user?.tenantId;
-     if (!tenantId) return res.status(400).json({ error: "Tenant required." });
+     const check = await verifyPlotAccess(req, res, "plots.edit");
+     if (!check.success) return;
 
+     const tenantId = check.tenantId!;
      const { name, mappings } = req.body;
      if (!name || !mappings) {
         return res.status(400).json({ error: "Please enter template name and layers configuration schema." });
@@ -2251,9 +2419,10 @@ router.put("/dxf/templates/:id", requireAuth, async (req: AuthenticatedRequest, 
 // POST /dxf/templates/:id/duplicate
 router.post("/dxf/templates/:id/duplicate", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-     const tenantId = req.user?.tenantId;
-     if (!tenantId) return res.status(400).json({ error: "Tenant context unresolved." });
+     const check = await verifyPlotAccess(req, res, "plots.create");
+     if (!check.success) return;
 
+     const tenantId = check.tenantId!;
      const { name } = req.body;
      const db = getPool();
 
@@ -2299,8 +2468,10 @@ router.post("/dxf/templates/:id/duplicate", requireAuth, async (req: Authenticat
 // DELETE /dxf/templates/:id
 router.delete("/dxf/templates/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-     const tenantId = req.user?.tenantId;
-     if (!tenantId) return res.status(400).json({ error: "Tenant required." });
+     const check = await verifyPlotAccess(req, res, "plots.delete");
+     if (!check.success) return;
+
+     const tenantId = check.tenantId!;
 
      // Prevent deleting global presets
      if (req.params.id.startsWith("global-")) {
@@ -2330,9 +2501,10 @@ router.delete("/dxf/templates/:id", requireAuth, async (req: AuthenticatedReques
 // GET /dxf/style-profiles
 router.get("/dxf/style-profiles", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) return res.status(400).json({ error: "Tenant missing." });
+    const check = await verifyPlotAccess(req, res, "plots.view");
+    if (!check.success) return;
 
+    const tenantId = check.tenantId!;
     const db = getPool();
     const result = await db.query(
       `SELECT * FROM svg_style_profiles WHERE tenant_id = $1`,
@@ -2349,10 +2521,11 @@ router.get("/dxf/style-profiles", requireAuth, async (req: AuthenticatedRequest,
 // GET /dxf/svg-documents/:id
 router.get("/dxf/svg-documents/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) return res.status(400).json({ error: "Tenant missing." });
-
     const layoutId = req.params.id;
+    const check = await verifyPlotAccess(req, res, "plots.view", { layoutId });
+    if (!check.success) return;
+
+    const tenantId = check.tenantId!;
     const db = getPool();
 
     // Find latest compiled SVG document for this layout
@@ -2449,6 +2622,10 @@ router.post("/dxf/generation-batches/:batchId/compile-svg", requireAuth, async (
         return res.status(404).json({ error: "No active CAD import batch or Layout matching this ID found." });
       }
     }
+
+    // Dynamic plot access validation
+    const check = await verifyPlotAccess(req, res, "plots.generate", { layoutId });
+    if (!check.success) return;
 
     // Begin a transaction for compilation
     await db.query("BEGIN");

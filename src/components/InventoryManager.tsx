@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import api from "../lib/api.ts";
+import { BhoomiModuleRegistry } from "../modules/spatial-core/registry/index.ts";
 import { UserProfile } from "../types/auth.ts";
 import { CADImportManager } from "./CADImportManager.tsx";
 import LayoutWorkspace from "./LayoutWorkspace.tsx";
@@ -928,8 +929,36 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
   const hasProjManage = user.permissions?.includes("projects.manage") || user.permissions?.includes("projects.create") || isTenantOwnerOrAdmin || false;
   const hasLayView = user.permissions?.includes("layouts.view") || isTenantOwnerOrAdmin || false;
   const hasLayManage = user.permissions?.includes("layouts.manage") || isTenantOwnerOrAdmin || false;
-  const hasPlotView = user.permissions?.includes("plots.view") || isTenantOwnerOrAdmin || false;
-  const hasPlotManage = user.permissions?.includes("plots.manage") || isTenantOwnerOrAdmin || false;
+
+  // Centralized Plots permission auditor with dynamic SaaS entitlement fallback
+  const hasPermission = (permission: string): boolean => {
+    const registry = BhoomiModuleRegistry.getInstance();
+    if (!registry.isModuleActive("mod-plots")) {
+      return false;
+    }
+
+    const rUpper = (user.role || "").toUpperCase().trim();
+    if (
+      rUpper === "DEVELOPER_OWNER" || 
+      rUpper === "DEVELOPER_ADMIN" || 
+      rUpper === "PLATFORM_ADMIN" || 
+      rUpper === "TENANT_OWNER" || 
+      rUpper === "TENANT_ADMIN" || 
+      rUpper === "OWNER" || 
+      rUpper === "ADMIN"
+    ) {
+      return true;
+    }
+
+    if (user.permissions && user.permissions.includes(permission)) {
+      return true;
+    }
+
+    return false;
+  };
+
+  const hasPlotView = hasPermission("plots.view");
+  const hasPlotManage = hasPermission("plots.edit") || hasPermission("plots.create");
   const hasDxfView = user.permissions?.includes("dxf.view") || isTenantOwnerOrAdmin || false;
 
   // Measurement Units reference caching helper
@@ -1806,11 +1835,19 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
       };
 
       if (editId) {
+        if (!hasPermission("plots.edit")) {
+          setErrorMess("403 ACCESS FORBIDDEN: You do not have the required entitlement or permission (plots.edit) to perform this action.");
+          return;
+        }
         const res = await api.updatePlot(editId, payload);
         displaySuccess(`Plot [${res.plot_number}] details updated!`);
         dispatchAuditLog("PLOT_UPDATE", "plots", res.id, `Updated individual Plot metrics for Plot No: ${res.plot_number}`);
         if (selectedPlot?.id === editId) setSelectedPlot(res);
       } else {
+        if (!hasPermission("plots.create")) {
+          setErrorMess("403 ACCESS FORBIDDEN: You do not have the required entitlement or permission (plots.create) to perform this action.");
+          return;
+        }
         const res = await api.createPlot(payload);
         displaySuccess(`Plot parcel [${res.plot_number}] cataloged!`);
         dispatchAuditLog("PLOT_CREATE", "plots", res.id, `Cataloged new individual land parcel Plot: ${res.plot_number}`);
@@ -1849,6 +1886,10 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
 
   const handleDeletePlot = async (id: string, num: string) => {
     if (!window.confirm(`Permanently de-register land plot tract ${num}?`)) return;
+    if (!hasPermission("plots.delete")) {
+      setErrorMess("403 ACCESS FORBIDDEN: You do not have the required entitlement or permission (plots.delete) to perform this action.");
+      return;
+    }
     setErrorMess(null);
     try {
       await api.deletePlot(id);
@@ -1959,6 +2000,10 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
       setErrorMess("Please specify valid plot numbers and areas larger than 0.");
       return;
     }
+    if (!hasPermission("plots.split")) {
+      setErrorMess("403 ACCESS FORBIDDEN: You do not have the required entitlement or permission (plots.split) to perform this action.");
+      return;
+    }
     setErrorMess(null);
     try {
       const orig = plots.find(p => p.id === plotId);
@@ -2011,6 +2056,10 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
     }
     if (!newPlotNumber || newAreaValue <= 0) {
       setErrorMess("Please specify a valid merged plot number and area larger than 0.");
+      return;
+    }
+    if (!hasPermission("plots.merge")) {
+      setErrorMess("403 ACCESS FORBIDDEN: You do not have the required entitlement or permission (plots.merge) to perform this action.");
       return;
     }
     setErrorMess(null);

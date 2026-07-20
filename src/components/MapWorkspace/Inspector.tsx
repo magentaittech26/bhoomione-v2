@@ -39,6 +39,7 @@ import {
   CreateGeometryCommand, 
   BulkUpdateCommand 
 } from "../../MapEngine/Drawing/DrawingToolManager.ts";
+import PlotInspector from "../../modules/plots/inspector/PlotInspector.tsx";
 
 interface InspectorProps {
   selectedObject: MockGeometry | null;
@@ -521,65 +522,11 @@ export default function Inspector({
                   <div className="space-y-3">
                     {/* Plot specific controls */}
                     {isPlot && (
-                      <>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Plot Number</label>
-                          <input
-                            type="text"
-                            value={selectedObject.properties.plot_number || ""}
-                            onChange={(e) => {
-                              handlePropertyChange("plot_number", e.target.value);
-                              // Update name sequentially as well
-                              onUpdateObject({
-                                ...selectedObject,
-                                name: `Subdivided Plot ${e.target.value}`,
-                                properties: {
-                                  ...selectedObject.properties,
-                                  plot_number: e.target.value
-                                }
-                              });
-                            }}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500 font-mono font-bold"
-                            id="attr-plot-number"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Manual Registered Area (SQFT)</label>
-                          <input
-                            type="number"
-                            value={selectedObject.properties.area_value || ""}
-                            onChange={(e) => handlePropertyChange("area_value", Number(e.target.value))}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500 font-mono"
-                            id="attr-area-value"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Facing Direction</label>
-                          <select
-                            value={selectedObject.properties.facing || "EAST"}
-                            onChange={(e) => handlePropertyChange("facing", e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 outline-none focus:border-indigo-500 cursor-pointer font-semibold"
-                            id="attr-facing-select"
-                          >
-                            <option value="EAST">EAST Facing</option>
-                            <option value="WEST">WEST Facing</option>
-                            <option value="NORTH">NORTH Facing</option>
-                            <option value="SOUTH">SOUTH Facing</option>
-                            <option value="NORTH-EAST">NORTH-EAST Facing</option>
-                            <option value="NORTH-WEST">NORTH-WEST Facing</option>
-                            <option value="SOUTH-EAST">SOUTH-EAST Facing</option>
-                            <option value="SOUTH-WEST">SOUTH-WEST Facing</option>
-                          </select>
-                        </div>
-                        {selectedObject.properties.corner_type && (
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">Autodetected Layout Class</label>
-                            <span className="block w-full bg-indigo-50/50 text-indigo-700 border border-indigo-100 rounded-lg px-2.5 py-1.5 font-bold text-[10px]">
-                              {selectedObject.properties.corner_type}
-                            </span>
-                          </div>
-                        )}
-                      </>
+                      <PlotInspector
+                        selectedObject={selectedObject}
+                        onUpdateObject={onUpdateObject}
+                        allObjects={objects}
+                      />
                     )}
 
                     {/* Roads specific controls */}
