@@ -438,7 +438,7 @@ function evaluateLayerHeuristic(name: string): { suggested_type: string; confide
 router.get("/measurement-units", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const db = getPool();
-    const result = await db.query("SELECT * FROM measurement_units ORDER BY code");
+    const result = await db.query("SELECT * FROM measurement_units WHERE is_active = TRUE ORDER BY code");
     res.json(result.rows);
   } catch (err: any) {
     console.error("fetchMeasurementUnits Error:", err);
@@ -681,7 +681,6 @@ router.post("/layouts", requireAuth, async (req: AuthenticatedRequest, res: Resp
       approval_number,
       approval_date,
       total_area_value,
-      total_area_unit_id,
       measurement_unit_id,
       status,
     } = req.body;
@@ -709,7 +708,7 @@ router.post("/layouts", requireAuth, async (req: AuthenticatedRequest, res: Resp
 
     // 3. Resolve and validate measurement_unit_id
     const db = getPool();
-    let finalUnitId = measurement_unit_id || total_area_unit_id;
+    let finalUnitId = measurement_unit_id;
     if (!finalUnitId || finalUnitId === "") {
       // Look up a fallback unit from database if none provided
       const unitQuery = await db.query(`SELECT id FROM measurement_units LIMIT 1`);
@@ -768,7 +767,7 @@ router.post("/layouts", requireAuth, async (req: AuthenticatedRequest, res: Resp
         approval_number ? approval_number.trim() : null,
         approval_date ? approval_date : null,
         total_area_value ? parseFloat(total_area_value) : null,
-        total_area_unit_id || finalUnitId,
+        finalUnitId,
         finalUnitId,
         finalStatus
       ]
@@ -790,7 +789,6 @@ router.put("/layouts/:id", requireAuth, async (req: AuthenticatedRequest, res: R
       approval_number,
       approval_date,
       total_area_value,
-      total_area_unit_id,
       measurement_unit_id,
       status,
     } = req.body;
@@ -851,7 +849,7 @@ router.put("/layouts/:id", requireAuth, async (req: AuthenticatedRequest, res: R
     }
 
     // Validate measurement_unit_id
-    let finalUnitId = measurement_unit_id || total_area_unit_id;
+    let finalUnitId = measurement_unit_id;
     if (finalUnitId) {
       const unitCheck = await db.query(`SELECT id FROM measurement_units WHERE id = $1`, [finalUnitId]);
       if (unitCheck.rowCount === 0) {
@@ -894,7 +892,7 @@ router.put("/layouts/:id", requireAuth, async (req: AuthenticatedRequest, res: R
         approval_number ? approval_number.trim() : null,
         approval_date ? approval_date : null,
         total_area_value ? parseFloat(total_area_value) : null,
-        total_area_unit_id || finalUnitId,
+        finalUnitId,
         finalUnitId,
         status || "DRAFT",
         req.params.id,

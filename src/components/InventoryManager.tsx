@@ -850,6 +850,8 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
         setCities([]);
         setVillages([]);
       }
+    } else if (currModal === "create_layout" || currModal === "edit_layout") {
+      fetchUnitsOnOpen();
     }
   }, [currModal]);
 
@@ -967,6 +969,26 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
     return matched ? matched.code : "SQFT";
   };
 
+  const getDefaultUnitId = (projId?: string) => {
+    if (projId && lookupProjects) {
+      const proj = lookupProjects.find(p => p.id === projId);
+      if (proj && (proj.default_unit_id || proj.measurement_unit_id)) {
+        return proj.default_unit_id || proj.measurement_unit_id;
+      }
+    }
+    return "";
+  };
+
+  const fetchUnitsOnOpen = async () => {
+    try {
+      const unitsData = await api.fetchMeasurementUnits();
+      setUnits(unitsData);
+    } catch (err: any) {
+      console.error("fetchUnitsOnOpen Error:", err);
+      setErrorMess("Measurement units could not be loaded. Please contact the administrator.");
+    }
+  };
+
   // Dynamic seeding flag check from backend server environments (Sprints 1 and 2 check)
   const [isSeeding, setIsSeeding] = useState(false);
 
@@ -1015,9 +1037,13 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
 
       // Pre-populate units in fields
       if (unitsData.length > 0) {
-        setFormLay(prev => ({ ...prev, total_area_unit_id: unitsData[0].id, measurement_unit_id: unitsData[0].id }));
-        setFormPlot(prev => ({ ...prev, measurement_unit_id: unitsData[0].id }));
-        setBulkCreate(prev => ({ ...prev, measurement_unit_id: unitsData[0].id }));
+        setFormLay(prev => ({
+          ...prev,
+          total_area_unit_id: prev.total_area_unit_id || getDefaultUnitId(prev.project_id),
+          measurement_unit_id: prev.measurement_unit_id || getDefaultUnitId(prev.project_id)
+        }));
+        setFormPlot(prev => ({ ...prev, measurement_unit_id: prev.measurement_unit_id || unitsData[0].id }));
+        setBulkCreate(prev => ({ ...prev, measurement_unit_id: prev.measurement_unit_id || unitsData[0].id }));
       }
 
       if (hasProjView) {
@@ -1568,8 +1594,15 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
         : "";
 
       // Validation: Measurement Unit ID cannot be empty
-      if (!formLay.measurement_unit_id) {
+      if (!formLay.measurement_unit_id || formLay.measurement_unit_id.trim() === "") {
         setErrorMess("Validation Error: Please select a valid Standard Measurement Unit.");
+        return;
+      }
+
+      // Verify selected ID exists in measurement units
+      const unitExists = units.some(u => u.id === formLay.measurement_unit_id);
+      if (!unitExists) {
+        setErrorMess("Validation Error: The selected Standard Measurement Unit is invalid or does not exist.");
         return;
       }
 
@@ -1601,8 +1634,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
         approval_number: packedStr || null,
         approval_date: formLay.approval_date || null,
         total_area_value: formLay.total_area_value ? Number(formLay.total_area_value) : null,
-        total_area_unit_id: formLay.total_area_unit_id || formLay.measurement_unit_id || null,
-        measurement_unit_id: formLay.measurement_unit_id || null,
+        measurement_unit_id: formLay.measurement_unit_id,
         status: formLay.status
       };
 
@@ -2408,8 +2440,8 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
           survey_number: "",
           approval_date: "",
           total_area_value: "",
-          total_area_unit_id: units[0]?.id || "",
-          measurement_unit_id: units[0]?.id || "",
+          total_area_unit_id: getDefaultUnitId(selectedProject.id),
+          measurement_unit_id: getDefaultUnitId(selectedProject.id),
           status: "DRAFT",
           phase: "",
           description: ""
@@ -4347,8 +4379,9 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                   <button
                     onClick={() => {
                       setEditId(null);
+                      const pId = lookupProjects[0]?.id || "";
                       setFormLay({
-                        project_id: lookupProjects[0]?.id || "",
+                        project_id: pId,
                         name: "",
                         code: "",
                         layout_type: "RESIDENTIAL",
@@ -4356,8 +4389,8 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                         survey_number: "",
                         approval_date: "",
                         total_area_value: "",
-                        total_area_unit_id: units[0]?.id || "",
-                        measurement_unit_id: units[0]?.id || "",
+                        total_area_unit_id: getDefaultUnitId(pId),
+                        measurement_unit_id: getDefaultUnitId(pId),
                         status: "DRAFT",
                         phase: "",
                         description: ""
@@ -4406,8 +4439,9 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                   <button
                     onClick={() => {
                       setEditId(null);
+                      const pId = lookupProjects[0]?.id || "";
                       setFormLay({
-                        project_id: lookupProjects[0]?.id || "",
+                        project_id: pId,
                         name: "",
                         code: "",
                         layout_type: "RESIDENTIAL",
@@ -4415,8 +4449,8 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                         survey_number: "",
                         approval_date: "",
                         total_area_value: "",
-                        total_area_unit_id: units[0]?.id || "",
-                        measurement_unit_id: units[0]?.id || "",
+                        total_area_unit_id: getDefaultUnitId(pId),
+                        measurement_unit_id: getDefaultUnitId(pId),
                         status: "DRAFT",
                         phase: "",
                         description: ""
@@ -5867,8 +5901,8 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                         survey_number: "",
                         approval_date: "",
                         total_area_value: "",
-                        total_area_unit_id: units[0]?.id || "",
-                        measurement_unit_id: units[0]?.id || "",
+                        total_area_unit_id: getDefaultUnitId(selectedProject.id),
+                        measurement_unit_id: getDefaultUnitId(selectedProject.id),
                         status: "DRAFT",
                         phase: "",
                         description: ""
@@ -5933,8 +5967,8 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                         survey_number: "",
                         approval_date: "",
                         total_area_value: "",
-                        total_area_unit_id: units[0]?.id || "",
-                        measurement_unit_id: units[0]?.id || "",
+                        total_area_unit_id: getDefaultUnitId(selectedProject.id),
+                        measurement_unit_id: getDefaultUnitId(selectedProject.id),
                         status: "DRAFT",
                         phase: "",
                         description: ""
@@ -6020,8 +6054,9 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                     onClick={() => {
                       setActiveTab("layouts");
                       setEditId(null);
+                      const pId = lookupProjects[0]?.id || "";
                       setFormLay({
-                        project_id: lookupProjects[0]?.id || "",
+                        project_id: pId,
                         name: "",
                         code: "",
                         layout_type: "RESIDENTIAL",
@@ -6029,8 +6064,8 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                         survey_number: "",
                         approval_date: "",
                         total_area_value: "",
-                        total_area_unit_id: units[0]?.id || "",
-                        measurement_unit_id: units[0]?.id || "",
+                        total_area_unit_id: getDefaultUnitId(pId),
+                        measurement_unit_id: getDefaultUnitId(pId),
                         status: "DRAFT",
                         phase: "",
                         description: ""
@@ -6743,11 +6778,23 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                   <input type="number" value={formLay.total_area_value} onChange={(e) => setFormLay({ ...formLay, total_area_value: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs" />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Standard Measurement Unit ID</label>
-                  <select value={formLay.measurement_unit_id} onChange={(e) => setFormLay({ ...formLay, measurement_unit_id: e.target.value, total_area_unit_id: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs">
-                    {units.map(u => (
-                      <option key={u.id} value={u.id}>{u.name} ({u.code})</option>
-                    ))}
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Standard Measurement Unit *</label>
+                  <select 
+                    value={formLay.measurement_unit_id || ""} 
+                    onChange={(e) => setFormLay({ ...formLay, measurement_unit_id: e.target.value, total_area_unit_id: e.target.value })} 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    required
+                  >
+                    {units.length === 0 ? (
+                      <option value="">Loading standard measurement units...</option>
+                    ) : (
+                      <>
+                        <option value="">-- Select Standard Measurement Unit * --</option>
+                        {units.map(u => (
+                          <option key={u.id} value={u.id}>{u.name} ({u.code})</option>
+                        ))}
+                      </>
+                    )}
                   </select>
                 </div>
               </div>
@@ -7226,8 +7273,9 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
         plots={plots}
         onCreateLayout={() => {
           setEditId(null);
+          const pId = lookupProjects[0]?.id || "";
           setFormLay({
-            project_id: lookupProjects[0]?.id || "",
+            project_id: pId,
             name: "",
             code: "",
             layout_type: "RESIDENTIAL",
@@ -7235,8 +7283,8 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
             survey_number: "",
             approval_date: "",
             total_area_value: "",
-            total_area_unit_id: units[0]?.id || "",
-            measurement_unit_id: units[0]?.id || "",
+            total_area_unit_id: getDefaultUnitId(pId),
+            measurement_unit_id: getDefaultUnitId(pId),
             status: "DRAFT",
             phase: "",
             description: ""
