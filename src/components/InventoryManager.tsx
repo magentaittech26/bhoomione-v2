@@ -121,7 +121,7 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
   const [projects, setProjects] = useState<any[]>([]);
   const [layouts, setLayouts] = useState<any[]>([]);
   const [plots, setPlots] = useState<any[]>([]);
-  const { units } = useMeasurementUnits();
+  const { units, loading: unitsLoading, error: unitsError, refresh: refreshUnits } = useMeasurementUnits();
 
   // Selection/Dropdown references (Lookup Tables)
   const [lookupProjects, setLookupProjects] = useState<any[]>([]);
@@ -858,11 +858,26 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
 
 
 
-  const [formLay, setFormLay] = useState({
+  const [formLay, setFormLay] = useState<{
+    project_id: string;
+    name: string;
+    code: string;
+    layout_type: string;
+    approval_number: string;
+    approval_date: string;
+    total_area_value: string;
+    total_area_unit_id: string;
+    measurement_unit_id: string;
+    status: string;
+    survey_number: string;
+    survey_numbers?: string[];
+    phase: string;
+    description: string;
+  }>({
     project_id: "", name: "", code: "", layout_type: "RESIDENTIAL",
     approval_number: "", approval_date: "", total_area_value: "",
     total_area_unit_id: "", measurement_unit_id: "", status: "DRAFT",
-    survey_number: "", phase: "", description: ""
+    survey_number: "", survey_numbers: [], phase: "", description: ""
   });
 
   const [formPlot, setFormPlot] = useState({
@@ -6729,16 +6744,63 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl max-h-[85vh] overflow-y-auto">
             <h4 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">{currModal === "create_layout" ? "Define Layout Subdivision Plan" : "Edit Phase Blueprint"}</h4>
+            
             {errorMess && (
               <div className="bg-rose-50 border border-rose-100 rounded-xl p-3 text-xs text-rose-800 flex items-start gap-2" id="layout-modal-error-banner">
                 <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
                 <span>{errorMess}</span>
               </div>
             )}
+
+            {unitsError && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-850 flex flex-col gap-2 animate-fade-in" id="layout-modal-units-error">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <span>Error: {unitsError}</span>
+                </div>
+                <button 
+                  type="button" 
+                  onClick={() => refreshUnits()} 
+                  className="self-start text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-wider"
+                >
+                  Retry Loading Units
+                </button>
+              </div>
+            )}
+
+            {!unitsLoading && !unitsError && (!units || units.length === 0) && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-850 flex flex-col gap-2 animate-fade-in" id="layout-modal-units-empty">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <span>No active measurement units are configured. Contact your tenant administrator.</span>
+                </div>
+                <button 
+                  type="button" 
+                  onClick={() => refreshUnits()} 
+                  className="self-start text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-wider"
+                >
+                  Refresh units
+                </button>
+              </div>
+            )}
+
+            {lookupProjects.length === 0 && (
+              <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-850 flex items-start gap-2 animate-fade-in" id="layout-modal-projects-empty">
+                <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                <span>Create or select a Project before creating a Layout.</span>
+              </div>
+            )}
+
             <form onSubmit={handleSaveLayout} className="space-y-3.5 test-xs text-left">
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Parent Project Context *</label>
-                <select value={formLay.project_id} onChange={(e) => setFormLay({ ...formLay, project_id: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs focus:outline-none">
+                <select 
+                  value={formLay.project_id} 
+                  onChange={(e) => setFormLay({ ...formLay, project_id: e.target.value })} 
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs focus:outline-none"
+                  required
+                >
+                  <option value="">-- Select Parent Project Context * --</option>
                   {lookupProjects.map(p => (
                     <option key={p.id} value={p.id}>[{p.code}] {p.name}</option>
                   ))}
@@ -6787,9 +6849,12 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
                     onChange={(e) => setFormLay({ ...formLay, measurement_unit_id: e.target.value, total_area_unit_id: e.target.value })} 
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     required
+                    disabled={unitsLoading || (!units || units.length === 0)}
                   >
-                    {units.length === 0 ? (
+                    {unitsLoading ? (
                       <option value="">Loading standard measurement units...</option>
+                    ) : !units || units.length === 0 ? (
+                      <option value="">No active measurement units available</option>
                     ) : (
                       <>
                         <option value="">-- Select Standard Measurement Unit * --</option>
@@ -6827,7 +6892,17 @@ export default function InventoryManager({ user, onAuditLogged }: InventoryManag
               </div>
               <div className="flex justify-end gap-2.5 pt-3">
                 <button type="button" onClick={() => { setCurrModal(null); setReturnToViewerAfterSave(false); }} className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-50">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-indigo-650 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold">Save Layout</button>
+                <button 
+                  type="submit" 
+                  disabled={unitsLoading || (!units || units.length === 0) || lookupProjects.length === 0 || !formLay.project_id}
+                  className={`px-4 py-2 rounded-xl text-xs font-semibold text-white transition-colors ${
+                    unitsLoading || (!units || units.length === 0) || lookupProjects.length === 0 || !formLay.project_id
+                      ? "bg-slate-300 cursor-not-allowed" 
+                      : "bg-indigo-650 hover:bg-indigo-700"
+                  }`}
+                >
+                  {unitsLoading ? "Loading units..." : "Save Layout"}
+                </button>
               </div>
             </form>
           </div>
