@@ -433,20 +433,6 @@ function evaluateLayerHeuristic(name: string): { suggested_type: string; confide
 }
 
 // ==========================================
-// GEOGRAPHIC MEASUREMENT UNITS
-// ==========================================
-router.get("/measurement-units", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const db = getPool();
-    const result = await db.query("SELECT * FROM measurement_units WHERE is_active = TRUE ORDER BY code");
-    res.json(result.rows);
-  } catch (err: any) {
-    console.error("fetchMeasurementUnits Error:", err);
-    res.status(500).json({ error: "Failed to grab geographic units." });
-  }
-});
-
-// ==========================================
 // PROJECTS CONTROLLER
 // ==========================================
 router.get("/projects", requireAuth, async (req: AuthenticatedRequest, res: Response) => {

@@ -146,7 +146,14 @@ class ApiClient {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      let msg = errorData.error || errorData.message;
+      if (errorData.errors && typeof errorData.errors === "object") {
+        const fieldErrors = Object.entries(errorData.errors)
+          .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(", ") : msgs}`)
+          .join("; ");
+        msg = `${msg || "Validation failed"}: ${fieldErrors}`;
+      }
+      throw new Error(msg || `HTTP error! status: ${response.status}`);
     }
 
     const text = await response.text();
@@ -912,7 +919,11 @@ class ApiClient {
   // ==========================================
 
   async fetchMeasurementUnits(): Promise<any[]> {
-    return this.request<any[]>("/measurement-units", { method: "GET" });
+    const res = await this.request<any>("/measurement-units/lookup", { method: "GET" });
+    if (res && Array.isArray(res.data)) {
+      return res.data;
+    }
+    return Array.isArray(res) ? res : [];
   }
 
   async fetchStates(): Promise<any> {

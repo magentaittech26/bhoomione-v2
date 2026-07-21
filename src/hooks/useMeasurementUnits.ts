@@ -37,7 +37,7 @@ export function useMeasurementUnits(options?: { activeOnly?: boolean; refresh?: 
     // Create the promise for idempotent caching
     isFetchingPromise = (async () => {
       try {
-        const response = await MeasurementUnitService.getAll({ active_only: true });
+        const response = await MeasurementUnitService.getLookup();
         const data = response && Array.isArray(response.data) ? response.data : [];
         cachedUnits = data;
         return data;

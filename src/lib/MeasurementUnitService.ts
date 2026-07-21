@@ -92,6 +92,46 @@ export class MeasurementUnitService {
     }
   }
 
+  static async getLookup(): Promise<{ data: MeasurementUnit[] }> {
+    try {
+      const res = await api.request<any>("/measurement-units/lookup", { method: "GET" });
+      let items: any[] = [];
+      if (res && Array.isArray(res.data)) {
+        items = res.data;
+      } else if (Array.isArray(res)) {
+        items = res;
+      }
+
+      const normalizedUnits: MeasurementUnit[] = items
+        .map((u: any) => {
+          if (!u || typeof u !== "object") return null;
+          return {
+            id: String(u.id || u.uuid || ""),
+            uuid: String(u.uuid || u.id || ""),
+            code: String(u.code || ""),
+            name: String(u.name || u.display_name || ""),
+            display_name: String(u.display_name || u.name || ""),
+            symbol: String(u.symbol || u.short_code || u.code || ""),
+            short_code: String(u.short_code || u.symbol || u.code || ""),
+            measurement_type: String(u.measurement_type || ""),
+            conversion_factor: Number(u.conversion_factor ?? u.conversion_to_sqft ?? 1),
+            conversion_to_sqft: Number(u.conversion_to_sqft ?? u.conversion_factor ?? 1),
+            precision: Number(u.precision ?? u.decimal_places ?? 2),
+            decimal_places: Number(u.decimal_places ?? u.precision ?? 2),
+            is_active: Boolean(u.is_active ?? true),
+            is_default: Boolean(u.is_default ?? false),
+            is_system: Boolean(u.is_system ?? false),
+          };
+        })
+        .filter(Boolean) as MeasurementUnit[];
+
+      return { data: normalizedUnits };
+    } catch (err: any) {
+      console.error("MeasurementUnitService.getLookup error caught:", err);
+      throw err;
+    }
+  }
+
   static async getById(id: string): Promise<MeasurementUnit> {
     const res = await api.request<{ data: MeasurementUnit }>(`/measurement-units/${id}`, { method: "GET" });
     return res.data;

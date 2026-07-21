@@ -118,6 +118,20 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res: Response) =>
   }
 });
 
+// GET /api/v1/measurement-units/lookup
+router.get("/lookup", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const db = getPool();
+    const result = await db.query(
+      "SELECT * FROM measurement_units WHERE is_active = TRUE AND deleted_at IS NULL ORDER BY display_order ASC, code ASC"
+    );
+    res.json({ data: result.rows });
+  } catch (err: any) {
+    console.error("fetchMeasurementUnits Lookup Error:", err);
+    res.status(500).json({ error: "Failed to fetch measurement units lookup." });
+  }
+});
+
 // GET /api/v1/measurement-units/:id
 router.get("/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -160,86 +174,176 @@ router.post("/", requireAuth, async (req: AuthenticatedRequest, res: Response) =
       measurement_type = "Area",
       conversion_factor,
       base_unit,
-      precision = 2,
-      decimal_places = 2,
-      display_order = 0,
+      precision,
+      decimal_places,
+      display_order,
       is_metric = false,
       is_default = false,
       is_system = false,
       is_active = true,
-      country_code = null,
-      state_code = null,
+      country_code,
+      state_code,
       tenant_override_allowed = true,
       description
     } = req.body;
 
-    if (!code || !name || conversion_factor === undefined) {
-      res.status(400).json({ error: "Validation Error: Code, Name, and Conversion Factor are required." });
+    const errors: Record<string, string[]> = {};
+
+    // Validate code
+    if (!code || typeof code !== "string" || !code.trim()) {
+      errors.code = ["Code is required."];
+    }
+    
+    // Validate name
+    if (!name || typeof name !== "string" || !name.trim()) {
+      errors.name = ["Name is required."];
+    }
+
+    // Validate measurement type
+    if (!measurement_type || typeof measurement_type !== "string" || !measurement_type.trim()) {
+      errors.measurement_type = ["Measurement type is required."];
+    }
+
+    // Validate conversion factor
+    if (conversion_factor === undefined || conversion_factor === null || isNaN(Number(conversion_factor))) {
+      errors.conversion_factor = ["Conversion factor is required."];
+    } else if (Number(conversion_factor) <= 0) {
+      errors.conversion_factor = ["Conversion factor must be greater than zero."];
+    }
+
+    // Validate precision and decimal_places
+    const precNum = Number(precision ?? 2);
+    if (isNaN(precNum) || precNum < 0 || precNum > 6) {
+      errors.precision = ["Precision must be an integer between 0 and 6."];
+    }
+
+    const decNum = Number(decimal_places ?? 2);
+    if (isNaN(decNum) || decNum < 0 || decNum > 6) {
+      errors.decimal_places = ["Decimal places must be an integer between 0 and 6."];
+    }
+
+    // Validate display order
+    if (display_order !== undefined && display_order !== null && isNaN(Number(display_order))) {
+      errors.display_order = ["Display order must be an integer."];
+    }
+
+    // Validate country / state code formats
+    if (country_code && (typeof country_code !== "string" || country_code.trim().length > 10)) {
+      errors.country_code = ["Country code must be a string up to 10 characters."];
+    }
+    if (state_code && (typeof state_code !== "string" || state_code.trim().length > 10)) {
+      errors.state_code = ["State code must be a string up to 10 characters."];
+    }
+
+    if (Object.keys(errors).length > 0) {
+      res.status(422).json({
+        success: false,
+        message: "Validation failed.",
+        errors
+      });
       return;
     }
+
+    const normCode = code.toUpperCase().trim();
 
     // Check for duplicate code
     const dupCheck = await db.query(
       "SELECT id FROM measurement_units WHERE code = $1 AND deleted_at IS NULL",
-      [code.toUpperCase().trim()]
+      [normCode]
     );
     if (dupCheck.rowCount > 0) {
-      res.status(400).json({ error: `Validation Error: A measurement unit with code '${code}' already exists.` });
+      res.status(409).json({
+        success: false,
+        message: "Validation failed.",
+        errors: {
+          code: [`The code '${normCode}' has already been used.`]
+        }
+      });
       return;
     }
 
-    const newId = crypto.randomUUID();
-    const uuidVal = newId;
+    // Protect system/default fields from unauthorized tenant users
+    const roleUpper = req.user?.role ? req.user.role.toUpperCase() : "";
+    const isPlatformAdmin = ["DEVELOPER_OWNER", "DEVELOPER_ADMIN", "PLATFORM_ADMIN"].includes(roleUpper);
+    if ((is_system || is_default) && !isPlatformAdmin) {
+      res.status(403).json({
+        success: false,
+        error: "Forbidden. Tenant users are not authorized to create platform-wide system defaults."
+      });
+      return;
+    }
 
-    const insertQuery = `
-      INSERT INTO measurement_units (
-        id, uuid, code, name, display_name, symbol, short_code, measurement_type,
-        conversion_factor, conversion_to_sqft, base_unit, precision, decimal_places,
-        display_order, is_metric, is_default, is_system, is_active,
-        country_code, state_code, tenant_override_allowed, description
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
-      ) RETURNING *
-    `;
+    // Transaction to unset previous default if is_default is true
+    await db.query("BEGIN");
+    try {
+      if (is_default) {
+        await db.query(
+          "UPDATE measurement_units SET is_default = FALSE WHERE measurement_type = $1 AND deleted_at IS NULL",
+          [measurement_type]
+        );
+      }
 
-    const result = await db.query(insertQuery, [
-      newId,
-      uuidVal,
-      code.toUpperCase().trim(),
-      name.trim(),
-      (display_name || name).trim(),
-      symbol || null,
-      short_code || code,
-      measurement_type,
-      Number(conversion_factor),
-      Number(conversion_factor), // conversion_to_sqft
-      base_unit || "SQFT",
-      Number(precision),
-      Number(decimal_places),
-      Number(display_order),
-      !!is_metric,
-      !!is_default,
-      !!is_system,
-      !!is_active,
-      country_code || null,
-      state_code || null,
-      !!tenant_override_allowed,
-      description || null
-    ]);
+      const newId = crypto.randomUUID();
+      const uuidVal = newId;
 
-    const createdUnit = result.rows[0];
+      const insertQuery = `
+        INSERT INTO measurement_units (
+          id, uuid, code, name, display_name, symbol, short_code, measurement_type,
+          conversion_factor, conversion_to_sqft, base_unit, precision, decimal_places,
+          display_order, is_metric, is_default, is_system, is_active,
+          country_code, state_code, tenant_override_allowed, description
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
+        ) RETURNING *
+      `;
 
-    // Log Audit Trail
-    await AuditLogService.log({
-      tenantId: req.user?.tenantId || null,
-      userId: req.user?.userId || null,
-      entityName: "measurement_units",
-      entityId: createdUnit.id,
-      action: "PLOT_CREATE" as any, // fallback to standard action type or arbitrary
-      newValues: createdUnit
-    });
+      const result = await db.query(insertQuery, [
+        newId,
+        uuidVal,
+        normCode,
+        name.trim(),
+        (display_name || name).trim(),
+        symbol || null,
+        short_code || normCode,
+        measurement_type,
+        Number(conversion_factor),
+        Number(conversion_factor), // conversion_to_sqft
+        base_unit || "SQFT",
+        precNum,
+        decNum,
+        Number(display_order || 0),
+        !!is_metric,
+        !!is_default,
+        !!is_system,
+        !!is_active,
+        country_code || null,
+        state_code || null,
+        !!tenant_override_allowed,
+        description || null
+      ]);
 
-    res.status(201).json({ data: createdUnit });
+      const createdUnit = result.rows[0];
+
+      await db.query("COMMIT");
+
+      // Log Audit Trail
+      await AuditLogService.log({
+        tenantId: req.user?.tenantId || null,
+        userId: req.user?.userId || null,
+        entityName: "measurement_units",
+        entityId: createdUnit.id,
+        action: "PLOT_CREATE" as any,
+        newValues: createdUnit
+      });
+
+      res.status(201).json({
+        success: true,
+        data: createdUnit
+      });
+    } catch (txErr) {
+      await db.query("ROLLBACK");
+      throw txErr;
+    }
   } catch (err: any) {
     console.error("createMeasurementUnit Route Error:", err);
     res.status(500).json({ error: "Failed to create measurement unit." });
@@ -287,68 +391,133 @@ router.put("/:id", requireAuth, async (req: AuthenticatedRequest, res: Response)
       description
     } = req.body;
 
-    const updateQuery = `
-      UPDATE measurement_units SET
-        name = COALESCE($1, name),
-        display_name = COALESCE($2, display_name),
-        symbol = COALESCE($3, symbol),
-        short_code = COALESCE($4, short_code),
-        measurement_type = COALESCE($5, measurement_type),
-        conversion_factor = COALESCE($6, conversion_factor),
-        conversion_to_sqft = COALESCE($6, conversion_to_sqft),
-        base_unit = COALESCE($7, base_unit),
-        precision = COALESCE($8, precision),
-        decimal_places = COALESCE($9, decimal_places),
-        display_order = COALESCE($10, display_order),
-        is_metric = COALESCE($11, is_metric),
-        is_default = COALESCE($12, is_default),
-        is_system = COALESCE($13, is_system),
-        is_active = COALESCE($14, is_active),
-        country_code = COALESCE($15, country_code),
-        state_code = COALESCE($16, state_code),
-        tenant_override_allowed = COALESCE($17, tenant_override_allowed),
-        description = COALESCE($18, description),
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = $19 AND deleted_at IS NULL
-      RETURNING *
-    `;
+    const errors: Record<string, string[]> = {};
 
-    const result = await db.query(updateQuery, [
-      name !== undefined ? name.trim() : null,
-      display_name !== undefined ? display_name.trim() : null,
-      symbol !== undefined ? symbol : null,
-      short_code !== undefined ? short_code : null,
-      measurement_type !== undefined ? measurement_type : null,
-      conversion_factor !== undefined ? Number(conversion_factor) : null,
-      base_unit !== undefined ? base_unit : null,
-      precision !== undefined ? Number(precision) : null,
-      decimal_places !== undefined ? Number(decimal_places) : null,
-      display_order !== undefined ? Number(display_order) : null,
-      is_metric !== undefined ? !!is_metric : null,
-      is_default !== undefined ? !!is_default : null,
-      is_system !== undefined ? !!is_system : null,
-      is_active !== undefined ? !!is_active : null,
-      country_code !== undefined ? country_code : null,
-      state_code !== undefined ? state_code : null,
-      tenant_override_allowed !== undefined ? !!tenant_override_allowed : null,
-      description !== undefined ? description : null,
-      id
-    ]);
+    // Validate conversion factor if provided
+    if (conversion_factor !== undefined && conversion_factor !== null) {
+      if (isNaN(Number(conversion_factor))) {
+        errors.conversion_factor = ["Conversion factor must be a number."];
+      } else if (Number(conversion_factor) <= 0) {
+        errors.conversion_factor = ["Conversion factor must be greater than zero."];
+      }
+    }
 
-    const updatedUnit = result.rows[0];
+    // Validate precision and decimal_places if provided
+    if (precision !== undefined && precision !== null) {
+      const precNum = Number(precision);
+      if (isNaN(precNum) || precNum < 0 || precNum > 6) {
+        errors.precision = ["Precision must be an integer between 0 and 6."];
+      }
+    }
+    if (decimal_places !== undefined && decimal_places !== null) {
+      const decNum = Number(decimal_places);
+      if (isNaN(decNum) || decNum < 0 || decNum > 6) {
+        errors.decimal_places = ["Decimal places must be an integer between 0 and 6."];
+      }
+    }
 
-    // Log Audit Trail
-    await AuditLogService.log({
-      tenantId: req.user?.tenantId || null,
-      userId: req.user?.userId || null,
-      entityName: "measurement_units",
-      entityId: id,
-      action: "PLOT_UPDATE" as any,
-      oldValues: oldUnit,
-      newValues: updatedUnit
-    });
+    if (Object.keys(errors).length > 0) {
+      res.status(422).json({
+        success: false,
+        message: "Validation failed.",
+        errors
+      });
+      return;
+    }
 
-    res.json({ data: updatedUnit });
+    // Protect system/default fields from unauthorized tenant users
+    const roleUpper = req.user?.role ? req.user.role.toUpperCase() : "";
+    const isPlatformAdmin = ["DEVELOPER_OWNER", "DEVELOPER_ADMIN", "PLATFORM_ADMIN"].includes(roleUpper);
+    if ((is_system !== undefined || is_default !== undefined) && !isPlatformAdmin) {
+      if ((is_system !== undefined && is_system !== oldUnit.is_system) || 
+          (is_default !== undefined && is_default !== oldUnit.is_default)) {
+        res.status(403).json({
+          success: false,
+          error: "Forbidden. Tenant users are not authorized to modify platform-wide system defaults."
+        });
+        return;
+      }
+    }
+
+    const targetType = measurement_type || oldUnit.measurement_type;
+
+    await db.query("BEGIN");
+    try {
+      if (is_default && !oldUnit.is_default) {
+        await db.query(
+          "UPDATE measurement_units SET is_default = FALSE WHERE measurement_type = $1 AND deleted_at IS NULL",
+          [targetType]
+        );
+      }
+
+      const updateQuery = `
+        UPDATE measurement_units SET
+          name = COALESCE($1, name),
+          display_name = COALESCE($2, display_name),
+          symbol = COALESCE($3, symbol),
+          short_code = COALESCE($4, short_code),
+          measurement_type = COALESCE($5, measurement_type),
+          conversion_factor = COALESCE($6, conversion_factor),
+          conversion_to_sqft = COALESCE($6, conversion_to_sqft),
+          base_unit = COALESCE($7, base_unit),
+          precision = COALESCE($8, precision),
+          decimal_places = COALESCE($9, decimal_places),
+          display_order = COALESCE($10, display_order),
+          is_metric = COALESCE($11, is_metric),
+          is_default = COALESCE($12, is_default),
+          is_system = COALESCE($13, is_system),
+          is_active = COALESCE($14, is_active),
+          country_code = COALESCE($15, country_code),
+          state_code = COALESCE($16, state_code),
+          tenant_override_allowed = COALESCE($17, tenant_override_allowed),
+          description = COALESCE($18, description),
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = $19 AND deleted_at IS NULL
+        RETURNING *
+      `;
+
+      const result = await db.query(updateQuery, [
+        name !== undefined && name !== null ? name.trim() : null,
+        display_name !== undefined && display_name !== null ? display_name.trim() : null,
+        symbol !== undefined ? symbol : null,
+        short_code !== undefined ? short_code : null,
+        measurement_type !== undefined ? measurement_type : null,
+        conversion_factor !== undefined ? Number(conversion_factor) : null,
+        base_unit !== undefined ? base_unit : null,
+        precision !== undefined ? Number(precision) : null,
+        decimal_places !== undefined ? Number(decimal_places) : null,
+        display_order !== undefined ? Number(display_order) : null,
+        is_metric !== undefined ? !!is_metric : null,
+        is_default !== undefined ? !!is_default : null,
+        is_system !== undefined ? !!is_system : null,
+        is_active !== undefined ? !!is_active : null,
+        country_code !== undefined ? country_code : null,
+        state_code !== undefined ? state_code : null,
+        tenant_override_allowed !== undefined ? !!tenant_override_allowed : null,
+        description !== undefined ? description : null,
+        id
+      ]);
+
+      const updatedUnit = result.rows[0];
+
+      await db.query("COMMIT");
+
+      // Log Audit Trail
+      await AuditLogService.log({
+        tenantId: req.user?.tenantId || null,
+        userId: req.user?.userId || null,
+        entityName: "measurement_units",
+        entityId: id,
+        action: "PLOT_UPDATE" as any,
+        oldValues: oldUnit,
+        newValues: updatedUnit
+      });
+
+      res.json({ success: true, data: updatedUnit });
+    } catch (txErr) {
+      await db.query("ROLLBACK");
+      throw txErr;
+    }
   } catch (err: any) {
     console.error("updateMeasurementUnit Route Error:", err);
     res.status(500).json({ error: "Failed to update measurement unit." });
