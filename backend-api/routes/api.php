@@ -468,10 +468,21 @@ Route::prefix('v1')->group(function () {
         Route::put('/plots/{id}', [PlotController::class, 'update'])->middleware([PermissionRequirementMiddleware::class . ':plots.manage']);
         Route::delete('/plots/{id}', [PlotController::class, 'destroy'])->middleware([PermissionRequirementMiddleware::class . ':plots.manage']);
 
-        // Measurement Units
-        Route::get('/measurement-units', function () {
-            return response()->json(\App\Models\MeasurementUnit::all());
-        })->middleware([PermissionRequirementMiddleware::class . ':projects.view']);
+        // Measurement Units Group
+        Route::get('/measurement-units/lookup', [\App\Http\Controllers\Api\v1\MeasurementUnitController::class, 'lookup'])
+            ->middleware([PermissionRequirementMiddleware::class]);
+        Route::get('/measurement-units', [\App\Http\Controllers\Api\v1\MeasurementUnitController::class, 'index'])
+            ->middleware([PermissionRequirementMiddleware::class . ':masters.measurement_units.view']);
+        Route::get('/measurement-units/{id}', [\App\Http\Controllers\Api\v1\MeasurementUnitController::class, 'show'])
+            ->middleware([PermissionRequirementMiddleware::class . ':masters.measurement_units.view']);
+        Route::post('/measurement-units', [\App\Http\Controllers\Api\v1\MeasurementUnitController::class, 'store'])
+            ->middleware([PermissionRequirementMiddleware::class . ':masters.measurement_units.create']);
+        Route::put('/measurement-units/{id}', [\App\Http\Controllers\Api\v1\MeasurementUnitController::class, 'update'])
+            ->middleware([PermissionRequirementMiddleware::class . ':masters.measurement_units.edit']);
+        Route::patch('/measurement-units/{id}/toggle', [\App\Http\Controllers\Api\v1\MeasurementUnitController::class, 'toggle'])
+            ->middleware([PermissionRequirementMiddleware::class . ':masters.measurement_units.activate']);
+        Route::delete('/measurement-units/{id}', [\App\Http\Controllers\Api\v1\MeasurementUnitController::class, 'destroy'])
+            ->middleware([PermissionRequirementMiddleware::class . ':masters.measurement_units.delete']);
 
         // Location Master Hierarchy Routes (Sprint 2A Laravel Core)
         Route::get('/location/states', [\App\Http\Controllers\Api\v1\LocationController::class, 'states'])
