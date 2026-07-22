@@ -332,14 +332,57 @@ class AuthController extends Controller
 
         try {
             $decoded = JwtTokenService::verifyAccessToken($bearer);
-            $profile = AuthService::getUserProfile($decoded['userId'], $decoded['tenantId']);
-            $profile['permissions'] = PermissionService::getUserPermissions($decoded['userId'], $decoded['tenantId']);
+            $userId = $decoded['userId'];
+            $tenantId = $decoded['tenantId'] ?? null;
+
+            $profile = AuthService::getUserProfile($userId, $tenantId);
+            $permissions = PermissionService::getUserPermissions($userId, $tenantId);
+            $profile['permissions'] = $permissions;
+
+            // Fetch tenant details if tenant context is available
+            $tenantDetails = null;
+            if ($tenantId) {
+                $tenantObj = DB::table('tenants')->where('id', $tenantId)->first();
+                if ($tenantObj) {
+                    $tenantDetails = [
+                        'id' => $tenantObj->id,
+                        'tenantCode' => $tenantObj->tenant_code,
+                        'companyName' => $tenantObj->company_name,
+                        'status' => $tenantObj->status,
+                    ];
+                }
+            }
+
+            // Resolve assigned roles
+            $roles = DB::table('user_roles')
+                ->join('roles', 'user_roles.role_id', '=', 'roles.id')
+                ->where('user_roles.user_id', $userId)
+                ->pluck('roles.code')
+                ->toArray();
+
+            if ($tenantId) {
+                $tenantRoles = DB::table('tenant_users')
+                    ->join('roles', 'tenant_users.role_id', '=', 'roles.id')
+                    ->where('tenant_users.user_id', $userId)
+                    ->where('tenant_users.tenant_id', $tenantId)
+                    ->pluck('roles.code')
+                    ->toArray();
+                $roles = array_values(array_unique(array_merge($roles, $tenantRoles)));
+            }
 
             return response()->json([
+                'success' => true,
+                'data' => [
+                    'user' => $profile,
+                    'tenant' => $tenantDetails,
+                    'roles' => $roles,
+                    'permissions' => $permissions,
+                ],
                 'user' => $profile
             ]);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage() ?: 'Could not reconcile profile credentials.'], 401);
         }
     }
+
 }

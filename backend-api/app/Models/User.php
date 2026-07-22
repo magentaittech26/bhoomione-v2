@@ -78,29 +78,14 @@ class User extends Authenticatable
     /**
      * Assert if user possesses a specific permission code in the active security perimeter.
      *
-     * @param string $permissionCode Unique identifier (e.g. 'users.manage')
+     * @param string $permissionCode Unique identifier (e.g. 'masters.measurement_units.create')
      * @param string|null $tenantId UUID, if working inside a Tenant workspace frame.
      * @return bool
      */
     public function hasPermission(string $permissionCode, ?string $tenantId = null): bool
     {
-        // If working under a Tenant context
-        if ($tenantId !== null) {
-            return DB::table('tenant_users')
-                ->join('role_permissions', 'tenant_users.role_id', '=', 'role_permissions.role_id')
-                ->join('permissions', 'role_permissions.permission_id', '=', 'permissions.id')
-                ->where('tenant_users.user_id', $this->id)
-                ->where('tenant_users.tenant_id', $tenantId)
-                ->where('permissions.code', $permissionCode)
-                ->exists();
-        }
-
-        // Fallback: Check global platform admin role allocations
-        return DB::table('user_roles')
-            ->join('role_permissions', 'user_roles.role_id', '=', 'role_permissions.role_id')
-            ->join('permissions', 'role_permissions.permission_id', '=', 'permissions.id')
-            ->where('user_roles.user_id', $this->id)
-            ->where('permissions.code', $permissionCode)
-            ->exists();
+        $userPerms = \App\Services\PermissionService::getUserPermissions($this->id, $tenantId);
+        return in_array($permissionCode, $userPerms, true);
     }
+
 }

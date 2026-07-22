@@ -26,11 +26,23 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
+import { usePermissions } from "../hooks/usePermission.ts";
+
 interface MeasurementUnitsConsoleProps {
   user: UserProfile;
 }
 
 export default function MeasurementUnitsConsole({ user }: MeasurementUnitsConsoleProps) {
+  const { hasPermission } = usePermissions(user);
+
+  const canView = hasPermission("masters.measurement_units.view");
+  const canCreate = hasPermission("masters.measurement_units.create");
+  const canEdit = hasPermission("masters.measurement_units.edit");
+  const canDelete = hasPermission("masters.measurement_units.delete");
+  const canActivate = hasPermission("masters.measurement_units.activate");
+  const canExport = hasPermission("masters.measurement_units.export");
+  const canImport = hasPermission("masters.measurement_units.import");
+
   const { units, loading, error, refresh } = useMeasurementUnits({ refresh: false });
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
@@ -67,9 +79,9 @@ export default function MeasurementUnitsConsole({ user }: MeasurementUnitsConsol
   // Detail Drawer state
   const [drawerUnit, setDrawerUnit] = useState<MeasurementUnit | null>(null);
 
-  // RBAC permissions helper
-  const roleUpper = user.role ? user.role.toUpperCase() : "";
-  const hasWriteAccess = ["DEVELOPER_OWNER", "DEVELOPER_ADMIN", "PLATFORM_ADMIN", "TENANT_OWNER", "TENANT_ADMIN", "OWNER", "ADMIN"].includes(roleUpper);
+  // Legacy fallback flag
+  const hasWriteAccess = canCreate || canEdit;
+
 
   // Live filter results
   const filteredUnits = units.filter((u) => {
@@ -259,7 +271,7 @@ export default function MeasurementUnitsConsole({ user }: MeasurementUnitsConsol
           </p>
         </div>
 
-        {hasWriteAccess && (
+        {canCreate ? (
           <button
             onClick={handleOpenCreate}
             className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl flex items-center gap-2 shadow-sm transition-all cursor-pointer active:scale-95"
@@ -268,7 +280,13 @@ export default function MeasurementUnitsConsole({ user }: MeasurementUnitsConsol
             <Plus className="w-4 h-4" />
             <span>Create Master Unit</span>
           </button>
+        ) : (
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 px-3 py-1.5 rounded-xl text-[11px] font-medium flex items-center gap-1.5" title="Requires masters.measurement_units.create permission">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+            <span>Read-Only Mode (Create Restricted)</span>
+          </div>
         )}
+
       </div>
 
       {/* Filter and View Toggles Bar */}

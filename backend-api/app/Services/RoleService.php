@@ -28,6 +28,8 @@ class RoleService
             'role_id' => $role->id,
         ]);
 
+        PermissionService::clearUserPermissionCache($user->id, null);
+
         AuditLogService::log([
             'tenantId' => null,
             'userId' => null, // Operator user should be supplied or log as security system action
@@ -69,6 +71,8 @@ class RoleService
             ['tenant_id' => $tenantId, 'user_id' => $user->id],
             ['role_id' => $role->id, 'updated_at' => now(), 'created_at' => now()]
         );
+
+        PermissionService::clearUserPermissionCache($user->id, $tenantId);
 
         AuditLogService::log([
             'tenantId' => $tenantId,

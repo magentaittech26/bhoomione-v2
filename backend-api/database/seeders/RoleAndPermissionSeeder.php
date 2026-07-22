@@ -130,22 +130,12 @@ class RoleAndPermissionSeeder extends Seeder
             ]
         ]);
 
-        // 3. Seed DEFAULT ROLES
-        $roles = [
-            'PLATFORM_ADMIN' => ['name' => 'Platform Admin', 'scope' => 'GLOBAL'],
-            'PLATFORM_SUPPORT' => ['name' => 'Platform Support', 'scope' => 'GLOBAL'],
-            'DEVELOPER_OWNER' => ['name' => 'Developer Owner', 'scope' => 'TENANT'],
-            'DEVELOPER_ADMIN' => ['name' => 'Developer Admin', 'scope' => 'TENANT'],
-            'FINANCE_MANAGER' => ['name' => 'Finance Manager', 'scope' => 'TENANT'],
-            'PROJECT_MANAGER' => ['name' => 'Project Manager', 'scope' => 'TENANT'],
-            'SALES_MANAGER' => ['name' => 'Sales Manager', 'scope' => 'TENANT'],
-            'SALES_EXECUTIVE' => ['name' => 'Sales Executive', 'scope' => 'TENANT'],
-            'AGENT' => ['name' => 'External Broker Agent', 'scope' => 'TENANT'],
-            'CUSTOMER' => ['name' => 'Customer Profile', 'scope' => 'TENANT'],
-        ];
+        // 3. Seed DEFAULT ROLES & PERMISSIONS via Canonical Registry
+        $canonicalPerms = \App\Console\Commands\RbacSyncPermissionsCommand::$canonicalPermissions;
+        $roleTemplates = \App\Console\Commands\RbacSyncPermissionsCommand::$roleTemplates;
 
         $roleIds = [];
-        foreach ($roles as $code => $data) {
+        foreach ($roleTemplates as $code => $data) {
             $id = (string) Str::uuid();
             DB::table('roles')->insert([
                 'id' => $id,
@@ -158,63 +148,8 @@ class RoleAndPermissionSeeder extends Seeder
             $roleIds[$code] = $id;
         }
 
-        // 4. Seed DEFAULT PERMISSIONS
-        $permissions = [
-            // Core permissions
-            'users.view' => ['name' => 'View users in current context workspace', 'module' => 'identity'],
-            'users.create' => ['name' => 'Create and invite users', 'module' => 'identity'],
-            'users.update' => ['name' => 'Modify user settings and metadata', 'module' => 'identity'],
-            'users.delete' => ['name' => 'Deactivate and suspend users', 'module' => 'identity'],
-
-            'roles.view' => ['name' => 'Query current role list and structure', 'module' => 'identity'],
-            'roles.manage' => ['name' => 'Define system roles and assignments', 'module' => 'identity'],
-
-            'permissions.view' => ['name' => 'Query permission profiles', 'module' => 'identity'],
-            'permissions.manage' => ['name' => 'Link privileges and mappings', 'module' => 'identity'],
-
-            'tenants.view' => ['name' => 'View workspace organizational assets', 'module' => 'platform'],
-            'tenants.manage' => ['name' => 'Create and modify developer tenants', 'module' => 'platform'],
-
-            'subscriptions.view' => ['name' => 'View plan and subscription invoices', 'module' => 'billing'],
-            'subscriptions.manage' => ['name' => 'Purchase and modify tenant tiers', 'module' => 'billing'],
-
-            'audit.view' => ['name' => 'Audit immutable system trail logs', 'module' => 'audit'],
-            'kyc.review' => ['name' => 'Audit customer profile verifications', 'module' => 'platform'],
-
-            'marketplace.publish' => ['name' => 'Publish and list lands on marketplace', 'module' => 'marketplace'],
-            'marketplace.unpublish' => ['name' => 'Unpublish properties', 'module' => 'marketplace'],
-
-            'maps.upload' => ['name' => 'Upload map layouts', 'module' => 'gis'],
-            'maps.view' => ['name' => 'View GIS map features', 'module' => 'gis'],
-
-            'projects.view' => ['name' => 'View developer projects', 'module' => 'projects'],
-            'projects.manage' => ['name' => 'Create and design development schedules', 'module' => 'projects'],
-
-            'layouts.view' => ['name' => 'View project layouts', 'module' => 'projects'],
-            'layouts.manage' => ['name' => 'Manage project layouts and sectors', 'module' => 'projects'],
-
-            'plots.view' => ['name' => 'View plots inside layouts', 'module' => 'projects'],
-            'plots.manage' => ['name' => 'Edit plot dimensions and statuses', 'module' => 'projects'],
-
-            'dxf.upload' => ['name' => 'Upload DXF geometry drawings', 'module' => 'gis'],
-            'dxf.view' => ['name' => 'View uploaded DXF files and jobs', 'module' => 'gis'],
-            'dxf.process' => ['name' => 'Trigger processing and layer mappings on DXF files', 'module' => 'gis'],
-
-            'bookings.view' => ['name' => 'Query customer booking items', 'module' => 'sales'],
-            'bookings.manage' => ['name' => 'Initiate draft booking bookings', 'module' => 'sales'],
-
-            'collections.view' => ['name' => 'Inspect customer ledgers', 'module' => 'sales'],
-            'collections.manage' => ['name' => 'Record payment collections', 'module' => 'sales'],
-
-            'customers.view' => ['name' => 'Query customer files', 'module' => 'contacts'],
-            'customers.manage' => ['name' => 'Onboard new potential customers', 'module' => 'contacts'],
-
-            'agents.view' => ['name' => 'View broker registers', 'module' => 'contacts'],
-            'agents.manage' => ['name' => 'Onboard external brokers and commissions', 'module' => 'contacts'],
-        ];
-
         $permIds = [];
-        foreach ($permissions as $code => $data) {
+        foreach ($canonicalPerms as $code => $data) {
             $id = (string) Str::uuid();
             DB::table('permissions')->insert([
                 'id' => $id,
@@ -227,74 +162,17 @@ class RoleAndPermissionSeeder extends Seeder
             $permIds[$code] = $id;
         }
 
-        // 5. Mappings for Role-Permissions (DB Matrix-driven)
-        $mappings = [
-            'PLATFORM_ADMIN' => [
-                'users.view', 'users.create', 'users.update', 'users.delete',
-                'roles.view', 'roles.manage', 'permissions.view', 'permissions.manage',
-                'tenants.view', 'tenants.manage', 'subscriptions.view', 'subscriptions.manage',
-                'audit.view', 'kyc.review', 'marketplace.publish', 'marketplace.unpublish',
-                'maps.upload', 'maps.view', 'projects.view', 'projects.manage',
-                'layouts.view', 'layouts.manage', 'plots.view', 'plots.manage',
-                'bookings.view', 'bookings.manage', 'collections.view', 'collections.manage',
-                'customers.view', 'customers.manage', 'agents.view', 'agents.manage',
-                'dxf.upload', 'dxf.view', 'dxf.process'
-            ],
-            'PLATFORM_SUPPORT' => [
-                'users.view', 'roles.view', 'permissions.view', 'tenants.view',
-                'subscriptions.view', 'audit.view', 'kyc.review', 'maps.view',
-                'projects.view', 'layouts.view', 'plots.view', 'bookings.view',
-                'collections.view', 'customers.view', 'agents.view'
-            ],
-            'DEVELOPER_OWNER' => [
-                'users.view', 'users.create', 'users.update', 'users.delete',
-                'roles.view', 'roles.manage', 'permissions.view', 'tenants.view',
-                'subscriptions.view', 'subscriptions.manage', 'audit.view',
-                'marketplace.publish', 'marketplace.unpublish', 'maps.upload', 'maps.view',
-                'projects.view', 'projects.manage', 'layouts.view', 'layouts.manage',
-                'plots.view', 'plots.manage', 'bookings.view', 'bookings.manage',
-                'collections.view', 'collections.manage', 'customers.view', 'customers.manage',
-                'agents.view', 'agents.manage',
-                'dxf.upload', 'dxf.view', 'dxf.process'
-            ],
-            'DEVELOPER_ADMIN' => [
-                'users.view', 'users.create', 'users.update',
-                'roles.view', 'permissions.view', 'tenants.view',
-                'subscriptions.view', 'marketplace.publish', 'maps.upload', 'maps.view',
-                'projects.view', 'projects.manage', 'layouts.view', 'layouts.manage',
-                'plots.view', 'plots.manage', 'bookings.view', 'bookings.manage',
-                'collections.view', 'customers.view', 'customers.manage',
-                'dxf.upload', 'dxf.view', 'dxf.process'
-            ],
-            'FINANCE_MANAGER' => [
-                'users.view', 'subscriptions.view', 'bookings.view',
-                'collections.view', 'collections.manage', 'customers.view'
-            ],
-            'PROJECT_MANAGER' => [
-                'users.view', 'maps.upload', 'maps.view',
-                'projects.view', 'projects.manage', 'layouts.view', 'layouts.manage',
-                'plots.view', 'plots.manage',
-                'dxf.upload', 'dxf.view', 'dxf.process'
-            ],
-            'SALES_MANAGER' => [
-                'users.view', 'bookings.view', 'bookings.manage',
-                'collections.view', 'customers.view', 'customers.manage',
-                'agents.view'
-            ],
-            'SALES_EXECUTIVE' => [
-                'bookings.view', 'bookings.manage', 'customers.view', 'customers.manage'
-            ],
-            'AGENT' => [
-                'marketplace.publish', 'projects.view', 'layouts.view', 'plots.view'
-            ],
-            'CUSTOMER' => [
-                'bookings.view', 'collections.view', 'projects.view'
-            ]
-        ];
+        // 4. Seed Role-Permission Mappings
+        foreach ($roleTemplates as $roleCode => $data) {
+            $roleId = $roleIds[$roleCode] ?? null;
+            if (!$roleId) continue;
 
-        foreach ($mappings as $roleCode => $pList) {
-            $roleId = $roleIds[$roleCode];
-            foreach ($pList as $pCode) {
+            $assignedCodes = $data['permissions'];
+            if ($assignedCodes === '*') {
+                $assignedCodes = array_keys($canonicalPerms);
+            }
+
+            foreach ($assignedCodes as $pCode) {
                 if (isset($permIds[$pCode])) {
                     DB::table('role_permissions')->insert([
                         'role_id' => $roleId,
@@ -303,6 +181,7 @@ class RoleAndPermissionSeeder extends Seeder
                 }
             }
         }
+
 
         // 6. Assign Users to Roles
         // Platform Admin assignment in GLOBAL context
