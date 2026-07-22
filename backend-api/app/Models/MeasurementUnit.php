@@ -36,8 +36,11 @@ class MeasurementUnit extends Model
         'is_active',
         'country_code',
         'state_code',
+        'tenant_id',
         'tenant_override_allowed',
         'description',
+        'created_by',
+        'updated_by',
     ];
 
     protected $casts = [
@@ -68,5 +71,25 @@ class MeasurementUnit extends Model
     public function plots(): HasMany
     {
         return $this->hasMany(Plot::class, 'measurement_unit_id');
+    }
+
+    public function tenantSettings(): HasMany
+    {
+        return $this->hasMany(TenantMeasurementUnitSetting::class, 'measurement_unit_id');
+    }
+
+    public function scopeSystem($query)
+    {
+        return $query->where('is_system', true)->whereNull('tenant_id');
+    }
+
+    public function scopeForTenant($query, ?string $tenantId)
+    {
+        return $query->where(function ($q) use ($tenantId) {
+            $q->where('is_system', true);
+            if (!empty($tenantId)) {
+                $q->orWhere('tenant_id', $tenantId);
+            }
+        });
     }
 }

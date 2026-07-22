@@ -28,7 +28,24 @@ class RbacSyncPermissionsCommand extends Command
      * Canonical Permission Registry covering all modules.
      */
     public static array $canonicalPermissions = [
-        // MASTERS — MEASUREMENT UNITS
+        // MASTERS — MEASUREMENT UNITS (PLATFORM & TENANT SEPARATED)
+        'platform.masters.measurement_units.view' => ['name' => 'View platform standard measurement units registry', 'module' => 'masters'],
+        'platform.masters.measurement_units.create' => ['name' => 'Create platform standard measurement units', 'module' => 'masters'],
+        'platform.masters.measurement_units.edit' => ['name' => 'Modify platform standard measurement unit definitions', 'module' => 'masters'],
+        'platform.masters.measurement_units.activate' => ['name' => 'Toggle global active status of system units', 'module' => 'masters'],
+        'platform.masters.measurement_units.delete' => ['name' => 'Delete platform standard measurement units', 'module' => 'masters'],
+        'platform.masters.measurement_units.export' => ['name' => 'Export platform measurement units registry', 'module' => 'masters'],
+        'platform.masters.measurement_units.import' => ['name' => 'Import platform measurement units definitions', 'module' => 'masters'],
+
+        'tenant.masters.measurement_units.view' => ['name' => 'View workspace measurement unit settings', 'module' => 'masters'],
+        'tenant.masters.measurement_units.configure' => ['name' => 'Configure tenant measurement unit settings and display labels', 'module' => 'masters'],
+        'tenant.masters.measurement_units.set_default' => ['name' => 'Set tenant default measurement units', 'module' => 'masters'],
+        'tenant.masters.measurement_units.export' => ['name' => 'Export tenant measurement unit settings', 'module' => 'masters'],
+        'tenant.masters.measurement_units.create_custom' => ['name' => 'Create tenant custom measurement units', 'module' => 'masters'],
+        'tenant.masters.measurement_units.edit_custom' => ['name' => 'Modify tenant custom measurement units', 'module' => 'masters'],
+        'tenant.masters.measurement_units.delete_custom' => ['name' => 'Delete tenant custom measurement units', 'module' => 'masters'],
+
+        // Legacy compatibility alias permissions
         'masters.measurement_units.view' => ['name' => 'View measurement units registry and details', 'module' => 'masters'],
         'masters.measurement_units.create' => ['name' => 'Create new measurement units', 'module' => 'masters'],
         'masters.measurement_units.edit' => ['name' => 'Modify measurement units definitions', 'module' => 'masters'],
@@ -149,6 +166,7 @@ class RbacSyncPermissionsCommand extends Command
                 'layouts.view', 'layouts.create', 'layouts.edit', 'layouts.archive', 'layouts.restore', 'layouts.delete', 'layouts.approve', 'layouts.publish', 'layouts.manage',
                 'maps.view', 'maps.edit', 'maps.draw', 'maps.validate', 'maps.publish', 'maps.upload',
                 'plots.view', 'plots.create', 'plots.edit', 'plots.delete', 'plots.generate', 'plots.split', 'plots.merge', 'plots.number', 'plots.validate', 'plots.manage',
+                'tenant.masters.measurement_units.view', 'tenant.masters.measurement_units.configure', 'tenant.masters.measurement_units.set_default', 'tenant.masters.measurement_units.export', 'tenant.masters.measurement_units.create_custom', 'tenant.masters.measurement_units.edit_custom', 'tenant.masters.measurement_units.delete_custom',
                 'masters.measurement_units.view', 'masters.measurement_units.create', 'masters.measurement_units.edit', 'masters.measurement_units.delete', 'masters.measurement_units.activate', 'masters.measurement_units.export', 'masters.measurement_units.import',
                 'rbac.roles.view', 'rbac.roles.create', 'rbac.roles.edit', 'rbac.roles.delete', 'rbac.permissions.view', 'rbac.users.assign_roles', 'rbac.audit.view',
                 'dxf.upload', 'dxf.view', 'dxf.process',

@@ -48,6 +48,7 @@ class SaasSubscriptionSeeder extends Seeder
     {
         // 1. Core Modules Seed
         $modulesData = [
+            ['code' => 'core.mdm.measurement_units', 'name' => 'Measurement Units', 'group' => 'Master Data Management', 'description' => 'Mandatory core MDM module for land measurement units and conversion standards', 'is_core' => true, 'is_billable' => false],
             ['code' => 'PROJECTS', 'name' => 'Projects Module', 'group' => 'Core Development', 'description' => 'Real estate development project registration, detail logs & RERA tracking', 'is_core' => true, 'is_billable' => true],
             ['code' => 'LAYOUTS', 'name' => 'Layouts Module', 'group' => 'Core Development', 'description' => 'Layout mapping, plotting, sector configuration and geographic planning', 'is_core' => true, 'is_billable' => true],
             ['code' => 'PLOTS', 'name' => 'Plots Parser', 'group' => 'Core Development', 'description' => 'Detailed plot bounds modeling, dimensions scaling and status assignment', 'is_core' => true, 'is_billable' => true],

@@ -468,7 +468,33 @@ Route::prefix('v1')->group(function () {
         Route::put('/plots/{id}', [PlotController::class, 'update'])->middleware([PermissionRequirementMiddleware::class . ':plots.manage']);
         Route::delete('/plots/{id}', [PlotController::class, 'destroy'])->middleware([PermissionRequirementMiddleware::class . ':plots.manage']);
 
-        // Measurement Units Group
+        // Tenant Measurement Units Configuration APIs
+        Route::get('/tenant/measurement-units/lookup', [\App\Http\Controllers\Api\v1\MeasurementUnitController::class, 'tenantLookup'])
+            ->middleware([PermissionRequirementMiddleware::class]);
+        Route::get('/tenant/measurement-units', [\App\Http\Controllers\Api\v1\MeasurementUnitController::class, 'tenantIndex'])
+            ->middleware([PermissionRequirementMiddleware::class . ':tenant.masters.measurement_units.view']);
+        Route::put('/tenant/measurement-units/{id}/setting', [\App\Http\Controllers\Api\v1\MeasurementUnitController::class, 'tenantUpdateSetting'])
+            ->middleware([PermissionRequirementMiddleware::class . ':tenant.masters.measurement_units.configure']);
+        Route::post('/tenant/measurement-units/{id}/set-default', [\App\Http\Controllers\Api\v1\MeasurementUnitController::class, 'tenantSetDefault'])
+            ->middleware([PermissionRequirementMiddleware::class . ':tenant.masters.measurement_units.set_default']);
+        Route::post('/tenant/measurement-units/custom', [\App\Http\Controllers\Api\v1\MeasurementUnitController::class, 'tenantCreateCustom'])
+            ->middleware([PermissionRequirementMiddleware::class . ':tenant.masters.measurement_units.create_custom']);
+
+        // Platform Standard Unit Registry APIs (SaaS Control Panel)
+        Route::get('/platform/measurement-units', [\App\Http\Controllers\Api\v1\MeasurementUnitController::class, 'platformIndex'])
+            ->middleware([PermissionRequirementMiddleware::class . ':platform.masters.measurement_units.view']);
+        Route::get('/platform/measurement-units/{id}', [\App\Http\Controllers\Api\v1\MeasurementUnitController::class, 'platformShow'])
+            ->middleware([PermissionRequirementMiddleware::class . ':platform.masters.measurement_units.view']);
+        Route::post('/platform/measurement-units', [\App\Http\Controllers\Api\v1\MeasurementUnitController::class, 'platformStore'])
+            ->middleware([PermissionRequirementMiddleware::class . ':platform.masters.measurement_units.create']);
+        Route::put('/platform/measurement-units/{id}', [\App\Http\Controllers\Api\v1\MeasurementUnitController::class, 'platformUpdate'])
+            ->middleware([PermissionRequirementMiddleware::class . ':platform.masters.measurement_units.edit']);
+        Route::patch('/platform/measurement-units/{id}/toggle', [\App\Http\Controllers\Api\v1\MeasurementUnitController::class, 'platformToggle'])
+            ->middleware([PermissionRequirementMiddleware::class . ':platform.masters.measurement_units.activate']);
+        Route::delete('/platform/measurement-units/{id}', [\App\Http\Controllers\Api\v1\MeasurementUnitController::class, 'platformDestroy'])
+            ->middleware([PermissionRequirementMiddleware::class . ':platform.masters.measurement_units.delete']);
+
+        // Legacy Measurement Units Group (Backward Compatibility)
         Route::get('/measurement-units/lookup', [\App\Http\Controllers\Api\v1\MeasurementUnitController::class, 'lookup'])
             ->middleware([PermissionRequirementMiddleware::class]);
         Route::get('/measurement-units', [\App\Http\Controllers\Api\v1\MeasurementUnitController::class, 'index'])

@@ -10,17 +10,17 @@ use Illuminate\Http\Request;
 
 class MeasurementUnitController extends Controller
 {
-    /**
-     * Extract user details and connection context parameters.
-     */
-    private function getContextAndUser(Request $request): array
+    private function getContextAndTenant(Request $request): array
     {
         $user = $request->attributes->get('authenticatedUser');
         $resolvedTenant = $request->attributes->get('resolvedTenant');
+        $tenantId = $resolvedTenant ? $resolvedTenant->id : $request->header('X-Tenant-ID');
+
         return [
             'userId' => $user ? $user->id : null,
+            'tenantId' => $tenantId,
             'context' => [
-                'tenantId' => $resolvedTenant ? $resolvedTenant->id : null,
+                'tenantId' => $tenantId,
                 'ip' => $request->ip(),
                 'userAgent' => $request->userAgent()
             ]
@@ -28,22 +28,25 @@ class MeasurementUnitController extends Controller
     }
 
     /**
-     * Check if the authenticated user has platform level access.
+     * Check if user has platform master admin access.
      */
     private function isPlatformAdmin(Request $request): bool
     {
         $payload = $request->attributes->get('authenticatedUserPayload');
         $role = $payload['role'] ?? null;
-        return in_array(strtoupper($role), ['DEVELOPER_OWNER', 'DEVELOPER_ADMIN', 'PLATFORM_ADMIN']);
+        return in_array(strtoupper($role), ['PLATFORM_ADMIN', 'PLATFORM_SUPER_ADMIN']);
     }
 
-    /**
-     * GET /api/v1/measurement-units
-     */
-    public function index(Request $request)
+    /*
+    |--------------------------------------------------------------------------
+    | PLATFORM MASTER REGISTRY ENDPOINTS
+    |--------------------------------------------------------------------------
+    */
+
+    public function platformIndex(Request $request)
     {
         try {
-            $units = MeasurementUnitService::getPaginated($request->all());
+            $units = MeasurementUnitService::getPlatformPaginated($request->all());
             return response()->json([
                 'success' => true,
                 'data' => $units->items(),
@@ -57,78 +60,30 @@ class MeasurementUnitController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch measurement units registry.'
+                'message' => 'Failed to fetch platform measurement units registry.'
             ], 500);
         }
     }
 
-    /**
-     * GET /api/v1/measurement-units/lookup
-     */
-    public function lookup(Request $request)
-    {
-        try {
-            $units = MeasurementUnitService::getLookup();
-            return response()->json([
-                'success' => true,
-                'data' => $units
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to fetch measurement units lookup.'
-            ], 500);
-        }
-    }
-
-    /**
-     * GET /api/v1/measurement-units/{id}
-     */
-    public function show(Request $request, $id)
-    {
-        try {
-            $unit = MeasurementUnitService::getById($id);
-            return response()->json([
-                'success' => true,
-                'data' => $unit
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Measurement unit not found.'
-            ], 404);
-        }
-    }
-
-    /**
-     * POST /api/v1/measurement-units
-     */
-    public function store(StoreMeasurementUnitRequest $request)
+    public function platformStore(StoreMeasurementUnitRequest $request)
     {
         $validated = $request->validated();
-        $aux = $this->getContextAndUser($request);
+        $aux = $this->getContextAndTenant($request);
 
-        // Code duplicate check
         $codeUpper = strtoupper(trim($validated['code']));
-        $duplicate = \App\Models\MeasurementUnit::where('code', $codeUpper)->first();
+        $duplicate = \App\Models\MeasurementUnit::where('code', $codeUpper)
+            ->where('is_system', true)
+            ->first();
+
         if ($duplicate) {
             return response()->json([
                 'success' => false,
-                'message' => 'A measurement unit with this code already exists.'
+                'message' => 'A platform measurement unit with this code already exists.'
             ], 409);
         }
 
-        // Platform-wide protection for is_system / is_default fields
-        $isPlatformAdmin = $this->isPlatformAdmin($request);
-        if ((!empty($validated['is_system']) || !empty($validated['is_default'])) && !$isPlatformAdmin) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Forbidden. Tenant users are not authorized to create platform-wide system defaults.'
-            ], 403);
-        }
-
         try {
-            $unit = MeasurementUnitService::create($validated, $aux['userId'], $aux['context']);
+            $unit = MeasurementUnitService::createPlatformUnit($validated, $aux['userId'], $aux['context']);
             return response()->json([
                 'success' => true,
                 'data' => $unit
@@ -136,55 +91,34 @@ class MeasurementUnitController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage() ?: 'Could not create measurement unit.'
+                'message' => $e->getMessage() ?: 'Could not create platform measurement unit.'
             ], 400);
         }
     }
 
-    /**
-     * PUT /api/v1/measurement-units/{id}
-     */
-    public function update(UpdateMeasurementUnitRequest $request, $id)
+    public function platformShow(Request $request, $id)
+    {
+        try {
+            $unit = MeasurementUnitService::getById($id);
+            return response()->json([
+                'success' => true,
+                'data' => $unit
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Measurement unit not found.'
+            ], 404);
+        }
+    }
+
+    public function platformUpdate(UpdateMeasurementUnitRequest $request, $id)
     {
         $validated = $request->validated();
-        $aux = $this->getContextAndUser($request);
+        $aux = $this->getContextAndTenant($request);
 
         try {
-            $unit = MeasurementUnitService::getById($id);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Measurement unit not found.'
-            ], 404);
-        }
-
-        // Code duplicate check on rename
-        if (!empty($validated['code'])) {
-            $codeUpper = strtoupper(trim($validated['code']));
-            $duplicate = \App\Models\MeasurementUnit::where('code', $codeUpper)
-                ->where('id', '!=', $id)
-                ->first();
-            if ($duplicate) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'A measurement unit with this code already exists.'
-                ], 409);
-            }
-        }
-
-        // Platform-wide protection for system/default modifications
-        $isPlatformAdmin = $this->isPlatformAdmin($request);
-        $systemChange = isset($validated['is_system']) && $validated['is_system'] !== $unit->is_system;
-        $defaultChange = isset($validated['is_default']) && $validated['is_default'] !== $unit->is_default;
-        if (($systemChange || $defaultChange) && !$isPlatformAdmin) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Forbidden. Tenant users are not authorized to modify platform-wide system defaults.'
-            ], 403);
-        }
-
-        try {
-            $updatedUnit = MeasurementUnitService::update($id, $validated, $aux['userId'], $aux['context']);
+            $updatedUnit = MeasurementUnitService::updatePlatformUnit($id, $validated, $aux['userId'], $aux['context']);
             return response()->json([
                 'success' => true,
                 'data' => $updatedUnit
@@ -192,60 +126,249 @@ class MeasurementUnitController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage() ?: 'Could not update measurement unit.'
+                'message' => $e->getMessage() ?: 'Could not update platform measurement unit.'
             ], 400);
         }
     }
 
-    /**
-     * PATCH /api/v1/measurement-units/{id}/toggle
-     */
+    public function platformToggle(Request $request, $id)
+    {
+        $aux = $this->getContextAndTenant($request);
+
+        try {
+            $updatedUnit = MeasurementUnitService::togglePlatformUnit($id, $aux['userId'], $aux['context']);
+            return response()->json([
+                'success' => true,
+                'data' => $updatedUnit
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage() ?: 'Could not toggle platform measurement unit state.'
+            ], 400);
+        }
+    }
+
+    public function platformDestroy(Request $request, $id)
+    {
+        $aux = $this->getContextAndTenant($request);
+
+        try {
+            MeasurementUnitService::deletePlatformUnit($id, $aux['userId'], $aux['context']);
+            return response()->json([
+                'success' => true,
+                'message' => 'Platform measurement unit deleted successfully.'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage() ?: 'Could not delete platform measurement unit.'
+            ], 400);
+        }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | TENANT CONFIGURATION ENDPOINTS
+    |--------------------------------------------------------------------------
+    */
+
+    public function tenantIndex(Request $request)
+    {
+        $aux = $this->getContextAndTenant($request);
+        $tenantId = $aux['tenantId'];
+
+        if (!$tenantId) {
+            return response()->json(['success' => false, 'message' => 'Tenant context missing.'], 400);
+        }
+
+        try {
+            $units = MeasurementUnitService::getTenantUnits($tenantId, $request->all());
+            return response()->json([
+                'success' => true,
+                'data' => $units
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch tenant measurement units configuration.'
+            ], 500);
+        }
+    }
+
+    public function tenantLookup(Request $request)
+    {
+        $aux = $this->getContextAndTenant($request);
+        $tenantId = $aux['tenantId'];
+
+        if (!$tenantId) {
+            // Fallback to platform system units if no tenant context
+            return response()->json([
+                'success' => true,
+                'data' => \App\Models\MeasurementUnit::where('is_active', true)->where('is_system', true)->get()
+            ]);
+        }
+
+        try {
+            $units = MeasurementUnitService::getTenantLookup($tenantId);
+            return response()->json([
+                'success' => true,
+                'data' => $units
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch tenant measurement units lookup.'
+            ], 500);
+        }
+    }
+
+    public function tenantUpdateSetting(Request $request, $id)
+    {
+        $aux = $this->getContextAndTenant($request);
+        $tenantId = $aux['tenantId'];
+
+        if (!$tenantId) {
+            return response()->json(['success' => false, 'message' => 'Tenant context missing.'], 400);
+        }
+
+        try {
+            $setting = MeasurementUnitService::updateTenantUnitSetting($tenantId, $id, $request->all(), $aux['userId'], $aux['context']);
+            return response()->json([
+                'success' => true,
+                'data' => $setting
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage() ?: 'Could not update tenant unit setting.'
+            ], 400);
+        }
+    }
+
+    public function tenantSetDefault(Request $request, $id)
+    {
+        $aux = $this->getContextAndTenant($request);
+        $tenantId = $aux['tenantId'];
+
+        if (!$tenantId) {
+            return response()->json(['success' => false, 'message' => 'Tenant context missing.'], 400);
+        }
+
+        try {
+            MeasurementUnitService::setTenantDefaultUnit($tenantId, $id, $aux['userId'], $aux['context']);
+            return response()->json([
+                'success' => true,
+                'message' => 'Tenant default measurement unit updated successfully.'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage() ?: 'Could not set tenant default measurement unit.'
+            ], 400);
+        }
+    }
+
+    public function tenantCreateCustom(StoreMeasurementUnitRequest $request)
+    {
+        $aux = $this->getContextAndTenant($request);
+        $tenantId = $aux['tenantId'];
+
+        if (!$tenantId) {
+            return response()->json(['success' => false, 'message' => 'Tenant context missing.'], 400);
+        }
+
+        $validated = $request->validated();
+
+        try {
+            $unit = MeasurementUnitService::createTenantCustomUnit($tenantId, $validated, $aux['userId'], $aux['context']);
+            return response()->json([
+                'success' => true,
+                'data' => $unit
+            ], 201);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage() ?: 'Could not create tenant custom unit.'
+            ], 400);
+        }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | LEGACY COMPATIBILITY ENDPOINTS (/api/v1/measurement-units)
+    |--------------------------------------------------------------------------
+    */
+
+    public function index(Request $request)
+    {
+        $aux = $this->getContextAndTenant($request);
+        if ($aux['tenantId']) {
+            return $this->tenantIndex($request);
+        }
+        return $this->platformIndex($request);
+    }
+
+    public function lookup(Request $request)
+    {
+        return $this->tenantLookup($request);
+    }
+
+    public function show(Request $request, $id)
+    {
+        return $this->platformShow($request, $id);
+    }
+
+    public function store(StoreMeasurementUnitRequest $request)
+    {
+        $aux = $this->getContextAndTenant($request);
+        if ($this->isPlatformAdmin($request)) {
+            return $this->platformStore($request);
+        }
+
+        if ($aux['tenantId']) {
+            return $this->tenantCreateCustom($request);
+        }
+
+        return response()->json(['success' => false, 'message' => 'Forbidden.'], 403);
+    }
+
+    public function update(UpdateMeasurementUnitRequest $request, $id)
+    {
+        $aux = $this->getContextAndTenant($request);
+        if ($this->isPlatformAdmin($request)) {
+            return $this->platformUpdate($request, $id);
+        }
+
+        if ($aux['tenantId']) {
+            return $this->tenantUpdateSetting($request, $id);
+        }
+
+        return response()->json(['success' => false, 'message' => 'Forbidden.'], 403);
+    }
+
     public function toggle(Request $request, $id)
     {
-        $aux = $this->getContextAndUser($request);
-
-        try {
-            $unit = MeasurementUnitService::getById($id);
-            $updatedUnit = MeasurementUnitService::update($id, ['is_active' => !$unit->is_active], $aux['userId'], $aux['context']);
-            return response()->json([
-                'success' => true,
-                'data' => $updatedUnit
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage() ?: 'Could not toggle measurement unit state.'
-            ], 400);
+        $aux = $this->getContextAndTenant($request);
+        if ($this->isPlatformAdmin($request)) {
+            return $this->platformToggle($request, $id);
         }
+
+        if ($aux['tenantId']) {
+            // Toggle visibility in tenant
+            $isEnabled = $request->input('is_enabled', null);
+            $setting = MeasurementUnitService::updateTenantUnitSetting($aux['tenantId'], $id, ['is_enabled' => $isEnabled], $aux['userId'], $aux['context']);
+            return response()->json(['success' => true, 'data' => $setting]);
+        }
+
+        return response()->json(['success' => false, 'message' => 'Forbidden.'], 403);
     }
 
-    /**
-     * DELETE /api/v1/measurement-units/{id}
-     */
     public function destroy(Request $request, $id)
     {
-        $aux = $this->getContextAndUser($request);
-
-        try {
-            $unit = MeasurementUnitService::getById($id);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Measurement unit not found.'
-            ], 404);
+        if ($this->isPlatformAdmin($request)) {
+            return $this->platformDestroy($request, $id);
         }
-
-        try {
-            MeasurementUnitService::delete($id, $aux['userId'], $aux['context']);
-            return response()->json([
-                'success' => true,
-                'message' => 'Measurement unit deleted successfully.'
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage() ?: 'Could not delete measurement unit.'
-            ], 400);
-        }
+        return response()->json(['success' => false, 'message' => 'Forbidden. System units cannot be deleted by tenants.'], 403);
     }
 }
