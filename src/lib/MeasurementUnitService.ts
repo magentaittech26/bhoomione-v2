@@ -132,9 +132,101 @@ export class MeasurementUnitService {
     }
   }
 
-  static async getById(id: string): Promise<MeasurementUnit> {
-    const res = await api.request<{ data: MeasurementUnit }>(`/measurement-units/${id}`, { method: "GET" });
+  // TENANT SPECIFIC API METHODS
+  static async getTenantUnits(params?: any): Promise<MeasurementUnit[]> {
+    try {
+      const query = params ? `?${new URLSearchParams(params).toString()}` : "";
+      const res = await api.request<any>(`/tenant/measurement-units${query}`, { method: "GET" });
+      const items = res?.data || (Array.isArray(res) ? res : []);
+      return items.map((u: any) => ({
+        id: String(u.id || u.uuid || ""),
+        uuid: String(u.uuid || u.id || ""),
+        code: String(u.code || ""),
+        name: String(u.name || u.display_name || ""),
+        display_name: String(u.display_name || u.custom_label || u.name || ""),
+        symbol: String(u.symbol || u.custom_symbol || u.short_code || u.code || ""),
+        short_code: String(u.short_code || u.symbol || u.code || ""),
+        measurement_type: String(u.measurement_type || "Area"),
+        conversion_factor: Number(u.conversion_factor ?? u.conversion_to_sqft ?? 1),
+        conversion_to_sqft: Number(u.conversion_to_sqft ?? u.conversion_factor ?? 1),
+        precision: Number(u.precision ?? u.decimal_places ?? 2),
+        decimal_places: Number(u.decimal_places ?? u.precision ?? 2),
+        is_active: Boolean(u.is_active ?? true),
+        is_enabled: Boolean(u.is_enabled ?? true),
+        is_default: Boolean(u.is_default ?? false),
+        is_system: Boolean(u.is_system ?? false),
+        custom_label: u.custom_label || null,
+        custom_symbol: u.custom_symbol || null,
+      }));
+    } catch (err: any) {
+      console.error("Failed to fetch tenant measurement units:", err);
+      throw err;
+    }
+  }
+
+  static async updateTenantSetting(id: string, settings: {
+    is_enabled?: boolean;
+    display_precision?: number;
+    decimal_places_override?: number;
+    display_order?: number;
+    custom_label?: string;
+    custom_symbol?: string;
+  }): Promise<any> {
+    return await api.request(`/tenant/measurement-units/${id}/setting`, {
+      method: "PUT",
+      body: JSON.stringify(settings),
+    });
+  }
+
+  static async setTenantDefault(id: string): Promise<any> {
+    return await api.request(`/tenant/measurement-units/${id}/set-default`, {
+      method: "POST",
+    });
+  }
+
+  static async createTenantCustom(data: Partial<MeasurementUnit>): Promise<any> {
+    return await api.request(`/tenant/measurement-units/custom`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  // PLATFORM MASTER API METHODS
+  static async getPlatformUnits(params?: any): Promise<MeasurementUnitsResponse> {
+    const query = params ? `?${new URLSearchParams(params).toString()}` : "";
+    const res = await api.request<any>(`/platform/measurement-units${query}`, { method: "GET" });
+    const items = res?.data || [];
+    return {
+      data: items,
+      meta: res?.meta || { total: items.length, page: 1, per_page: 50, last_page: 1 }
+    };
+  }
+
+  static async createPlatformUnit(data: Partial<MeasurementUnit>): Promise<MeasurementUnit> {
+    const res = await api.request<{ data: MeasurementUnit }>("/platform/measurement-units", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
     return res.data;
+  }
+
+  static async updatePlatformUnit(id: string, data: Partial<MeasurementUnit>): Promise<MeasurementUnit> {
+    const res = await api.request<{ data: MeasurementUnit }>(`/platform/measurement-units/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+    return res.data;
+  }
+
+  static async togglePlatformUnit(id: string): Promise<MeasurementUnit> {
+    const res = await api.request<{ data: MeasurementUnit }>(`/platform/measurement-units/${id}/toggle`, {
+      method: "PATCH",
+    });
+    return res.data;
+  }
+
+  static async deletePlatformUnit(id: string): Promise<void> {
+    await api.request<void>(`/platform/measurement-units/${id}`, { method: "DELETE" });
   }
 
   static async create(data: Partial<MeasurementUnit>): Promise<MeasurementUnit> {
