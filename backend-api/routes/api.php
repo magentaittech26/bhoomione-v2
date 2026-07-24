@@ -440,6 +440,12 @@ Route::prefix('v1')->group(function () {
         // Business Rules Evaluation Precheck API (Central Rules Engine)
         Route::post('/tenant/business-rules/evaluate', [\App\Http\Controllers\Api\v1\BusinessRuleController::class, 'evaluate']);
 
+        // Lifecycle Engine API Group
+        Route::get('/tenant/lifecycle/{entityType}/{entityId}', [\App\Http\Controllers\Api\v1\LifecycleController::class, 'show']);
+        Route::post('/tenant/lifecycle/{entityType}/{entityId}/evaluate', [\App\Http\Controllers\Api\v1\LifecycleController::class, 'evaluate']);
+        Route::post('/tenant/lifecycle/{entityType}/{entityId}/transition', [\App\Http\Controllers\Api\v1\LifecycleController::class, 'transition']);
+        Route::get('/tenant/lifecycle/{entityType}/{entityId}/history', [\App\Http\Controllers\Api\v1\LifecycleController::class, 'history']);
+
         // Tenant Marketplace Settings & Dashboard (Phase 2B)
         Route::get('/tenant/marketplace/developer-profile', [\App\Http\Controllers\Api\v1\MarketplaceController::class, 'getDeveloperProfile']);
         Route::post('/tenant/marketplace/developer-profile', [\App\Http\Controllers\Api\v1\MarketplaceController::class, 'updateDeveloperProfile']);
