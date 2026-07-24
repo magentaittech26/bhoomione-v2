@@ -11,6 +11,7 @@ The Laravel backend is located in `/backend-api` and follows a robust modular an
 - **Controllers (`app/Http/Controllers/Api/v1/`)**: Handles request/response mapping, invokes services, and maintains API boundaries.
 - **Form Requests (`app/Http/Requests/`)**: Encapsulates incoming payload validation and error handling format (returning a standard 422 standard on validation failure).
 - **Services (`app/Services/`)**: Authoritative business logic engines, database transaction handlers, and audit logging orchestrators.
+- **Business Rules Engine (`app/Core/BusinessRules/`)**: Decoupled rules engine executing deterministic eligibility, state transitions, and audit logging (`BusinessRuleEngine`).
 
 ---
 

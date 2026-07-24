@@ -437,6 +437,9 @@ Route::prefix('v1')->group(function () {
     // -------------------------------------------------------------------------
 
     Route::middleware([TenantResolverMiddleware::class])->group(function () {
+        // Business Rules Evaluation Precheck API (Central Rules Engine)
+        Route::post('/tenant/business-rules/evaluate', [\App\Http\Controllers\Api\v1\BusinessRuleController::class, 'evaluate']);
+
         // Tenant Marketplace Settings & Dashboard (Phase 2B)
         Route::get('/tenant/marketplace/developer-profile', [\App\Http\Controllers\Api\v1\MarketplaceController::class, 'getDeveloperProfile']);
         Route::post('/tenant/marketplace/developer-profile', [\App\Http\Controllers\Api\v1\MarketplaceController::class, 'updateDeveloperProfile']);
